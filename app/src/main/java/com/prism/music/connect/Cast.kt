@@ -32,6 +32,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -139,8 +140,17 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         val lock = runCatching { wifi?.createMulticastLock("prism-connect")?.apply { setReferenceCounted(false); acquire() } }.getOrNull()
         val notify = scope.launch(Dispatchers.IO) { listenForNotify() }
         val google = withContext(Dispatchers.Main) { startCastDiscovery() }
-        val stations = if (BuildConfig.DEBUG && StationConnectAccount.api() != null) {
-            scope.launch(Dispatchers.IO) { discoverStations() }
+        val stations = if (BuildConfig.DEBUG) {
+            scope.launch(Dispatchers.IO) {
+                StationConnectAccount.initialize(app)
+                StationConnectAccount.signedIn.collectLatest { signedIn ->
+                    stationDevices.clear()
+                    stationListed.clear()
+                    found.entries.removeIf { it.value.first.kind == RendererKind.YANDEX_STATION }
+                    publishFound()
+                    if (signedIn) discoverStations()
+                }
+            }
         } else null
         try {
             manual.forEach { describe(it, force = true) }
@@ -169,6 +179,15 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 when (event) {
                     is StationDiscoveryEvent.Found -> {
                         val d = event.station
+                        val api = StationConnectAccount.api() ?: return@collect
+                        try {
+                            api.verify(d)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            return@collect
+                        }
+                        if (!StationConnectAccount.signedIn.value) return@collect
                         val id = "yandex:${d.deviceId}"
                         val renderer = Renderer(id, d.serviceName, "Yandex", d.platform,
                             "yandexstation://${d.address.hostAddress}:${d.port}", null,
@@ -451,7 +470,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                     RendererKind.YANDEX_STATION -> {
                         check(BuildConfig.DEBUG)
                         val device = stationDevices[r.id] ?: error("Station no longer available")
-                        val api = StationConnectAccount.api() ?: error("Sign in through Station Lab")
+                        StationConnectAccount.initialize(app)
+                        val api = StationConnectAccount.api() ?: error("Sign in to Yandex in Settings")
                         val identity = api.verify(device)
                         StationRendererLink(device, identity, api)
                     }
