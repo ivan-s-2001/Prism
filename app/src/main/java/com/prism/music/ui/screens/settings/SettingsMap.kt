@@ -85,7 +85,7 @@ enum class SettingsPageId(
     BACKUP_ABOUT("backup_about", SettingsRootGroup.APP, tr(R.string.backup_about), PrismIcons.Info, "");
 
     companion object {
-        fun of(key: String?): SettingsPageId? = entries.firstOrNull { it.key == key }
+        fun of(key: String?): SettingsPageId? = entries.firstOrNull { it.key == key && (it != YANDEX || com.prism.music.BuildConfig.DEBUG) }
     }
 }
 
@@ -231,7 +231,7 @@ val SettingsPageId.lookKeys: List<String>
         SettingsPageId.CAR -> carLookKeys
         SettingsPageId.SPEAKERS_TVS_BROWSER -> speakersTvsBrowserLookKeys
         SettingsPageId.ACCOUNTS_SHARING -> accountsSharingLookKeys
-        SettingsPageId.YANDEX -> emptyList()
+        SettingsPageId.YANDEX -> yandexLookKeys
         SettingsPageId.LANGUAGE_REGION -> languageRegionLookKeys
         SettingsPageId.BACKUP_ABOUT -> backupAboutLookKeys
     }
@@ -257,7 +257,7 @@ val SettingsPageId.oldGroups: Map<String, String>
         SettingsPageId.CAR -> carOldGroups
         SettingsPageId.SPEAKERS_TVS_BROWSER -> speakersTvsBrowserOldGroups
         SettingsPageId.ACCOUNTS_SHARING -> accountsSharingOldGroups
-        SettingsPageId.YANDEX -> emptyMap()
+        SettingsPageId.YANDEX -> yandexOldGroups
         SettingsPageId.LANGUAGE_REGION -> languageRegionOldGroups
         SettingsPageId.BACKUP_ABOUT -> backupAboutOldGroups
     }
@@ -279,7 +279,7 @@ fun SettingsPageId.value(s: AppSettings, dark: Boolean = true): String = when (t
     SettingsPageId.CAR -> carValue(s, dark)
     SettingsPageId.SPEAKERS_TVS_BROWSER -> speakersTvsBrowserValue(s, dark)
     SettingsPageId.ACCOUNTS_SHARING -> accountsSharingValue(s, dark)
-    SettingsPageId.YANDEX -> if (java.util.Locale.getDefault().language == "ru") "ID, музыка, Станции" else "ID, music, Stations"
+    SettingsPageId.YANDEX -> yandexValue(s, dark)
     SettingsPageId.LANGUAGE_REGION -> languageRegionValue(s, dark)
     SettingsPageId.BACKUP_ABOUT -> backupAboutValue(s, dark)
 }
