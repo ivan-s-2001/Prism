@@ -29,6 +29,18 @@ class RecFeedbackTest {
         assertTrue(RecFeedback(app).turnedDown("new", known = false))
     }
 
+    @Test fun waveEvidenceLearnsFromActualOutcomesNotExposure() {
+        val fb = RecFeedback(app).apply { clear() }
+        fb.served(listOf("a", "b"))
+        assertEquals(0.0, fb.waveEvidence()("A").accepted, 1e-9)
+        fb.heard("a", "A")
+        fb.skipped("b", "B")
+        assertEquals(1.0, fb.waveEvidence()("a").accepted, 1e-9)
+        assertEquals(1.0, fb.waveEvidence()("b").skipped, 1e-9)
+        fb.clear()
+        assertEquals(0.0, fb.waveEvidence()("A").accepted, 1e-9)
+    }
+
     @Test fun servedAndDoubt() {
         val fb = RecFeedback(app).apply { clear() }
         fb.served(listOf("a", "b"))
