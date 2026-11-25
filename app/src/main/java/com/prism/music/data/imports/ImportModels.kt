@@ -70,7 +70,10 @@ data class ParsedPlay(
 
 /** A song in an imported library (liked, or in a playlist). */
 @Serializable
-data class LibraryTrack(val title: String, val artist: String, val album: String? = null, val sourceId: String? = null) {
+data class LibraryTrack(
+    val title: String, val artist: String, val album: String? = null, val sourceId: String? = null,
+    val durationMs: Long = 0L, val isrc: String? = null, val artistCredit: String? = null,
+) {
     val key: String get() = ImportKeys.songKey(title, artist)
 }
 
