@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
@@ -146,14 +147,20 @@ internal class GlagolSocket(
         enqueue(c, GlagolProtocol.envelope(conversationToken, payload))
     }
 
-    suspend fun request(conversationToken: String, payload: JsonObject, timeoutMs: Long = 3000L): String? {
+    suspend fun request(conversationToken: String, payload: JsonObject, timeoutMs: Long = 3000L, confirmed: (() -> Boolean)? = null): String? {
         val c = ready()
         val id = UUID.randomUUID().toString()
         val reply = CompletableDeferred<String>()
         c.replies[id] = reply
         try {
             enqueue(c, GlagolProtocol.envelope(conversationToken, payload, id))
-            return withTimeoutOrNull(timeoutMs) { reply.await() }
+            return withTimeoutOrNull(timeoutMs) {
+                if (confirmed == null) reply.await()
+                else {
+                    while (!reply.isCompleted && !confirmed()) delay(25)
+                    if (reply.isCompleted) reply.await() else null
+                }
+            }
         } finally { c.replies.remove(id) }
     }
 
