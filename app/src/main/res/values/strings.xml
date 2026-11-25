@@ -5774,4 +5774,7 @@
     <string name="transition_echo_out_detail">The last beat echoes away as the next song starts</string>
     <string name="transition_mark">Your own transition into the next song</string>
     <string name="transition_edit">Edit the transition into the next song</string>
+    <string name="uncensored_recordings">Prefer uncensored recordings</string>
+    <string name="uncensored_recordings_info">Experimental. Searches upcoming songs for likely original versions. Metadata cannot guarantee uncensored audio.</string>
+    <string name="uncensored_candidate">Possible uncensored version</string>
 </resources>
