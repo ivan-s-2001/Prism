@@ -186,6 +186,10 @@ internal class StationLiveHls(
         if (!closed.compareAndSet(false, true)) return
         http.stop()
         worker.interrupt()
+        // A recovery can reuse the same PCM reader. Wait for the old encoder
+        // to leave its loop rather than consuming from two clocks at once.
+        if (worker !== Thread.currentThread()) try { worker.join(500) }
+        catch (_: InterruptedException) { Thread.currentThread().interrupt() }
         synchronized(segments) { segments.clear() }
     }
 }
