@@ -115,8 +115,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     var style by remember(source.originId) { mutableStateOf(MyWave.style(source.originId)) }
     val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
     val moment = when (hour) {
-        in 6..10 -> l("Бодрое утро", "Morning energy") to MyWave.Style(mood = MyWave.Mood.ENERGETIC)
-        in 11..17 -> l("Время сосредоточиться", "Focus time") to MyWave.Style(mood = MyWave.Mood.CALM)
+        in 6..10 -> l("Бодрое утро", "Morning energy") to MyWave.Style(activity = MyWave.Activity.WAKE)
+        in 11..17 -> l("Время сосредоточиться", "Focus time") to MyWave.Style(activity = MyWave.Activity.WORK)
         else -> l("Спокойный вечер", "Wind down") to MyWave.Style(mood = MyWave.Mood.CALM)
     }
     fun characterName(v: MyWave.Character) = when (v) {
@@ -128,6 +128,15 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         MyWave.Mood.ANY -> l("Любое", "Any")
         MyWave.Mood.CALM -> l("Спокойное", "Calm")
         MyWave.Mood.ENERGETIC -> l("Бодрое", "Energetic")
+    }
+
+    fun activityName(v: MyWave.Activity) = when (v) {
+        MyWave.Activity.ANY -> l("Любое", "Any")
+        MyWave.Activity.WAKE -> l("Просыпаюсь", "Waking up")
+        MyWave.Activity.ROAD -> l("В дороге", "On the road")
+        MyWave.Activity.WORK -> l("Работаю", "Focus")
+        MyWave.Activity.TRAIN -> l("Тренируюсь", "Workout")
+        MyWave.Activity.SLEEP -> l("Засыпаю", "Sleep")
     }
 
     fun start(selected: MyWave.Style = style) {
@@ -159,7 +168,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                         artistDoubt = c.recFeedback::artistDoubt,
                         servedRecently = { c.recFeedback.servedDaysAgo(it.id)?.let { days -> days <= 1 } == true },
                         profile = taste.profile, previousSong = current,
-                        avoid = current?.let { setOf(com.prism.music.data.foryou.LocalRadio.sameSong(it)) }.orEmpty())
+                        avoid = current?.let { setOf(com.prism.music.data.foryou.LocalRadio.sameSong(it)) }.orEmpty(),
+                        artistEvidence = c.recFeedback.waveEvidence())
                 }
                 // If the listener chose another queue while this was being prepared, it wins.
                 if (c.queue.source.value !== previous) return@launch
@@ -251,7 +261,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         Row(Modifier.align(Alignment.BottomCenter).padding(horizontal = 18.dp, vertical = 13.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             if (wave) {
-                Text(characterName(style.character) + " · " + moodName(style.mood), color = Color.White.copy(alpha = 0.8f),
+                Text(listOfNotNull(characterName(style.character), moodName(style.mood).takeIf { style.mood != MyWave.Mood.ANY }, activityName(style.activity).takeIf { style.activity != MyWave.Activity.ANY }).joinToString(" · "), color = Color.White.copy(alpha = 0.8f),
                     style = MaterialTheme.typography.labelMedium, maxLines = 1)
             } else {
                 Text(l("Сейчас", "For now"), color = Color.White.copy(alpha = 0.65f), style = MaterialTheme.typography.labelSmall)
@@ -262,7 +272,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         }
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(l("Для себя", "For you") to MyWave.Style(), l("В движении", "On the move") to MyWave.Style(mood = MyWave.Mood.ENERGETIC), l("Отдохнуть", "Unwind") to MyWave.Style(mood = MyWave.Mood.CALM)).forEach { (label, preset) ->
+        listOf(l("Для себя", "For you") to MyWave.Style(), l("В дороге", "On the road") to MyWave.Style(activity = MyWave.Activity.ROAD), l("Отдохнуть", "Unwind") to MyWave.Style(mood = MyWave.Mood.CALM)).forEach { (label, preset) ->
             Surface(modifier = Modifier.weight(1f).clip(ui.shape(18.dp)).clickable(enabled = !starting && !waiting) { style = preset; start(preset) },
                 shape = ui.shape(18.dp), color = if (wave && style == preset) scheme.primaryContainer else scheme.surfaceContainerHigh) {
                 Text(label, Modifier.padding(horizontal = 6.dp, vertical = 16.dp), style = MaterialTheme.typography.labelMedium,
@@ -277,6 +287,16 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             title = { Text(l("Настроить волну", "Tune your Wave")) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(l("Для занятия", "Activity"), style = MaterialTheme.typography.titleSmall)
+                    MyWave.Activity.entries.chunked(2).forEach { options ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            options.forEach { value ->
+                                FilterChip(modifier = Modifier.weight(1f), selected = draft.activity == value,
+                                    onClick = { draft = draft.copy(activity = value) },
+                                    label = { Text(activityName(value), maxLines = 1, overflow = TextOverflow.Ellipsis) })
+                            }
+                        }
+                    }
                     Text(l("Характер музыки", "Music discovery"), style = MaterialTheme.typography.titleSmall)
                     MyWave.Character.entries.forEach { value ->
                         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { draft = draft.copy(character = value) },
@@ -305,8 +325,19 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                                 label = { Text(label, maxLines = 1) })
                         }
                     }
-                    if (draft.mood != MyWave.Mood.ANY) Text(l("Настроение учитывается по измеренным темпу и громкости, если они известны.",
-                        "Mood uses measured tempo and loudness when available."), style = MaterialTheme.typography.bodySmall)
+                    Text(l("Разнообразие", "Variety"), style = MaterialTheme.typography.titleSmall)
+                    Slider(value = draft.diversity.toFloat(), onValueChange = { draft = draft.copy(diversity = it.toInt()) },
+                        valueRange = 0f..100f, steps = 9)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(l("Похожее", "Similar"), style = MaterialTheme.typography.labelSmall)
+                        Text(l("Разное", "Varied"), style = MaterialTheme.typography.labelSmall)
+                    }
+                    if (draft.mood != MyWave.Mood.ANY || draft.activity != MyWave.Activity.ANY) Text(
+                        l("Занятие и настроение приближённо учитывают измеренные темп и громкость. Явное настроение важнее занятия.",
+                            "Activity and mood use measured tempo and loudness when available. Explicit mood takes priority."),
+                        style = MaterialTheme.typography.bodySmall)
+                    if (draft.depth != MyWave.Depth.ANY) Text(l("Популярность оценивается по топ-трекам исполнителя, если они доступны.",
+                        "Popularity uses an artist’s top songs when available."), style = MaterialTheme.typography.bodySmall)
                 }
             },
             confirmButton = { TextButton(onClick = { settingsOpen = false; style = draft; start(draft) }) { Text(if (wave) l("Применить", "Apply") else l("Включить", "Play")) } },
