@@ -84,7 +84,8 @@ class HttpRequest(
 }
 
 /** One answer per connection (the connection closes after it), so a handler either [send]s or [start]s once. */
-class HttpResponse internal constructor(private val out: OutputStream, private val head: Boolean) {
+class HttpResponse internal constructor(private val out: OutputStream, private val head: Boolean, private val abortConnection: () -> Unit = {}) {
+    internal fun abort() = abortConnection()
     var status = 0
         private set
     val sent: Boolean get() = status != 0
@@ -193,7 +194,7 @@ class HttpServer(
             }
             // Writing a long body can take as long as the other side takes to read it (a TV reads a song as it plays).
             s.soTimeout = 0
-            val res = HttpResponse(out, req.method == "HEAD")
+            val res = HttpResponse(out, req.method == "HEAD") { runCatching { s.close() }; Unit }
             try {
                 handler(req, res)
                 if (!res.sent) res.text(404, "Not found")
