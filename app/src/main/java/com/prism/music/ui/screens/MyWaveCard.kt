@@ -32,12 +32,13 @@ import com.prism.music.ui.player.pausedCoverScale
 import com.prism.music.ui.player.ThemeBackdrop
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import com.prism.music.ui.player.rememberFullArtworkBlur
 import com.prism.music.ui.player.FullArtworkBlurBackdrop
 import com.prism.music.ui.player.TransportRow
+import com.prism.music.ui.player.PlayerScrubber
+import com.prism.music.ui.player.CircleGlyph
 import com.prism.music.ui.player.playerTitleStyle
 import com.prism.music.ui.player.playerArtistStyle
 import com.prism.music.data.model.SongItem
@@ -295,11 +296,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 if (image == null) ThemeBackdrop()
                 else FullArtworkBlurBackdrop(image, scrim = (1.3f - 0.95f * settings.player.backdropShow.coerceAtLeast(0f)).coerceAtLeast(0.8f))
             }
-            // The highlight is inside the glass, above the picture but behind all text and buttons.
-            Box(Modifier.matchParentSize().background(Brush.verticalGradient(
-                0f to Color.White.copy(alpha = 0.13f),
-                0.34f to Color.Transparent,
-                1f to Color.Black.copy(alpha = 0.22f))))
             BoxWithConstraints(Modifier.fillMaxSize()) {
             @Composable fun CoverArt(modifier: Modifier) {
                 val scale by animateFloatAsState(
@@ -335,24 +331,26 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             }
             @Composable fun Feedback() {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { current?.let { c.library.toggleLike(it) } }, enabled = current != null) {
-                        val on = current?.id in liked
-                        Icon(if (on) PrismIcons.HeartFilled else PrismIcons.Heart, l("Нравится", "Like"),
-                            tint = if (on) accent else Color.White)
+                    if (current != null) {
+                        val on = current.id in liked
+                        CircleGlyph(if (on) PrismIcons.HeartFilled else PrismIcons.Heart, l("Нравится", "Like"), active = on) {
+                            c.library.toggleLike(current)
+                        }
+                    } else IconButton(onClick = {}, enabled = false) {
+                        Icon(PrismIcons.Heart, l("Нравится", "Like"), tint = Color.White.copy(alpha = 0.3f))
                     }
-                    IconButton(onClick = {
-                        current?.let {
-                            val on = it.id in disliked
-                            c.library.setDisliked(it, !on)
+                    CircleGlyph(PrismIcons.Refresh, l("Встряхнуть", "Refresh Stream"),
+                        modifier = Modifier.testTag("home:my_wave:refresh")) {
+                        if (!starting) { if (onRetry != null && !wave) onRetry() else start() }
+                    }
+                    if (current != null) {
+                        val on = current.id in disliked
+                        CircleGlyph(if (on) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown, l("Не моё", "Not for me"), active = on) {
+                            c.library.setDisliked(current, !on)
                             if (!on && c.player.hasNext.value) c.player.next()
                         }
-                    }, enabled = current != null) {
-                        Icon(if (current?.id in disliked) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown,
-                            l("Не моё", "Not for me"), tint = if (current?.id in disliked) accent else Color.White)
-                    }
-                    IconButton(onClick = { if (onRetry != null && !wave) onRetry() else start() }, enabled = !starting,
-                        modifier = Modifier.testTag("home:my_wave:refresh")) {
-                        Icon(PrismIcons.Refresh, l("Встряхнуть", "Refresh Stream"), tint = Color.White)
+                    } else IconButton(onClick = {}, enabled = false) {
+                        Icon(PrismIcons.ThumbDown, l("Не моё", "Not for me"), tint = Color.White.copy(alpha = 0.3f))
                     }
                 }
             }
@@ -363,7 +361,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     playAccent = accent.takeIf { settings.streamThemeColors }, playTag = "home:my_wave:play")
             }
             @Composable fun Progress() {
-                // Isolate playhead updates here. A drag is committed only for the same song.
                 val id = current?.id
                 val timing by produceState(0L to 0L, id, playing) {
                     while (true) {
@@ -372,32 +369,24 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                         kotlinx.coroutines.delay(if (playing) 250L else 500L)
                     }
                 }
-                var scrub by remember(id) { mutableStateOf<Float?>(null) }
-                val duration = timing.second
-                val seekable = id != null && duration > 0 && current?.isLive != true
-                val fraction = scrub ?: if (seekable) (timing.first.toFloat() / duration).coerceIn(0f, 1f) else 0f
-                Column(Modifier.fillMaxWidth()) {
-                    com.prism.music.ui.player.ThinSlider(value = fraction,
-                        onValueChange = { if (seekable) scrub = it },
-                        onValueChangeFinished = {
-                            if (seekable && c.player.currentSong.value?.id == id && c.queue.source.value.isMyWave)
-                                scrub?.let { c.player.seekTo((it * duration).toLong()) }
-                            scrub = null
-                        },
-                        modifier = Modifier.fillMaxWidth().testTag("stream:seek"),
-                        idleHeight = 5.dp, activeHeight = 9.dp, thumb = true,
-                        fill = androidx.compose.ui.graphics.SolidColor(accent))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(com.prism.music.ui.player.formatTime(if (seekable) (fraction * duration).toLong() else 0L),
-                            style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.72f))
-                        Text(com.prism.music.ui.player.formatTime(duration), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.72f))
+                // Reuse the actual player scrubber and its theme/shape/time settings.
+                // Never bind an inactive Stream to playback from another queue.
+                Box(Modifier.fillMaxWidth().testTag("stream:seek")) {
+                    if (id != null && timing.second > 0L) key(id) {
+                        PlayerScrubber(timing.first, timing.second)
+                    } else Column(Modifier.fillMaxWidth()) {
+                        com.prism.music.ui.player.ThinSlider(value = 0f, onValueChange = {})
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("0:00", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.55f))
+                            Text("–:–", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.55f))
+                        }
                     }
                 }
             }
             val tagline = activeScenario?.let { if (ru) it.ru else it.en } ?: l("Музыка в твоём ритме", "Music in your rhythm")
-            if (maxHeight < 355.dp) {
+            if (maxHeight < 380.dp) {
                 // Compact phone or landscape: square cover and title occupy one row, transport stays below.
-                Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(tagline, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.8f),
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -412,8 +401,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     Feedback()
                 }
             } else {
-                Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(Modifier.fillMaxSize().padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(tagline, style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.85f),
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -485,9 +474,9 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             }
         }
     }
-    // The route already reserves system bars, bottom tabs and the mini player. No scroll container.
+    // The Stream route reserves navigation and system bars; no mini player or scroll container.
     BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 6.dp)) {
-        val compact = maxHeight < 690.dp
+        val compact = maxHeight < 740.dp
         val wide = maxWidth >= 600.dp || maxWidth > maxHeight * 1.25f
         if (wide) {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
