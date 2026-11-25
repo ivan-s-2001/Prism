@@ -1147,7 +1147,7 @@ enum class LocalSection(val label: String) {
 enum class NavTab(val label: String) {
     HOME(tr(R.string.home)), SEARCH(tr(R.string.search)), LIBRARY(tr(R.string.library)), REPLAY(tr(R.string.replay_2)), SETTINGS(tr(R.string.settings)), LOCAL(tr(R.string.local_files)),
     // 1.7.6: any of these pages as a tab too.
-    DOWNLOADS(tr(R.string.downloads)), LIKED(tr(R.string.liked_songs)), PODCASTS(tr(R.string.podcasts)), MY_WAVE(if (java.util.Locale.getDefault().language == "ru") "Волна" else "Wave");
+    DOWNLOADS(tr(R.string.downloads)), LIKED(tr(R.string.liked_songs)), PODCASTS(tr(R.string.podcasts)), MY_WAVE(if (java.util.Locale.getDefault().language == "ru") "Поток" else "Stream");
 
     companion object {
         /** The most tabs the bar holds (labels still fit on a phone). */
