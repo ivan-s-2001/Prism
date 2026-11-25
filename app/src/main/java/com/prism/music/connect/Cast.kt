@@ -579,6 +579,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 // Restore the phone even if the receiver's stop command fails.
                 val active = liveSession
                 liveSession = null
+                volumeJob?.cancel()
+                volumeJob = null
                 tap.stop()
                 liveStreaming = false
                 casting = false
@@ -587,16 +589,21 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 if (prepared) hooks?.afterCasting()
                 hooks?.remoteChanged()
                 letGoOfNetwork()
-                withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
-                    active?.let {
-                        try { withTimeoutOrNull(5000L) { it.stop() } }
-                        catch (_: Exception) { Log.w("PrismLive", "Live stop not confirmed") }
-                        finally { it.close() }
+                try {
+                    withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+                        active?.let {
+                            try {
+                                if (withTimeoutOrNull(5000L) { it.stop(); true } != true)
+                                    Log.w("PrismLive", "Live stop not confirmed")
+                            } catch (_: Exception) { Log.w("PrismLive", "Live stop not confirmed") }
+                            finally { it.close() }
+                        }
                     }
+                } finally {
+                    liveJob = null
+                    _state.value = CastState.Idle
+                    failure?.let { _events.tryEmit(it) }
                 }
-                liveJob = null
-                _state.value = CastState.Idle
-                failure?.let { _events.tryEmit(it) }
             }
         }
         liveJob = job
