@@ -14,11 +14,14 @@ class PlaybackSourceUxTest {
         assertFalse(source.allowsOrderModes)
     }
 
-    @Test fun radioKeepsNativeOrderControlsButDoesNotNeedAutoplay() {
+    @Test fun contextStreamUsesAlgorithmOrderAndDoesNotNeedAutoplay() {
         val source = QueueSource(QueueKind.RADIO, "Radio", "seed")
         assertFalse(source.isMyWave)
         assertTrue(source.continuousRecommendations)
-        assertTrue(source.allowsOrderModes)
+        assertFalse(source.allowsOrderModes)
+        assertTrue(source.matchesTrackStream("seed", "Radio"))
+        assertFalse(source.matchesTrackStream("another", "Radio"))
+        assertFalse(source.matchesTrackStream("seed", "Artist"))
     }
 
     @Test fun finiteQueuesKeepNativeControlsAndOptionalAutoplay() {

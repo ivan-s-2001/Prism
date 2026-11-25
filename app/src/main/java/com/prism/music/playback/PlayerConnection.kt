@@ -411,12 +411,13 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
      */
     fun playQueue(songs: List<Song>, startIndex: Int = 0, source: QueueSource, shuffle: Boolean = false, rest: (suspend () -> List<Song>?)? = null) {
         if (songs.isEmpty()) return
+        val requestedShuffle = shuffle && source.allowsOrderModes
         // "No repeats this session" (#159): a radio starts without what's been heard, on the song it starts on.
         if (source.kind == QueueKind.RADIO && c.settings.current.behavior.autoplayNoRepeats) {
             val (kept, at) = c.sessionHeard.radioStart(songs, startIndex)
-            if (kept.size < songs.size) { startFiltered(kept, at, source, shuffle, rest); return }
+            if (kept.size < songs.size) { startFiltered(kept, at, source, requestedShuffle, rest); return }
         }
-        startFiltered(songs, startIndex, source, shuffle, rest)
+        startFiltered(songs, startIndex, source, requestedShuffle, rest)
     }
 
     private fun startFiltered(songs: List<Song>, startIndex: Int, source: QueueSource, shuffle: Boolean, rest: (suspend () -> List<Song>?)?) {
@@ -646,7 +647,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
                 was, prefs.keepShuffle, startKind(source, songs, start, asVideo = startVideo != null, dj = dj), asked = shuffle,
                 prefs.shuffleButton, c.queue.smartAllowed(),
             )
-            val shuffled = !source.isMyWave && mode != ShuffleMode.OFF
+            val shuffled = source.allowsOrderModes && mode != ShuffleMode.OFF
             if (source.continuousRecommendations) p.repeatMode = Player.REPEAT_MODE_OFF
             p.shuffleModeEnabled = shuffled
             p.setMediaItems(songs.mapIndexed { i, s -> s.toMediaItem(if (i == start) startVideo else null) }, start, startMs.coerceAtLeast(0))
@@ -654,7 +655,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
             if (shuffled) reshuffle(p)
             p.prepare()
             p.play()
-            if (!source.isMyWave && mode == ShuffleMode.SMART) {
+            if (source.allowsOrderModes && mode == ShuffleMode.SMART) {
                 c.queue.smartShuffle.value = true
                 // Its picks now: the service's Smart Shuffle collector never saw it go off and on again above.
                 c.queue.smartStarted.value++
@@ -710,9 +711,15 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
      * "Radio started" once its songs are in ([radioNotice]; the Radio buttons, 1.8.8).
      */
     fun playRadio(song: Song, announce: Boolean = false, contextTitle: String = song.title) {
+        if (song.isLive || song.isEpisode || c.queue.followingHost) return
         val source = QueueSource(QueueKind.RADIO, tr(R.string.radio, contextTitle), seedId = song.id)
-        if (announce) radioNotice.asked(source)
         val p = player
+        if (p?.currentMediaItem?.mediaId == song.id && c.queue.source.value.matchesTrackStream(song.id, source.title)) {
+            if (!p.isPlaying) { ensureStarted(); if (p.playbackState == Player.STATE_IDLE) p.prepare(); p.play() }
+            service?.maybeAutoplay()
+            return
+        }
+        if (announce) radioNotice.asked(source)
         if (p == null || p.mediaItemCount == 0 || p.currentMediaItem?.mediaId != song.id) { playQueue(listOf(song), 0, source); return }
         ++playToken
         stopFill()
@@ -724,12 +731,16 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         c.queue.source.value = source
         c.queue.autoplayContinuation = null
         c.queue.autoplayStart.value = -1
-        c.queue.userQueued.value = emptySet()
+        val manual = c.queue.userQueued.value
         p.shuffleModeEnabled = false
         p.repeatMode = Player.REPEAT_MODE_OFF
         val at = p.currentMediaItemIndex
-        if (at + 1 < p.mediaItemCount) p.removeMediaItems(at + 1, p.mediaItemCount)
+        // Changing the context of the current track preserves its position and explicitly queued successors.
+        for (index in p.mediaItemCount - 1 downTo at + 1) {
+            if (p.getMediaItemAt(index).mediaId !in manual) p.removeMediaItem(index)
+        }
         if (at > 0) p.removeMediaItems(0, at)
+        c.queue.userQueued.value = (1 until p.mediaItemCount).map { p.getMediaItemAt(it).mediaId }.filter { it in manual }.toSet()
         if (!p.isPlaying) { ensureStarted(); if (p.playbackState == Player.STATE_IDLE) p.prepare(); p.play() }
         // An autoplay load still out for the old queue is dropped: the radio asks now rather than wait on it.
         service?.dropAutoplay()

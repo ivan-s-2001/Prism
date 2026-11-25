@@ -1000,13 +1000,17 @@ fun PlayerActionRow(
     // Settings → Player → "Song / Video switch" off: audio only, the Video button goes.
     val source by c.queue.source.collectAsState()
     val continuous = source.continuousRecommendations
+    val currentSong by pc.currentSong.collectAsState()
     val chosen = settings.player.buttons.filter {
-        (it != PlayerButton.VIDEO || settings.showVideoSwitch) && (it != PlayerButton.RADIO || !source.isMyWave)
+        (it != PlayerButton.VIDEO || settings.showVideoSwitch) &&
+            (it != PlayerButton.RADIO || (!source.isMyWave && currentSong?.let { song -> !song.isLive && !song.isEpisode &&
+                !song.isLocal && !source.matchesTrackStream(song.id, tr(R.string.radio, song.title)) } == true))
     }
     // Six to a row still fits a small phone: the buttons narrow a little past four.
     val glyph = when { chosen.size >= 6 -> 46.dp; chosen.size == 5 -> 50.dp; else -> 56.dp }
     // In one glass capsule (1.7), or (1.7.8, #155) as separate buttons spread across the row, as Prism 1.6 had them.
     val pill = settings.view.buttonsPill
+    if (queueOpen && continuous && PlayerButton.LYRICS !in chosen && settings.view.queueTidy) return
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         Row(
             if (pill) Modifier.clip(CircleShape).background(Color.White.copy(alpha = 0.10f)).border(1.dp, Color.White.copy(alpha = 0.16f), CircleShape).padding(5.dp)

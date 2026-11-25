@@ -931,8 +931,9 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         // Disliked songs are passed over when the queue reaches them on its own (tapping one still plays it), and so are
         // artists the listener doesn't want played when a radio or autoplay brought them (a playlist they picked plays as it is).
         val queueSource = c.queue.source.value
-        val picked = queueSource.isMyWave || (queueSource.isSongRadio && song.id != queueSource.seedId) ||
-            player.currentMediaItemIndex >= c.queue.autoplayStart.value.let { if (it < 0) Int.MAX_VALUE else it }
+        val picked = song.id !in c.queue.userQueued.value &&
+            (queueSource.isMyWave || (queueSource.isSongRadio && song.id != queueSource.seedId) ||
+                player.currentMediaItemIndex >= c.queue.autoplayStart.value.let { if (it < 0) Int.MAX_VALUE else it })
         val unwanted = c.library.isDisliked(song.id) || (picked && c.exclusions.blocks(song))
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && !c.queue.followingHost && unwanted && player.hasNextMediaItem()) {
             untrack()
@@ -1836,7 +1837,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         val wave = src.isMyWave
         if ((!c.settings.current.autoplay && !radio && !wave) || player.mediaItemCount == 0 || c.queue.followingHost || c.queue.filling) return
         // No music radio after a podcast episode.
-        if (player.currentMediaItem?.toSong()?.isEpisode == true) return
+        if (player.currentMediaItem?.toSong()?.let { it.isEpisode || it.isLive } == true) return
         if (src.kind != QueueKind.SINGLE && !radio && !wave && player.repeatMode != Player.REPEAT_MODE_OFF) return
         if (player.mediaItemCount - player.currentMediaItemIndex > 3 || c.queue.autoplayLoading) return
         val offline = !c.network.isOnline()

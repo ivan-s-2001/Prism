@@ -25,7 +25,10 @@ data class QueueSource(
     /** The source itself supplies more songs; optional Autoplay is not a separate mode here. */
     val continuousRecommendations: Boolean get() = isMyWave || isSongRadio
     /** Stream ordering is part of its tuning; shuffle and repeat would defeat that ordering. */
-    val allowsOrderModes: Boolean get() = !isMyWave
+    val allowsOrderModes: Boolean get() = !continuousRecommendations
+    /** The same seed in the same context is already running; another track is a new explicit request. */
+    fun matchesTrackStream(id: String, context: String): Boolean =
+        isSongRadio && !isMyWave && seedId == id && title == context
 }
 
 /** Shared queue bookkeeping between the UI-facing [PlayerConnection] and [PlaybackService]. */
