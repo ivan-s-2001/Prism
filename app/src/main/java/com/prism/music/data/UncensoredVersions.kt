@@ -19,10 +19,10 @@ import kotlin.math.abs
  * an audio recording is uncensored. Never changes track identity or overrides a listener's choice.
  */
 object UncensoredRules {
-    private val uncensored = Regex("""(?iu)\b(?:uncensored|uncut|без цензуры|нецензурированная версия)\b""")
-    private val clean = Regex("""(?iu)\b(?:clean(?: version| edit)?|censored|radio edit|без мата|цензурированная версия)\b""")
-    private val edit = Regex("""(?iu)\b(?:remix|cover|karaoke|instrumental|live|sped up|slowed|nightcore|acoustic|8d|ремикс|кавер|караоке|инструментал)\b""")
-    private fun normalized(value: String): String = value.lowercase().replace(Regex("""[^\p{L}\p{N}]"""), "").let {
+    private val uncensored = Regex("""(?iu)(?<![\p{L}\p{N}])(?:uncensored|uncut|без цензуры|без запикиваний|нецензурированная версия)(?![\p{L}\p{N}])""")
+    private val clean = Regex("""(?iu)(?<![\p{L}\p{N}])(?:clean(?: version| edit)?|censored|radio edit|без мата|цензурированная версия)(?![\p{L}\p{N}])""")
+    private val edit = Regex("""(?iu)(?<![\p{L}\p{N}])(?:remix|cover|karaoke|instrumental|live|sped up|slowed|nightcore|acoustic|8d|ремикс|кавер|караоке|инструментал)(?![\p{L}\p{N}])""")
+    private fun normalized(value: String): String = value.lowercase().replace(Regex("""\s*[-–—]\s*topic$"""), "").replace(Regex("""[^\p{L}\p{N}]"""), "").let {
         // Verified historical spelling of the same artist (2022 releases).
         if (it == "heroinwater") "heronwater" else it
     }
@@ -46,7 +46,7 @@ object UncensoredRules {
         .filter { it.isNotEmpty() }.toSet()
 
     private fun titleWithArtist(source: Song, candidate: Song): Boolean {
-        val parts = candidate.title.split(Regex("""\s*[-–—|:]\s*"""), limit = 2)
+        val parts = candidate.title.split(Regex("""\s+[-–—]\s+|\s*[:|]\s*"""), limit = 2)
         return parts.size == 2 && normalized(parts[0]) in performerNames(source) && base(parts[1]) == base(source.title)
     }
 
@@ -118,6 +118,7 @@ class UncensoredVersions(
                     val queries = buildList {
                         add(query to SearchFilter.SONGS)
                         add(query to SearchFilter.VIDEOS)
+                        add("$query $hint" to SearchFilter.SONGS)
                         add("$query $hint" to SearchFilter.VIDEOS)
                         if (song.primaryArtist.equals("Heronwater", true)) {
                             add("${song.title} Heroinwater $hint" to SearchFilter.VIDEOS)
