@@ -66,6 +66,47 @@ class MyWaveTest {
         assertFalse(MyWave.isOrigin("another-playlist"))
     }
 
+    @Test fun agreementBetweenRankedSourcesPromotesTheSameRecording() {
+        val first = song("first", "A")
+        val consensus = song("consensus", "B", "Recording")
+        val alternate = song("alternate", "B", "Recording (Remastered)")
+        val second = song("second", "C")
+        val fused = MyWave.fuse(listOf(listOf(first, consensus), listOf(second, alternate)))
+        assertEquals(consensus, fused.first())
+        assertEquals(3, fused.size)
+    }
+
+    @Test fun relevantContextAndTasteCanPromoteAnOtherwiseLowerRankedSong() {
+        val generic = song("generic", "A")
+        val fitting = song("fitting", "B")
+        val profile = MyWave.Profile(taste = { if (it == fitting) 1.0 else 0.0 },
+            context = { if (it == fitting) 1.0 else 0.0 })
+        assertEquals(fitting, MyWave.start(listOf(generic, fitting), emptyList(), emptyList(),
+            { false }, { true }, 7L, 1, profile = profile).single())
+    }
+
+    @Test fun avoidsPreviousRecordingAndArtistAcrossRefillBoundary() {
+        val previous = song("previous", "A", "Recording")
+        val duplicate = song("upload", "A", "Recording (Remastered)")
+        val sameArtist = song("same", "A")
+        val different = song("different", "B")
+        val result = MyWave.start(listOf(duplicate, sameArtist, different), emptyList(), emptyList(),
+            { false }, { true }, 3L, 2, previousSong = previous,
+            avoid = setOf(com.prism.music.data.foryou.LocalRadio.sameSong(previous)))
+        assertEquals(listOf(different, sameArtist), result)
+    }
+
+    @Test fun depthDoesNotInventPopularityAndOldOriginsStillLoad() {
+        val hit = song("hit", "A")
+        val deep = song("deep", "B")
+        val signals = com.prism.music.data.foryou.RadioSignals(onTopList = { it == hit })
+        val style = MyWave.Style(depth = MyWave.Depth.DEEP)
+        assertEquals(deep, MyWave.start(listOf(hit, deep), emptyList(), emptyList(),
+            { false }, { true }, 6L, 1, style, signals).single())
+        assertEquals(style, MyWave.style(style.origin))
+        assertEquals(MyWave.Depth.ANY, MyWave.style("prism:my-wave:FAMILIAR:CALM").depth)
+    }
+
     @Test fun diversifiesArtistsWhenPossible() {
         val songs = listOf(song("a1", "A"), song("a2", "A"), song("b", "B"), song("c", "C"))
         val result = MyWave.start(songs, emptyList(), emptyList(), { false }, { true }, 13L, 4)
