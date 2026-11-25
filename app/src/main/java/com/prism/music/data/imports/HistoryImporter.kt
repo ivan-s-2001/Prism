@@ -229,7 +229,7 @@ class HistoryImporter(private val db: PrismDatabase) {
         tracks.distinctBy { it.key }.chunked(500).forEach { chunk ->
             val known = dao.matches(chunk.map { it.key }).map { it.songKey }.toSet()
             dao.putMatches(chunk.filter { it.key !in known }.map { t ->
-                ImportMatchEntity(t.key, t.title.take(MAX_TEXT), t.artist.take(MAX_TEXT), t.album?.take(MAX_TEXT), sourceId = t.sourceId, status = MatchStatus.PENDING.name)
+                ImportMatchEntity(t.key, t.title.take(MAX_TEXT), (t.artistCredit ?: t.artist).take(MAX_TEXT), t.album?.take(MAX_TEXT), durationMs = t.durationMs, sourceId = t.sourceId, isrc = t.isrc, status = MatchStatus.PENDING.name)
             })
         }
     }
