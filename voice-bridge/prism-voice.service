@@ -1,0 +1,21 @@
+[Unit]
+Description=Prism personal Alice voice bridge
+After=network.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+EnvironmentFile=/etc/prism-voice.env
+WorkingDirectory=/opt/prism-voice
+ExecStart=/usr/bin/python3 /opt/prism-voice/server.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
