@@ -29,15 +29,23 @@ class MediaServer(preferredPort: Int = PORT) {
 
     /** A new session: links from the last one stop working. */
     fun newSession() {
-        token = newToken()
-        synchronized(bodies) { bodies.clear() }
+        synchronized(bodies) {
+            token = newToken()
+            bodies.clear()
+        }
     }
 
     /** Offers [body] as [key] (e.g. "dQw4w9WgXcQ.wav"); returns its link as seen from [host] (this phone's address). */
-    fun publish(key: String, body: CastBody, host: String): String {
-        synchronized(bodies) { bodies[key] = body }
-        return url(host, key)
-    }
+    fun publish(key: String, body: CastBody, host: String): String =
+        publishForSession(token, key, body, host)
+
+    /** A decoder finishing after disconnect must not publish into a newer cast session. */
+    fun publishForSession(expectedToken: String, key: String, body: CastBody, host: String): String =
+        synchronized(bodies) {
+            check(token == expectedToken) { "Cast media session changed" }
+            bodies[key] = body
+            "http://$host:$port/cast/$expectedToken/$key"
+        }
 
     fun url(host: String, key: String) = "http://$host:$port/cast/$token/$key"
 
@@ -46,9 +54,9 @@ class MediaServer(preferredPort: Int = PORT) {
     private fun handle(req: HttpRequest, res: HttpResponse) {
         if (req.method != "GET" && req.method != "HEAD") { res.text(405, "GET only", mapOf("Allow" to "GET, HEAD")); return }
         val parts = req.path.removePrefix("/").split('/')
-        if (parts.size != 3 || parts[0] != "cast" || parts[1] != token) { res.text(404, "Not found"); return }
+        if (parts.size != 3 || parts[0] != "cast") { res.text(404, "Not found"); return }
         val key = parts[2]
-        val body = synchronized(bodies) { bodies[key] } ?: run { res.text(404, "Not found"); return }
+        val body = synchronized(bodies) { if (parts[1] == token) bodies[key] else null } ?: run { res.text(404, "Not found"); return }
         val total = body.length
         val headers = linkedMapOf(
             "Content-Type" to body.mime,
