@@ -137,14 +137,16 @@ internal fun TvWavePlace(nav: TvNav) {
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(tr(R.string.prism_stream_tune_stream), style = MaterialTheme.typography.headlineMedium)
                     Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    TvWaveScale(WaveTuningScale.DISCOVERY, draft, "discovery") {
-                        editor = WaveTuningScale.DISCOVERY.change(editor, it)
-                    }
-                    TvWaveScale(WaveTuningScale.LANGUAGE, draft, "language") {
-                        editor = WaveTuningScale.LANGUAGE.change(editor, it)
-                    }
-                    TvWaveScale(WaveTuningScale.DIVERSITY, draft, "diversity") {
-                        editor = WaveTuningScale.DIVERSITY.change(editor, it)
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TvWaveScale(WaveTuningScale.DISCOVERY, draft, "discovery") {
+                            editor = WaveTuningScale.DISCOVERY.change(editor, it)
+                        }
+                        TvWaveScale(WaveTuningScale.LANGUAGE, draft, "language") {
+                            editor = WaveTuningScale.LANGUAGE.change(editor, it)
+                        }
+                        TvWaveScale(WaveTuningScale.DIVERSITY, draft, "diversity") {
+                            editor = WaveTuningScale.DIVERSITY.change(editor, it)
+                        }
                     }
                     TvWaveChoices(tr(R.string.prism_stream_mood), MyWave.Mood.entries, draft.mood, "mood",
                         { when (it) {
@@ -321,11 +323,6 @@ private fun TvWaveScale(scale: WaveTuningScale, style: MyWave.Style, tag: String
     val position = scale.position(value)
     val automatic = scale.automatic && value < 0
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (!scale.ratio) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(tr(scale.title), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            Text(scale.level(value), style = MaterialTheme.typography.labelLarge, color = scheme.primary)
-        }
         val adjustedLabel = tr(if (scale.ratio) scale.left else scale.title)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -334,7 +331,11 @@ private fun TvWaveScale(scale: WaveTuningScale, style: MyWave.Style, tag: String
                 Modifier.tvItem("tv_wave/$tag/down", entry = tag == "discovery"))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 WaveScaleLabels(scale, value, scheme.primary, scheme.onSurfaceVariant,
-                    MaterialTheme.typography.labelMedium, MaterialTheme.typography.titleMedium)
+                    MaterialTheme.typography.labelMedium, MaterialTheme.typography.titleMedium,
+                    center = if (scale.automatic) {
+                        { TvButton(tr(R.string.prism_stream_auto), { change(if (automatic) 50 else -1) },
+                            Modifier.tvItem("tv_wave/auto"), primary = automatic) }
+                    } else null)
                 WaveScaleRail(scale, value, scheme.primary, scheme.onSurfaceVariant, scheme.surface,
                     showThumb = true)
             }
@@ -342,13 +343,7 @@ private fun TvWaveScale(scale: WaveTuningScale, style: MyWave.Style, tag: String
                 { change(scale.fromPosition((position + scale.step).toFloat())) },
                 Modifier.tvItem("tv_wave/$tag/up"))
         }
-        if (scale.automatic) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(tr(R.string.prism_stream_language_hint), Modifier.weight(1f),
-                style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-            TvButton(tr(R.string.prism_stream_auto), { change(if (automatic) 50 else -1) },
-                Modifier.tvItem("tv_wave/auto"), primary = automatic)
-        }
+
     }
 }
 

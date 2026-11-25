@@ -72,7 +72,16 @@ internal enum class WaveTuningScale(
 internal fun WaveScaleLabels(
     scale: WaveTuningScale, value: Int, accent: Color, muted: Color,
     labelStyle: TextStyle, numberStyle: TextStyle,
+    center: (@Composable () -> Unit)? = null,
 ) {
+    if (!scale.ratio) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(tr(scale.title), Modifier.weight(1f), style = labelStyle, color = muted)
+            Text(scale.level(value), style = numberStyle, color = accent, textAlign = TextAlign.End)
+        }
+        return
+    }
     val automatic = scale.automatic && value < 0
     val pos = scale.position(value)
     val leftColor = if (scale.ratio && !automatic) accent else muted
@@ -84,6 +93,7 @@ internal fun WaveScaleLabels(
             if (scale.ratio && !automatic) Text(tr(R.string.prism_stream_share_percent, pos),
                 style = numberStyle, color = leftColor, maxLines = 1)
         }
+        center?.invoke()
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(tr(scale.right), style = labelStyle, color = rightColor, textAlign = TextAlign.End)

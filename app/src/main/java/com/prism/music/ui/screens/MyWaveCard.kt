@@ -500,14 +500,16 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 var advanced by rememberSaveable { mutableStateOf(false) }
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(bottom = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    WaveScale(WaveTuningScale.DISCOVERY, draftStyle, "wave:discovery-percent") { value ->
-                        change { WaveTuningScale.DISCOVERY.change(it, value) }
-                    }
-                    WaveScale(WaveTuningScale.LANGUAGE, draftStyle, "wave:language-percent") { value ->
-                        change { WaveTuningScale.LANGUAGE.change(it, value) }
-                    }
-                    WaveScale(WaveTuningScale.DIVERSITY, draftStyle, "wave:diversity-percent") { value ->
-                        change { WaveTuningScale.DIVERSITY.change(it, value) }
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        WaveScale(WaveTuningScale.DISCOVERY, draftStyle, "wave:discovery-percent") { value ->
+                            change { WaveTuningScale.DISCOVERY.change(it, value) }
+                        }
+                        WaveScale(WaveTuningScale.LANGUAGE, draftStyle, "wave:language-percent") { value ->
+                            change { WaveTuningScale.LANGUAGE.change(it, value) }
+                        }
+                        WaveScale(WaveTuningScale.DIVERSITY, draftStyle, "wave:diversity-percent") { value ->
+                            change { WaveTuningScale.DIVERSITY.change(it, value) }
+                        }
                     }
                     HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.65f))
                     WaveChoices(tr(R.string.prism_stream_mood), MyWave.Mood.entries, draftStyle.mood, ::moodName) { value -> change { it.tune(it.style.copy(mood = value)) } }
@@ -585,14 +587,13 @@ private fun WaveScale(scale: WaveTuningScale, style: MyWave.Style, tag: String, 
     val scheme = MaterialTheme.colorScheme
     val value = scale.value(style)
     val automatic = scale.automatic && value < 0
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (!scale.ratio) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Text(tr(scale.title), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            Text(scale.level(value), style = MaterialTheme.typography.labelLarge, color = scheme.primary)
-        }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
         WaveScaleLabels(scale, value, scheme.primary, scheme.onSurfaceVariant,
-            MaterialTheme.typography.labelMedium, MaterialTheme.typography.titleMedium)
+            MaterialTheme.typography.labelMedium, MaterialTheme.typography.titleMedium,
+            center = if (scale.automatic) {
+                { PrismChip(selected = automatic, label = tr(R.string.prism_stream_auto),
+                    onClick = { change(if (automatic) 50 else -1) }) }
+            } else null)
         Slider(
             value = scale.position(value).toFloat(),
             onValueChange = { change(scale.fromPosition(it)) },
@@ -608,13 +609,7 @@ private fun WaveScale(scale: WaveTuningScale, style: MyWave.Style, tag: String, 
                 WaveScaleRail(scale, value, scheme.primary, scheme.onSurfaceVariant, scheme.surface)
             },
         )
-        if (scale.automatic) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(tr(R.string.prism_stream_language_hint), Modifier.weight(1f),
-                style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-            PrismChip(selected = automatic, label = tr(R.string.prism_stream_auto),
-                onClick = { change(if (automatic) 50 else -1) })
-        }
+
     }
 }
 
