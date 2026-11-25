@@ -13,7 +13,8 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCoroutine
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.CancellationException
 
 internal data class YandexStation(
     val deviceId: String,
@@ -44,7 +45,7 @@ internal class YandexStationDiscovery(context: Context) {
         val worker = launch {
             for (candidate in pending) {
                 // Legacy NSD supports only one outstanding resolve.
-                val service = runCatching { resolve(candidate) }.getOrNull() ?: continue
+                val service = try { resolve(candidate) } catch (e: CancellationException) { throw e } catch (_: Exception) { continue }
                 val address = service.host as? Inet4Address ?: continue
                 if (!address.isSiteLocalAddress && !address.isLinkLocalAddress) continue
                 val id = service.attributes["deviceId"]?.toString(Charsets.UTF_8)?.takeIf { it.isNotBlank() } ?: continue
@@ -78,18 +79,18 @@ internal class YandexStationDiscovery(context: Context) {
         }
     }
 
-    private suspend fun resolve(service: NsdServiceInfo): NsdServiceInfo = suspendCoroutine { continuation ->
+    private suspend fun resolve(service: NsdServiceInfo): NsdServiceInfo = suspendCancellableCoroutine { continuation ->
         try {
             nsd.resolveService(service, object : NsdManager.ResolveListener {
                 override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-                    continuation.resumeWithException(IllegalStateException("NSD resolve failed: $errorCode"))
+                    if (continuation.isActive) continuation.resumeWithException(IllegalStateException("NSD resolve failed: $errorCode"))
                 }
                 override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
-                    continuation.resume(serviceInfo)
+                    if (continuation.isActive) continuation.resume(serviceInfo)
                 }
             })
         } catch (e: Exception) {
-            continuation.resumeWithException(e)
+            if (continuation.isActive) continuation.resumeWithException(e)
         }
     }
 }
