@@ -59,6 +59,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import java.io.File
@@ -321,7 +323,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                     (c.cast.state.value as? com.prism.music.connect.CastState.Casting)?.renderer?.kind ==
                         com.prism.music.connect.RendererKind.YANDEX_STATION
                 }
-                com.prism.music.connect.yandex.VoiceBridgeClient.run(active) { command ->
+                suspend fun executeStationCommand(command: com.prism.music.connect.yandex.VoiceBridgeClient.Command) {
                     when (command.action) {
                         "next" -> if (player.hasNextMediaItem()) player.seekToNextMediaItem()
                         "previous" -> if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem()
@@ -355,6 +357,49 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                             }
                         }
                     }
+                }
+                launch {
+                    com.prism.music.connect.yandex.VoiceBridgeClient.run(
+                        { active() && c.cast.stationConnectLease() == null }, ::executeStationCommand
+                    )
+                }
+                launch {
+                    while (isActive) {
+                        val lease = c.cast.stationConnectLease()
+                        if (lease != null && active()) {
+                            try {
+                                com.prism.music.connect.yandex.ConnectDeviceClient.heartbeat(lease, c.cast.stationConnectSnapshot())
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                                if (c.cast.stationConnectLease() === lease) c.cast.disconnect(keepPlaying = false)
+                            }
+                        }
+                        delay(1800)
+                    }
+                }
+                while (isActive) {
+                    val lease = c.cast.stationConnectLease()
+                    if (lease != null && active()) {
+                        try {
+                            val cmd = com.prism.music.connect.yandex.ConnectDeviceClient.pull(lease, c.cast.stationConnectSnapshot())
+                            if (cmd != null && c.cast.stationConnectLease() === lease && active()) {
+                                val action = (cmd["action"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+                                if (action != null) executeStationCommand(
+                                    com.prism.music.connect.yandex.VoiceBridgeClient.Command(
+                                        action, (cmd["value"] as? kotlinx.serialization.json.JsonPrimitive)?.intOrNull,
+                                        (cmd["query"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull,
+                                    )
+                                )
+                            }
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            // Independent heartbeat handles lost host ownership.
+                            delay(1500)
+                        }
+                    }
+                    delay(900)
                 }
             }
         }
