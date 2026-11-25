@@ -341,6 +341,17 @@ class HistoryImports(private val c: AppContainer) {
         }
     }
 
+    /** Authenticated metadata import; uses existing matching, review and repeat-import machinery. */
+    suspend fun bringYandexLibrary(lib: ParsedLibrary): LibraryNews = lock.withLock {
+        matching.withLock {
+            withContext(Dispatchers.IO) {
+                val news = addLibrary(lib, LibraryJob.LibraryChoice(albums = false, artists = false))
+                ImportMatchWorker.enqueue(c.app, _matchOnMobile.value)
+                news
+            }
+        }
+    }
+
     /** Lines [lib] up (as far as [choice] says); returns what of it is new. */
     private suspend fun addLibrary(lib: ParsedLibrary, choice: LibraryJob.LibraryChoice): LibraryNews {
         val before = LibraryJob.load(jobFile)
