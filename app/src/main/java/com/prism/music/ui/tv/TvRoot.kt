@@ -132,7 +132,9 @@ fun TvRoot(link: kotlinx.coroutines.flow.MutableStateFlow<android.net.Uri?> = re
         val top = stack.lastOrNull()
         val pick: (TvSection) -> Unit = { section = it; memory.opening("section:${it.name}") }
         // The song only (not its progress, which moves twice a second): the shell redraws when it changes, not as it plays.
-        val playingNow by c.player.currentSong.collectAsState()
+        val currentSongState = c.player.currentSong.collectAsState()
+        val playingNow by currentSongState
+        val currentTrack = remember(currentSongState, c) { com.prism.music.ui.components.CurrentTrackState(currentSongState) { c.queue.counterparts[it] } }
         // A link the TV was opened with (a YouTube Music link, the media notification): its song plays, or its page opens.
         val pending by link.collectAsState()
         androidx.compose.runtime.LaunchedEffect(pending) {
@@ -148,7 +150,7 @@ fun TvRoot(link: kotlinx.coroutines.flow.MutableStateFlow<android.net.Uri?> = re
         }
         // Over everything, when the room has gone quiet while music plays; nothing is drawn under it meanwhile (no
         // lyrics or progress moving unseen), and each page comes back as it was.
-        CompositionLocalProvider(LocalTvFocusMemory provides memory) { AmbientHost(onTv = true) { Box(Modifier.fillMaxSize()) {
+        CompositionLocalProvider(LocalTvFocusMemory provides memory, com.prism.music.ui.components.LocalCurrentTrack provides currentTrack) { AmbientHost(onTv = true) { Box(Modifier.fillMaxSize()) {
             // Prism's Aura behind every place and page: the frost of what's playing (or played last).
             TvAura()
             // The side navigation stays put while the places change beside it (focus moves from it into the new place);

@@ -85,7 +85,9 @@ fun TvCard(
     round: Boolean = false,
     width: Dp = 132.dp,
     onLongClick: (() -> Unit)? = null,
+    songId: String? = null,
 ) {
+    val currentTrack = if (songId != null) com.prism.music.ui.components.isCurrentTrack(songId) else false
     val shape = if (round) CircleShape else TvShapes.card
     Column(Modifier.width(width)) {
         Card(
@@ -98,7 +100,7 @@ fun TvCard(
             // No fill of its own: the artwork's tile covers it (a whole card's area drawn twice per frame for nothing).
             colors = CardDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
         ) {
-            Artwork(art, Modifier.fillMaxSize(), shape = shape, size = 360)
+            Artwork(art, Modifier.fillMaxSize(), shape = shape, size = 360, currentTrack = currentTrack)
         }
         Spacer(Modifier.height(10.dp))
         Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -204,13 +206,15 @@ fun TvSongRow(
     art: String? = null,
     playing: Boolean = false,
     onLongClick: (() -> Unit)? = null,
+    songId: String? = null,
 ) {
+    val currentTrack = playing || (if (songId != null) com.prism.music.ui.components.isCurrentTrack(songId) else false)
     val scheme = MaterialTheme.colorScheme
     val interaction = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val light = tvLight()
     ListItem(
-        selected = playing,
+        selected = currentTrack,
         onClick = onClick,
         onLongClick = onLongClick,
         modifier = modifier,
@@ -224,14 +228,13 @@ fun TvSongRow(
         ),
         border = ListItemDefaults.border(focusedBorder = tvFocusBorder(TvShapes.card, TV_RING_THIN)),
         leadingContent = when {
-            art != null -> { { Artwork(art, Modifier.size(44.dp), shape = RoundedCornerShape(6.dp), size = 120) } }
-            number != null && playing -> { { Box(Modifier.width(28.dp).testTag(TAG_PLAYING_MARK), contentAlignment = Alignment.Center) { Icon(PrismIcons.Equalizer, tr(R.string.now_playing), Modifier.size(20.dp)) } } }
+            art != null || currentTrack -> { { Artwork(art, Modifier.size(44.dp).then(if (currentTrack) Modifier.testTag(TAG_PLAYING_MARK) else Modifier), shape = com.prism.music.ui.theme.LocalUi.current.songArt, size = 120, currentTrack = currentTrack) } }
             number != null -> { { Box(Modifier.width(28.dp), contentAlignment = Alignment.Center) { Text("$number", style = MaterialTheme.typography.titleSmall) } } }
             else -> null
         },
         headlineContent = {
             val style = MaterialTheme.typography.titleMedium
-            Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = if (playing && !focused) style.copy(brush = light) else style)
+            Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = if (currentTrack && !focused) style.copy(brush = light) else style)
         },
         supportingContent = { Text(artist, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         trailingContent = length?.let { { Text(it, style = MaterialTheme.typography.bodyMedium) } },

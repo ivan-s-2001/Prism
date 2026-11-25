@@ -333,7 +333,7 @@ internal object MyWave {
                     return chosen
                 }
                 val matchingPools = if (strictQuota && style.discoveryPercent in 1..99)
-                    preferred + (if (preferKnown) picks else known) else preferred
+                    preferred + listOf(if (preferKnown) picks else known) else preferred
                 preferred.firstNotNullOfOrNull { takeLanguage(it, true) }
                     ?: preferred.firstNotNullOfOrNull { takeLanguage(it, false) }
                     ?: matchingPools.firstNotNullOfOrNull { takeLanguage(it, true) }

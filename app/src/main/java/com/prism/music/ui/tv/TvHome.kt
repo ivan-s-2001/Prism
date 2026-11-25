@@ -135,6 +135,7 @@ fun TvHomeScreen(
                                 item.art, item.title, item.subtitle, { onItem(r, i) },
                                 modifier = Modifier.tvItem("$TAG_HOME/row$r/$i", entry = first),
                                 round = item.kind == TvItem.Kind.ARTIST,
+                                songId = item.id.takeIf { item.kind == TvItem.Kind.SONG || item.kind == TvItem.Kind.VIDEO },
                             )
                         }
                     }

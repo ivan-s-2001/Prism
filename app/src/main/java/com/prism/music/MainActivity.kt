@@ -470,7 +470,9 @@ private fun rememberArtworkColor(song: Song?, settings: com.prism.music.data.pre
 private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
     val c = LocalContainer.current
     val settings by c.settings.flow.collectAsState()
-    val song by c.player.currentSong.collectAsState()
+    val currentSongState = c.player.currentSong.collectAsState()
+    val song by currentSongState
+    val currentTrack = remember(currentSongState, c) { com.prism.music.ui.components.CurrentTrackState(currentSongState) { c.queue.counterparts[it] } }
     val queueSource by c.queue.source.collectAsState()
     val artColor = rememberArtworkColor(song, settings)
     val context = LocalContext.current
@@ -642,6 +644,7 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
         androidx.activity.compose.BackHandler(selection.selecting && !playerOpen) { selection.clear() }
         CompositionLocalProvider(
             com.prism.music.ui.components.LocalRowMarks provides rowMarks,
+            com.prism.music.ui.components.LocalCurrentTrack provides currentTrack,
             com.prism.music.ui.components.LocalSongSelection provides selection,
             com.prism.music.ui.components.LocalPlayerCover provides playerCover,
             com.prism.music.ui.components.LocalMusicPlaying provides playingNow,

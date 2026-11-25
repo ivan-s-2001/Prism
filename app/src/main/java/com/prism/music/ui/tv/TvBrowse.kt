@@ -70,7 +70,7 @@ fun TvShelfRow(shelf: TvShelf, onItem: (Int) -> Unit, tag: String, modifier: Mod
             horizontalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             itemsIndexed(shelf.items) { i, item ->
-                TvCard(item.art, item.title, item.subtitle, { onItem(i) }, Modifier.tvItem("$tag/$i"), round = item.kind == TvItem.Kind.ARTIST)
+                TvCard(item.art, item.title, item.subtitle, { onItem(i) }, Modifier.tvItem("$tag/$i"), round = item.kind == TvItem.Kind.ARTIST, songId = item.id.takeIf { item.kind == TvItem.Kind.SONG || item.kind == TvItem.Kind.VIDEO })
             }
         }
     }
@@ -166,14 +166,14 @@ fun TvSearchScreen(
                 Row(Modifier.padding(horizontal = 48.dp), horizontalArrangement = Arrangement.spacedBy(40.dp)) {
                     if (top != null) Column(Modifier.width(200.dp)) {
                         Text(tr(R.string.top_result), style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold), color = scheme.primary, modifier = Modifier.padding(bottom = 12.dp))
-                        TvCard(top.art, top.title, top.subtitle, { onItem(top) }, Modifier.focusRequester(firstResult).tvItem("$TAG_SEARCH/top"), round = top.kind == TvItem.Kind.ARTIST, width = 200.dp)
+                        TvCard(top.art, top.title, top.subtitle, { onItem(top) }, Modifier.focusRequester(firstResult).tvItem("$TAG_SEARCH/top"), round = top.kind == TvItem.Kind.ARTIST, width = 200.dp, songId = top.id.takeIf { top.kind == TvItem.Kind.SONG || top.kind == TvItem.Kind.VIDEO })
                     }
                     Column(Modifier.weight(1f)) {
                         TvRowTitle(tr(R.string.songs))
                         Column(Modifier.rememberedFocus(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             songs.take(5).forEachIndexed { i, s ->
                                 val first = if (top == null && i == 0) Modifier.focusRequester(firstResult) else Modifier
-                                TvSongRow(s.title, s.artist, s.length, { onSong(s) }, first.tvItem("$TAG_SEARCH/song/$i"), art = s.art)
+                                TvSongRow(s.title, s.artist, s.length, { onSong(s) }, first.tvItem("$TAG_SEARCH/song/$i"), art = s.art, songId = s.id)
                             }
                         }
                     }
@@ -274,7 +274,7 @@ fun TvLibraryScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             itemsIndexed(items) { i, item ->
-                TvCard(item.art, item.title, item.subtitle, { onItem(item) }, Modifier.tvItem("$TAG_LIBRARY/grid/$i"), round = item.kind == TvItem.Kind.ARTIST, width = 132.dp)
+                TvCard(item.art, item.title, item.subtitle, { onItem(item) }, Modifier.tvItem("$TAG_LIBRARY/grid/$i"), round = item.kind == TvItem.Kind.ARTIST, width = 132.dp, songId = item.id.takeIf { item.kind == TvItem.Kind.SONG || item.kind == TvItem.Kind.VIDEO })
             }
         }
     }
@@ -351,7 +351,7 @@ fun TvCollectionScreen(
                     s.title, s.artist, s.length, { onSong(i) },
                     (if (i == target) Modifier.focusRequester(into) else Modifier)
                         .onFocusChanged { if (it.isFocused) last = i }.tvItem("$TAG_COLLECTION/song/$i"),
-                    number = i + 1, playing = i == playing,
+                    number = i + 1, art = s.art ?: art, playing = i == playing, songId = s.id,
                 )
             }
         }

@@ -63,6 +63,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -94,6 +95,22 @@ import com.prism.music.ui.theme.ink3
 import androidx.compose.foundation.border
 import kotlinx.coroutines.launch
 
+const val CURRENT_TRACK_ART = "current_track_art"
+
+/** Shared playback identity: one collector at the root, not one per song row. */
+class CurrentTrackState(val song: androidx.compose.runtime.State<Song?>, val counterpart: (String) -> String? = { null })
+val LocalCurrentTrack = androidx.compose.runtime.staticCompositionLocalOf<CurrentTrackState?> { null }
+
+internal fun matchesCurrentTrack(rowId: String, shownId: String, currentId: String?, counterpart: (String) -> String?): Boolean =
+    currentId != null && (rowId == currentId || shownId == currentId || counterpart(currentId) == rowId || counterpart(currentId) == shownId || counterpart(rowId) == currentId)
+
+@Composable
+internal fun isCurrentTrack(id: String, shownId: String = id): Boolean {
+    val state = LocalCurrentTrack.current ?: return false
+    val active by remember(state, id, shownId) { derivedStateOf { matchesCurrentTrack(id, shownId, state.song.value?.id, state.counterpart) } }
+    return active
+}
+
 @Composable
 fun Artwork(
     url: String?,
@@ -101,6 +118,7 @@ fun Artwork(
     shape: Shape = RoundedCornerShape(12.dp),
     size: Int = 544,
     placeholderIcon: ImageVector = PrismIcons.Song,
+    currentTrack: Boolean = false,
 ) {
     val scheme = MaterialTheme.colorScheme
     Box(
@@ -115,8 +133,13 @@ fun Artwork(
             model = hiRes(url, size),
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().then(if (currentTrack) Modifier.blur(5.dp) else Modifier),
         )
+        if (currentTrack) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.46f)).testTag(CURRENT_TRACK_ART), contentAlignment = Alignment.Center) {
+                Icon(PrismIcons.Play, null, tint = Color.White, modifier = Modifier.fillMaxSize(0.36f))
+            }
+        }
     }
 }
 
@@ -193,7 +216,7 @@ fun SongRow(
     val pick by remember(song.id, selection, pickable) { derivedStateOf { if (pickable) selection?.picked?.let { song.id in it } else null } }
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     SongRowLayout(
-        song, modifier, index, playing, trailingInfo, starred,
+        song, modifier, index, playing || isCurrentTrack(song.id, com.prism.music.data.SongVersions.shownOf(song).id), trailingInfo, starred,
         liked = liked, downloaded = downloaded, videoSaved = videoSaved, showAlbum = showAlbum,
         onLongClick = when {
             pick != null -> ({ selection!!.toggle(song) })
@@ -288,7 +311,7 @@ fun SongRowLayout(
             }
         }
         // The cover picked for it or its album (#305), else its own.
-        Artwork(com.prism.music.data.PlaylistCovers.artOf(song), Modifier.size(48.dp), art, size = 226)
+        Artwork(com.prism.music.data.PlaylistCovers.artOf(song), Modifier.size(48.dp).then(if (playing && pageMark != null) Modifier.testTag("pageColorBars") else Modifier), art, size = 226, currentTrack = playing)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             // The playing song's title is written in split light (deeper on light backgrounds), beside the spectrum bars;
@@ -316,10 +339,6 @@ fun SongRowLayout(
                 )
             }
         }
-        if (playing) PlayingBars(
-            Modifier.padding(start = 8.dp).size(13.dp, 14.dp).then(if (pageMark != null) Modifier.testTag("pageColorBars") else Modifier),
-            color = pageMark ?: Color.White, spectrum = pageMark == null,
-        )
         if (pick == null) IconButton(onClick = onMore) { Icon(PrismIcons.More, tr(R.string.more), Modifier.size(20.dp), tint = scheme.ink3) }
         else Box(Modifier.size(48.dp).testTag("pick"), contentAlignment = Alignment.Center) {
             if (pick) Icon(PrismIcons.CheckCircle, tr(R.string.picked), Modifier.size(22.dp), tint = scheme.onSurface)
@@ -372,6 +391,7 @@ fun ItemCard(item: BrowseItem, modifier: Modifier = Modifier, width: Dp = Dp.Uns
             is MoodItem -> MoodTile(item, Modifier.fillMaxWidth().aspectRatio(1.6f), onClick)
             else -> {
                 val video = item is SongItem && item.song.isVideo
+                val currentTrack = if (item is SongItem) isCurrentTrack(item.song.id, com.prism.music.data.SongVersions.shownOf(item.song).id) else false
                 Artwork(
                     LocalContainer.current.covers.art(item),
                     Modifier.fillMaxWidth().aspectRatio(if (video) 16f / 9f else 1f),
@@ -382,6 +402,7 @@ fun ItemCard(item: BrowseItem, modifier: Modifier = Modifier, width: Dp = Dp.Uns
                         item is SongItem -> ui.songArt
                         else -> ui.albumArt
                     },
+                    currentTrack = currentTrack,
                     placeholderIcon = when (item) {
                         is ArtistItem -> PrismIcons.Person
                         is AlbumItem -> PrismIcons.Album
