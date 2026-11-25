@@ -1,5 +1,8 @@
 package com.prism.music.connect.yandex
 
+import com.prism.music.R
+import com.prism.music.tr
+
 import com.prism.music.data.imports.LibraryPlaylist
 import com.prism.music.data.imports.LibraryTrack
 import com.prism.music.data.imports.ParsedLibrary
@@ -77,7 +80,7 @@ internal class YandexLibraryImport(private val token: suspend (String?) -> Strin
             val ids = validIds.distinct()
             for ((i, chunk) in ids.chunked(80).withIndex()) {
                 coroutineContext.ensureActive()
-                progress("${if (java.util.Locale.getDefault().language == "ru") "Любимые" else "Liked"}: ${minOf(i * 80, ids.size)} / ${ids.size}")
+                progress(tr(R.string.prism_yandex_import_likes_progress, minOf(i * 80, ids.size), ids.size))
                 val tracks = get(listOf("tracks"), chunk).arr().mapNotNull { track(it.obj()) }.associateBy { it.sourceId }
                 for (id in chunk) tracks["yandex:$id"]?.let { likes += it } ?: run { missing++ }
             }
@@ -87,7 +90,7 @@ internal class YandexLibraryImport(private val token: suspend (String?) -> Strin
             require(entries.size <= 500) { "Library exceeds 500 playlists" }
             for ((i, entry) in entries.withIndex()) {
                 coroutineContext.ensureActive()
-                progress("${if (java.util.Locale.getDefault().language == "ru") "Плейлисты" else "Playlists"}: ${i + 1} / ${entries.size}")
+                progress(tr(R.string.prism_yandex_import_playlists_progress, i + 1, entries.size))
                 val kind = entry.obj()?.str("kind")?.takeIf { it.matches(Regex("[0-9]{1,18}")) } ?: throw IOException("Invalid playlist ID")
                 if (kind == "3") continue // Favorites are imported independently.
                 val full = get(base + listOf("playlists", kind)).obj() ?: throw IOException("Invalid playlist")

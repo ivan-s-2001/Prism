@@ -34,7 +34,7 @@
     <string name="prism_stream_changes_apply_after_confirmation">Применится по кнопке «Готово»</string>
     <string name="prism_stream_could_not_update_stream">Не удалось обновить поток</string>
     <string name="prism_stream_deep_cuts">Редкое</string>
-    <string name="prism_stream_delete">Удалить </string>
+    <string name="prism_stream_delete">Удалить %1$s</string>
     <string name="prism_stream_discoveries">Открытия</string>
     <string name="prism_stream_discoveries_are_recordings_outside_prism_s_known_history_offline_propo">Открытия — записи вне известной Prism истории. Офлайн пропорция зависит от скачанной музыки.</string>
     <string name="prism_stream_discovery_mix">Характер потока</string>
@@ -118,7 +118,7 @@
     <string name="prism_yandex_import">Перенести</string>
     <string name="prism_yandex_import_music">Перенести музыку</string>
     <string name="prism_yandex_import_music_2">Перенос музыки</string>
-    <string name="prism_yandex_last_read">Последнее чтение: </string>
+    <string name="prism_yandex_last_read">Последнее чтение: %1$s</string>
     <string name="prism_yandex_last_transfer_on_this_device">Последний перенос на этом устройстве</string>
     <string name="prism_yandex_library_import_failed_check_account_access_and_network">Не удалось прочитать или перенести медиатеку. Проверьте авторизацию и сеть.</string>
     <string name="prism_yandex_library_transfer">Перенос медиатеки</string>
@@ -136,7 +136,7 @@
     <string name="prism_yandex_no_confirmed_matches">Нет подтверждённых совпадений</string>
     <string name="prism_yandex_open_yandex">Открыть Яндекс</string>
     <string name="prism_yandex_pending_value_matching_continues_in_the_background_with_network_access">Ожидают поиска: %1$s. Поиск продолжится в фоне при наличии сети.</string>
-    <string name="prism_yandex_playlist_tracks_value">Треков в плейлистах: %1$s}</string>
+    <string name="prism_yandex_playlist_tracks_value">Треков в плейлистах: %1$s</string>
     <string name="prism_yandex_preview_library">Проверить медиатеку</string>
     <string name="prism_yandex_prism_matches_tracks_in_youtube_music_your_yandex_library_stays_unchan">Prism найдёт соответствующие треки в YouTube Music. Медиатека Яндекса останется без изменений. Поиск может использовать мобильную сеть.</string>
     <string name="prism_yandex_queuing_import">Добавляем в очередь импорта…</string>
@@ -155,4 +155,12 @@
     <string name="prism_yandex_wait_for_the_station_to_disconnect_and_try_again">Сначала дождитесь отключения Станции и повторите выход.</string>
     <string name="prism_yandex_yandex_sign_in">Вход в Яндекс</string>
     <string name="prism_yandex_your_setting_to_copy_imported_likes_to_youtube_music_is_enabled">Включена настройка добавления импортированных лайков в аккаунт YouTube Music.</string>
+    <string name="prism_yandex_import_likes_progress">Любимые: %1$d / %2$d</string>
+    <string name="prism_yandex_import_playlists_progress">Плейлисты: %1$d / %2$d</string>
+    <string name="prism_yandex_live_disconnected">%1$s: трансляция прервана</string>
+    <string name="prism_yandex_connect_unavailable">Prism Connect: другое устройство активно или сервер недоступен</string>
+    <string name="prism_yandex_release_unconfirmed">Prism Connect: отключение устройства не подтверждено</string>
+    <string name="prism_yandex_stop_unconfirmed">Prism Connect: остановка Станции не подтверждена. Устройство пока занято</string>
+    <string name="prism_yandex_seek_failed">Не удалось перемотать трек на Станции</string>
+    <string name="prism_yandex_live_device">%1$s · Эфир</string>
 </resources>

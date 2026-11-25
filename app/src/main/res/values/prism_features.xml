@@ -34,7 +34,7 @@
     <string name="prism_stream_changes_apply_after_confirmation">Changes apply after confirmation</string>
     <string name="prism_stream_could_not_update_stream">Could not update Stream</string>
     <string name="prism_stream_deep_cuts">Deep cuts</string>
-    <string name="prism_stream_delete">Delete </string>
+    <string name="prism_stream_delete">Delete %1$s</string>
     <string name="prism_stream_discoveries">Discoveries</string>
     <string name="prism_stream_discoveries_are_recordings_outside_prism_s_known_history_offline_propo">Discoveries are recordings outside Prism\'s known history. Offline proportions depend on downloads.</string>
     <string name="prism_stream_discovery_mix">Discovery mix</string>
@@ -118,7 +118,7 @@
     <string name="prism_yandex_import">Import</string>
     <string name="prism_yandex_import_music">Import music</string>
     <string name="prism_yandex_import_music_2">Import music</string>
-    <string name="prism_yandex_last_read">Last read: </string>
+    <string name="prism_yandex_last_read">Last read: %1$s</string>
     <string name="prism_yandex_last_transfer_on_this_device">Last transfer on this device</string>
     <string name="prism_yandex_library_import_failed_check_account_access_and_network">Library import failed. Check account access and network.</string>
     <string name="prism_yandex_library_transfer">Library transfer</string>
@@ -136,7 +136,7 @@
     <string name="prism_yandex_no_confirmed_matches">No confirmed matches</string>
     <string name="prism_yandex_open_yandex">Open Yandex</string>
     <string name="prism_yandex_pending_value_matching_continues_in_the_background_with_network_access">Pending: %1$s. Matching continues in the background with network access.</string>
-    <string name="prism_yandex_playlist_tracks_value">Playlist tracks: %1$s}</string>
+    <string name="prism_yandex_playlist_tracks_value">Playlist tracks: %1$s</string>
     <string name="prism_yandex_preview_library">Preview library</string>
     <string name="prism_yandex_prism_matches_tracks_in_youtube_music_your_yandex_library_stays_unchan">Prism matches tracks in YouTube Music. Your Yandex library stays unchanged. Matching may use mobile data.</string>
     <string name="prism_yandex_queuing_import">Queuing import…</string>
@@ -155,4 +155,12 @@
     <string name="prism_yandex_wait_for_the_station_to_disconnect_and_try_again">Wait for the Station to disconnect and try again.</string>
     <string name="prism_yandex_yandex_sign_in">Yandex sign-in</string>
     <string name="prism_yandex_your_setting_to_copy_imported_likes_to_youtube_music_is_enabled">Your setting to copy imported likes to YouTube Music is enabled.</string>
+    <string name="prism_yandex_import_likes_progress">Liked: %1$d / %2$d</string>
+    <string name="prism_yandex_import_playlists_progress">Playlists: %1$d / %2$d</string>
+    <string name="prism_yandex_live_disconnected">%1$s: stream disconnected</string>
+    <string name="prism_yandex_connect_unavailable">Prism Connect: another device is active or the server is unavailable</string>
+    <string name="prism_yandex_release_unconfirmed">Prism Connect: could not confirm release of the active device</string>
+    <string name="prism_yandex_stop_unconfirmed">Prism Connect: Station stop not confirmed; device remains reserved</string>
+    <string name="prism_yandex_seek_failed">Could not seek on Yandex Station</string>
+    <string name="prism_yandex_live_device">%1$s · Live</string>
 </resources>

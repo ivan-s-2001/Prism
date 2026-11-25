@@ -693,7 +693,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 Log.w("PrismLive", "${r.name}: Live failed: ${e.message}")
-                failure = "${r.name}: " + if (java.util.Locale.getDefault().language == "ru") "Соединение прервано" else "Stream disconnected"
+                failure = tr(R.string.prism_yandex_live_disconnected, r.name)
             } finally {
                 member.volumeJob?.cancel()
                 member.connected = false
@@ -816,7 +816,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                     closeUninstalledRenderer(ctl)
                     if (generation == connectGeneration) {
                         _state.value = CastState.Idle
-                        _events.tryEmit("Prism Connect: another device is active or the server is unavailable")
+                        _events.tryEmit(tr(R.string.prism_yandex_connect_unavailable))
                     }
                     return@launch
                 }
@@ -975,10 +975,10 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 if (stopped) {
                     s.connectLease?.let { lease ->
                         runCatching { ConnectDeviceClient.release(lease) }
-                            .onFailure { _events.tryEmit("Prism Connect: host release could not be confirmed") }
+                            .onFailure { _events.tryEmit(tr(R.string.prism_yandex_release_unconfirmed)) }
                     }
                 } else if (s.connectLease != null) {
-                    _events.tryEmit("Prism Connect: Station stop not confirmed; host remains reserved")
+                    _events.tryEmit(tr(R.string.prism_yandex_stop_unconfirmed))
                 }
             }
         }
@@ -1641,7 +1641,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 Log.w(TAG, "seek on ${s.renderer.name} failed: ${e.message}")
-                if (session === s && generation == loadGen && s.renderer.kind == RendererKind.YANDEX_STATION) _events.tryEmit("Не удалось перемотать Яндекс Станцию")
+                if (session === s && generation == loadGen && s.renderer.kind == RendererKind.YANDEX_STATION) _events.tryEmit(tr(R.string.prism_yandex_seek_failed))
             }
             s.lastSeekAt = SystemClock.elapsedRealtime()
         }

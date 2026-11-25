@@ -1591,8 +1591,8 @@ private fun SpeakersAndTvs(castState: com.prism.music.connect.CastState, casting
                 enabled = !cast.isStationLive,
             ) { if (!selected) cast.connect(r) }
             if (station && com.prism.music.BuildConfig.DEBUG && (castingTo == null || liveDevices.isNotEmpty())) {
-                DeviceRow(PrismIcons.Equalizer,
-                    r.name.removeSuffix(" · Live") + " · Live",
+                DeviceRow(PrismIcons.Stream,
+                    tr(R.string.prism_yandex_live_device, r.name.removeSuffix(" · Live")),
                     if (liveDevice != null) {
                         if (liveDevice.connected) { tr(R.string.prism_yandex_connected_tap_to_disconnect) }
                         else { tr(R.string.prism_yandex_connecting) }

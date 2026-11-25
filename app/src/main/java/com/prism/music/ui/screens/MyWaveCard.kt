@@ -512,7 +512,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                                 PrismChip(selected = editing.presetId == preset.id && preset.origin == draftStyle.origin, label = preset.name, icon = PrismIcons.Bookmark,
                                     modifier = Modifier.weight(1f).height(44.dp),
                                     onClick = { change { it.choose(preset) } })
-                                RoundAction(PrismIcons.Delete, tr(R.string.prism_stream_delete) + preset.name, glass = true) { change { it.delete(preset.id) } }
+                                RoundAction(PrismIcons.Delete, tr(R.string.prism_stream_delete, preset.name), glass = true) { change { it.delete(preset.id) } }
                             }
                         }
                     }
@@ -581,7 +581,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 }
             }
         }
-        if (namingPreset) WavePresetNameDialog( editing.presets.map { it.name }, { namingPreset = false }) { name ->
+        if (namingPreset) WavePresetNameDialog(editing.presets.map { it.name }, { namingPreset = false }) { name ->
             change { it.save(name) }
             namingPreset = false
         }

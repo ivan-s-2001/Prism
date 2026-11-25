@@ -215,7 +215,7 @@ internal fun TvWavePlace(nav: TvNav) {
                                     TvButton(preset.name, { editor = editor.choose(preset) },
                                         Modifier.weight(1f).tvItem("tv_wave/custom/${preset.id}"), icon = PrismIcons.Bookmark,
                                         primary = editor.presetId == preset.id && draft.origin == preset.origin)
-                                    TvIconButton(PrismIcons.Delete, tr(R.string.prism_stream_delete) + preset.name,
+                                    TvIconButton(PrismIcons.Delete, tr(R.string.prism_stream_delete, preset.name),
                                         { editor = editor.delete(preset.id) }, Modifier.tvItem("tv_wave/delete/${preset.id}"))
                                 }
                             }
@@ -299,7 +299,7 @@ internal fun TvWavePlace(nav: TvNav) {
             }
         }
     }
-    if (tuning && namingPreset) WavePresetNameDialog( editor.presets.map { it.name }, { namingPreset = false }) { name ->
+    if (tuning && namingPreset) WavePresetNameDialog(editor.presets.map { it.name }, { namingPreset = false }) { name ->
         editor = editor.save(name)
         namingPreset = false
     }

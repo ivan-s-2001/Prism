@@ -71,7 +71,7 @@ internal fun YandexTransferRow(ink: Color) {
             if (p.pending > 0) Text(tr(R.string.prism_yandex_pending_value_matching_continues_in_the_background_with_network_access, p.pending), style = MaterialTheme.typography.bodySmall)
             if (p.review + p.missing + p.skipped > 0) Text(tr(R.string.prism_yandex_review_value_not_found_value_skipped_value, p.review, p.missing, p.skipped), style = MaterialTheme.typography.bodySmall)
             if (p.missingMetadata > 0) Text(tr(R.string.prism_yandex_missing_source_metadata_value, p.missingMetadata), style = MaterialTheme.typography.bodySmall)
-            Text(tr(R.string.prism_yandex_last_read) + java.text.DateFormat.getDateTimeInstance().format(java.util.Date(p.lastRead)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tr(R.string.prism_yandex_last_read, java.text.DateFormat.getDateTimeInstance().format(java.util.Date(p.lastRead))), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (p.review > 0) {
                 TextButton(onClick = { nav.go("bring") }) { Text(tr(R.string.prism_yandex_review_matches)) }
             }
@@ -103,7 +103,7 @@ internal fun YandexTransferRow(ink: Color) {
                     if (likeOnAccount && liked) Text(tr(R.string.prism_yandex_your_setting_to_copy_imported_likes_to_youtube_music_is_enabled))
                     preview?.let { p ->
                         Text(tr(R.string.prism_yandex_liked_value_playlists_value, p.library.liked.size, p.library.playlists.size))
-                        Text(tr(R.string.prism_yandex_playlist_tracks_value, p.library.playlists.sumOf { it.tracks.size ))
+                        Text(tr(R.string.prism_yandex_playlist_tracks_value, p.library.playlists.sumOf { it.tracks.size }))
                         if (p.missing > 0) Text(tr(R.string.prism_yandex_missing_metadata_value, p.missing))
                     }
                 }
