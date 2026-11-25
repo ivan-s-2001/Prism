@@ -5,6 +5,9 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -26,6 +29,18 @@ internal class QuasarStationApi(private val accessToken: String) : StationTokenS
     suspend fun verify(station: YandexStation): OwnedStationIdentity {
         val body = get("https://quasar.yandex.net/glagol/device_list".toHttpUrl())
         return OwnedStationIdentity.fromDeviceList(body, station)
+    }
+
+    /** Ownership and the user-visible name are obtained from the same authenticated response. */
+    suspend fun verifiedDisplayName(station: YandexStation): String {
+        val body = get("https://quasar.yandex.net/glagol/device_list".toHttpUrl())
+        OwnedStationIdentity.fromDeviceList(body, station)
+        val devices = Json.parseToJsonElement(body).jsonObject["devices"] as? JsonArray
+        val name = devices?.mapNotNull { it as? JsonObject }?.firstOrNull {
+            (it["id"] as? JsonPrimitive)?.contentOrNull == station.deviceId &&
+                (it["platform"] as? JsonPrimitive)?.contentOrNull == station.platform
+        }?.let { (it["name"] as? JsonPrimitive)?.contentOrNull }
+        return StationNames.display(station.platform, name)
     }
 
     override suspend fun tokenFor(station: OwnedStationIdentity): String {
