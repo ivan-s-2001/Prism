@@ -323,45 +323,57 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                     (c.cast.state.value as? com.prism.music.connect.CastState.Casting)?.renderer?.kind ==
                         com.prism.music.connect.RendererKind.YANDEX_STATION
                 }
-                suspend fun executeStationCommand(command: com.prism.music.connect.yandex.VoiceBridgeClient.Command) {
+                suspend fun executeStationCommand(
+                    command: com.prism.music.connect.yandex.VoiceBridgeClient.Command,
+                    stillActive: () -> Boolean,
+                ): String {
+                    if (!stillActive()) return "unavailable"
                     when (command.action) {
-                        "next" -> if (player.hasNextMediaItem()) player.seekToNextMediaItem()
-                        "previous" -> if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem()
+                        "next" -> if (player.hasNextMediaItem()) player.seekToNextMediaItem() else return "unavailable"
+                        "previous" -> if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem() else return "unavailable"
                         "pause" -> player.pause()
-                        "resume" -> player.play()
-                        "seek_relative" -> command.value?.takeIf { it in -3600..3600 }?.let {
-                            val max = player.duration.takeIf { duration -> duration > 0 } ?: Long.MAX_VALUE
-                            player.seekTo((player.currentPosition + it * 1000L).coerceIn(0L, max))
+                        "resume" -> if (player.mediaItemCount > 0) player.play() else return "unavailable"
+                        "seek_relative" -> {
+                            val seconds = command.value?.takeIf { it in -3600..3600 } ?: return "failed"
+                            val max = player.duration.takeIf { it > 0 } ?: return "unavailable"
+                            player.seekTo((player.currentPosition + seconds * 1000L).coerceIn(0L, max))
                         }
-                        "volume" -> command.value?.let { c.cast.setVolume(it.coerceIn(0, 100)) }
-                        "volume_delta" -> command.value?.takeIf { it in -20..20 }?.let { delta ->
-                            c.cast.volume?.let { c.cast.setVolume((it + delta).coerceIn(0, 100)) }
+                        "volume" -> {
+                            val value = command.value?.takeIf { it in 0..100 } ?: return "failed"
+                            c.cast.setVolume(value)
+                        }
+                        "volume_delta" -> {
+                            val delta = command.value?.takeIf { it in -20..20 } ?: return "failed"
+                            val volume = c.cast.volume ?: return "unavailable"
+                            c.cast.setVolume((volume + delta).coerceIn(0, 100))
                         }
                         "search_play" -> {
-                            val query = command.query?.takeIf { it.isNotBlank() && it.length <= 200 }
-                            if (query != null) {
-                                val request = VoiceSearch.parse(query, extras = null)
-                                val pick = tree.voice(request)
-                                if (active() && pick != null && pick.songs.isNotEmpty()) {
-                                    c.queue.autoplayStart.value = -1
-                                    c.queue.autoplayContinuation = null
-                                    c.queue.source.value = if (pick.radio) {
-                                        QueueSource(QueueKind.SINGLE, pick.title, seedId = pick.songs.first().id)
-                                    } else QueueSource(QueueKind.PLAYLIST, pick.title)
-                                    val list = if (pick.radio) pick.songs.take(1) else pick.songs
-                                    player.shuffleModeEnabled = false
-                                    player.setMediaItems(list.map { it.toMediaItem() }, pick.start.coerceIn(0, list.lastIndex), 0L)
-                                    player.prepare()
-                                    player.play()
-                                }
-                            }
+                            val query = command.query?.takeIf { it.isNotBlank() && it.length <= 200 } ?: return "failed"
+                            val pick = tree.voice(VoiceSearch.parse(query, extras = null))
+                            if (!stillActive()) return "unavailable"
+                            if (pick == null || pick.songs.isEmpty()) return "not_found"
+                            c.queue.autoplayStart.value = -1
+                            c.queue.autoplayContinuation = null
+                            c.queue.source.value = if (pick.radio) {
+                                QueueSource(QueueKind.SINGLE, pick.title, seedId = pick.songs.first().id)
+                            } else QueueSource(QueueKind.PLAYLIST, pick.title)
+                            val list = if (pick.radio) pick.songs.take(1) else pick.songs
+                            player.shuffleModeEnabled = false
+                            player.setMediaItems(list.map { it.toMediaItem() }, pick.start.coerceIn(0, list.lastIndex), 0L)
+                            player.prepare()
+                            player.play()
                         }
+                        else -> return "failed"
                     }
+                    // Requested is intentionally not a physical Station acknowledgement.
+                    return "requested"
                 }
                 launch {
                     com.prism.music.connect.yandex.VoiceBridgeClient.run(
-                        { active() && c.cast.stationConnectLease() == null }, ::executeStationCommand
-                    )
+                        { active() && c.cast.stationConnectLease() == null }
+                    ) { command ->
+                        executeStationCommand(command) { active() && c.cast.stationConnectLease() == null }
+                    }
                 }
                 launch {
                     while (isActive) {
@@ -385,12 +397,35 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                             val cmd = com.prism.music.connect.yandex.ConnectDeviceClient.pull(lease, c.cast.stationConnectSnapshot())
                             if (cmd != null && c.cast.stationConnectLease() === lease && active()) {
                                 val action = (cmd["action"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
-                                if (action != null) executeStationCommand(
-                                    com.prism.music.connect.yandex.VoiceBridgeClient.Command(
-                                        action, (cmd["value"] as? kotlinx.serialization.json.JsonPrimitive)?.intOrNull,
-                                        (cmd["query"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull,
-                                    )
-                                )
+                                val id = (cmd["id"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+                                val track = (cmd["track_id"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+                                val value = (cmd["value"] as? kotlinx.serialization.json.JsonPrimitive)?.intOrNull
+                                val index = (cmd["index"] as? kotlinx.serialization.json.JsonPrimitive)?.intOrNull
+                                val stillActive = { active() && c.cast.stationConnectLease() === lease }
+                                val outcome = try {
+                                    when (action) {
+                                        "disconnect" -> { c.cast.disconnect(keepPlaying = false); "requested" }
+                                        "select_track" -> {
+                                            if (index == null || index !in 0 until player.mediaItemCount ||
+                                                track == null || player.getMediaItemAt(index).mediaId != track) "stale_track"
+                                            else { player.seekTo(index, 0L); player.play(); "requested" }
+                                        }
+                                        "seek_absolute" -> {
+                                            if (track == null || track != player.currentMediaItem?.mediaId) "stale_track"
+                                            else if (value == null || value < 0 || player.duration <= 0) "unavailable"
+                                            else { player.seekTo((value * 1000L).coerceAtMost(player.duration)); "requested" }
+                                        }
+                                        null -> "failed"
+                                        else -> executeStationCommand(
+                                            com.prism.music.connect.yandex.VoiceBridgeClient.Command(
+                                                action, value,
+                                                (cmd["query"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull,
+                                            ), stillActive
+                                        )
+                                    }
+                                } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                                catch (_: Exception) { "failed" }
+                                if (id != null && stillActive()) c.cast.stationConnectResult(id, outcome)
                             }
                         } catch (e: kotlinx.coroutines.CancellationException) {
                             throw e
