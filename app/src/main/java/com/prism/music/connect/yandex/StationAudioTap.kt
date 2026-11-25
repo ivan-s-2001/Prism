@@ -1,6 +1,8 @@
 package com.prism.music.connect.yandex
 
 import androidx.media3.common.C
+import androidx.media3.common.audio.AudioProcessor
+import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.audio.TeeAudioProcessor
 import java.nio.ByteBuffer
@@ -20,21 +22,30 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
     private var encoding = C.ENCODING_INVALID
     private var phase = 0L
     @Volatile private var active = false
+    @Volatile var muteOutput = false
+    private var consumed = 0L
+    private var padded = 0L
+    private var dropped = 0L
     private var running = false
     @Volatile var captured = 0L
         private set
 
     @Synchronized fun formatSummary(): String =
-        "rate=$inputRate channels=$channels encoding=$encoding running=$running queuedBytes=$size"
+        "rate=$inputRate channels=$channels encoding=$encoding running=$running muted=$muteOutput queuedBytes=$size captured=$captured consumed=$consumed padded=$padded dropped=$dropped"
 
     @Synchronized fun start(playing: Boolean) {
         clear()
         captured = 0
+        consumed = 0
+        padded = 0
+        dropped = 0
+        muteOutput = false
         running = playing
         active = true
     }
 
     @Synchronized fun stop() {
+        muteOutput = false
         active = false
         running = false
         clear()
@@ -77,7 +88,7 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
                 phase += RATE
                 while (phase >= inputRate) {
                     phase -= inputRate
-                    if (size == ring.size) { head = (head + 4) % ring.size; size -= 4 }
+                    if (size == ring.size) { head = (head + 4) % ring.size; size -= 4; dropped += 4 }
                     val end = (head + size) % ring.size
                     ring[end] = left.toByte()
                     ring[end + 1] = (left shr 8).toByte()
@@ -96,11 +107,41 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
         val out = ByteArray(length)
         if (!active || !running) return out
         val available = minOf(length, size)
+        consumed += available
+        padded += length - available
         val first = minOf(available, ring.size - head)
         ring.copyInto(out, 0, head, head + first)
         if (available > first) ring.copyInto(out, first, 0, available - first)
         head = (head + available) % ring.size
         size -= available
         return out
+    }
+}
+
+/** Mute only the local sink, AFTER copying its real PCM. Unlike setting the
+ * player's volume to zero, this keeps the audio renderer/clock configured
+ * normally throughout a Live session. No I/O on the playback thread.
+ */
+@UnstableApi
+internal class StationLiveOutputProcessor : BaseAudioProcessor() {
+    override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat =
+        if (inputAudioFormat.encoding == C.ENCODING_PCM_16BIT || inputAudioFormat.encoding == C.ENCODING_PCM_FLOAT)
+            inputAudioFormat else AudioProcessor.AudioFormat.NOT_SET
+
+    override fun onFlush() {
+        StationAudioTap.flush(inputAudioFormat.sampleRate, inputAudioFormat.channelCount, inputAudioFormat.encoding)
+    }
+
+    override fun queueInput(inputBuffer: ByteBuffer) {
+        val bytes = inputBuffer.remaining()
+        if (bytes == 0) return
+        StationAudioTap.handleBuffer(inputBuffer)
+        val out = replaceOutputBuffer(bytes)
+        if (StationAudioTap.muteOutput) {
+            while (out.remaining() >= 8) out.putLong(0L)
+            while (out.hasRemaining()) out.put(0.toByte())
+            inputBuffer.position(inputBuffer.limit())
+        } else out.put(inputBuffer)
+        out.flip()
     }
 }
