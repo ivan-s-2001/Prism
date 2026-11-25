@@ -19,6 +19,7 @@ import com.prism.music.data.model.SongItem
 import com.prism.music.playback.QueueKind
 import com.prism.music.playback.QueueSource
 import com.prism.music.ui.components.Artwork
+import com.prism.music.ui.components.scenarioEdgeFade
 import com.prism.music.ui.theme.LocalContainer
 import com.prism.music.ui.theme.PrismIcons
 import kotlinx.coroutines.CancellationException
@@ -32,6 +33,12 @@ internal fun TvWavePlace(nav: TvNav) {
     val c = LocalContainer.current
     val scope = rememberCoroutineScope()
     val source by c.queue.source.collectAsState()
+    val scenarioScroll = rememberScrollState()
+    val scenarioOrder = remember {
+        val clock = java.util.Calendar.getInstance()
+        WaveScenarios.stripOrder(clock.get(java.util.Calendar.HOUR_OF_DAY),
+            clock.get(java.util.Calendar.DAY_OF_WEEK) in listOf(java.util.Calendar.SATURDAY, java.util.Calendar.SUNDAY))
+    }
     val song by c.player.currentSong.collectAsState()
     val disliked by c.library.dislikedIds.collectAsState()
     val now = rememberTvNow(c).takeIf { source.isMyWave }
@@ -85,7 +92,7 @@ internal fun TvWavePlace(nav: TvNav) {
                     picks = c.yourMusic.waveBatch(base, selected, 0, previous, emptyList(), count = 2)
                 }
                 if (version != request || c.queue.source.value !== old) return@launch
-                if (picks.isEmpty()) c.player.reportError(l("Недостаточно подходящих треков", "Not enough matching tracks"))
+                if (picks.isEmpty()) c.player.reportError(if (!c.network.isOnline()) l("Нет подходящих скачанных треков", "No matching downloaded tracks") else l("Недостаточно подходящих треков", "Not enough matching tracks"))
                 else {
                     style = selected
                     c.recFeedback.served(picks.map { it.id })
@@ -200,14 +207,11 @@ internal fun TvWavePlace(nav: TvNav) {
                     TvScenarioDisc(l("Настройки", "Tune"), PrismIcons.Equalizer, selected = false,
                         onClick = { toggleTuning(true) }, modifier = Modifier.tvItem("tv_wave/tune"))
                     val active = WaveScenarios.all.firstOrNull { it.style == style.copy(russianPercent = -1) }
-                    val clock = java.util.Calendar.getInstance()
-                    val choices = (listOfNotNull(active) + WaveScenarios.forDay(clock.get(java.util.Calendar.HOUR_OF_DAY),
-                        clock.get(java.util.Calendar.DAY_OF_WEEK) in listOf(java.util.Calendar.SATURDAY, java.util.Calendar.SUNDAY)) +
-                        WaveScenarios.all).distinctBy { it.id }
-                    Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(vertical = 6.dp, horizontal = 6.dp)
+                    Row(Modifier.weight(1f).scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward })
+                        .horizontalScroll(scenarioScroll).padding(vertical = 8.dp, horizontal = 14.dp)
                         .rememberedFocus().focusGroup(),
                         horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        choices.forEach { preset ->
+                        scenarioOrder.forEach { preset ->
                             TvScenarioDisc(label = if (ru) preset.ru else preset.en,
                                 icon = PrismIcons.waveScenario(preset.glyph), selected = active?.id == preset.id,
                                 onClick = { start(preset.style.copy(russianPercent = style.russianPercent)) },

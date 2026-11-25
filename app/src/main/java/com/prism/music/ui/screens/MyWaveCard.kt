@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import com.prism.music.ui.theme.GlassSurface
 import com.prism.music.ui.components.PrismChip
 import com.prism.music.ui.components.PrismScenarioDisc
+import com.prism.music.ui.components.scenarioEdgeFade
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import com.prism.music.ui.components.RoundAction
@@ -139,15 +140,17 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     fun l(a: String, b: String) = if (ru) a else b
     var starting by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
-    var group by remember { mutableStateOf(WaveScenarios.Group.DAY) }
     val settings = LocalAppSettings.current
     fun restoredStyle(origin: String?) = MyWave.style(origin).let {
         if (MyWave.isOrigin(origin)) it else it.copy(russianPercent = settings.streamRussianPercent)
     }
     var style by remember(source.originId) { mutableStateOf(restoredStyle(source.originId)) }
-    val calendar = java.util.Calendar.getInstance()
-    val dayScenarios = WaveScenarios.forDay(calendar.get(java.util.Calendar.HOUR_OF_DAY),
-        calendar.get(java.util.Calendar.DAY_OF_WEEK) in listOf(java.util.Calendar.SATURDAY, java.util.Calendar.SUNDAY))
+    val scenarioOrder = remember {
+        val calendar = java.util.Calendar.getInstance()
+        WaveScenarios.stripOrder(calendar.get(java.util.Calendar.HOUR_OF_DAY),
+            calendar.get(java.util.Calendar.DAY_OF_WEEK) in listOf(java.util.Calendar.SATURDAY, java.util.Calendar.SUNDAY))
+    }
+    val scenarioScroll = androidx.compose.foundation.lazy.rememberLazyListState()
     var selectionJob by remember { mutableStateOf<Job?>(null) }
     var requestVersion by remember { mutableIntStateOf(0) }
     fun characterName(v: MyWave.Character) = when (v) {
@@ -193,9 +196,10 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 if (!isActive || version != requestVersion || c.queue.source.value !== previous) return@launch
                 val now = c.player.currentSong.value.takeIf { previous.isMyWave }
                 val nextSongs = songs.filter { candidate -> now == null || LocalRadio.sameSong(candidate) != LocalRadio.sameSong(now) }
+                    .ifEmpty { if (!c.network.isOnline()) songs else emptyList() }
                 if (nextSongs.isEmpty()) {
                     style = restoredStyle(previous.originId)
-                    c.player.reportError(l("Недостаточно подходящих треков для выбранной пропорции. Измени процент или проверь подключение.", "Not enough tracks for the selected mix. Change the percentage or check your connection."))
+                    c.player.reportError(if (!c.network.isOnline()) l("Нет подходящих скачанных треков", "No matching downloaded tracks") else l("Недостаточно подходящих треков для выбранной пропорции. Измени процент или проверь подключение.", "Not enough tracks for the selected mix. Change the percentage or check your connection."))
                 } else {
                     val next = QueueSource(QueueKind.RADIO, title, seedId = nextSongs.first().id, originId = selected.origin)
                     c.recFeedback.served(nextSongs.map { it.id })
@@ -262,6 +266,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     )
     val status = when {
         waiting -> l("Загружаем рекомендации", "Loading recommendations")
+        !online && wave && playing -> l("Офлайн · скачанная музыка", "Offline · downloaded music")
         starting && wave -> l("Обновляем подбор", "Updating your mix")
         starting -> l("Подбираем музыку", "Finding your music")
         wave && buffering -> l("Загрузка", "Buffering")
@@ -269,12 +274,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         wave -> l("На паузе", "Paused")
         !online -> l("Офлайн", "Offline")
         else -> l("Персональный поток", "Personal stream")
-    }
-    val activeScenario = WaveScenarios.all.firstOrNull { it.style == style.copy(russianPercent = -1) }
-    val quickScenarios = when (group) {
-        WaveScenarios.Group.DAY -> dayScenarios
-        WaveScenarios.Group.ACTIVITY -> WaveScenarios.all.filter { it.group == group }
-        WaveScenarios.Group.DISCOVERY -> WaveScenarios.all.filter { it.group == group }
     }
     @Composable fun Header() {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -424,14 +423,15 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
 
     @Composable fun Controls() {
-        val choices = (listOfNotNull(activeScenario) + quickScenarios + WaveScenarios.all).distinctBy { it.id }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically) {
             PrismScenarioDisc(l("Настройки", "Tune"), PrismIcons.Equalizer, selected = false,
                 onClick = { settingsOpen = true }, modifier = Modifier.testTag("home:my_wave:settings"))
-            LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(end = 4.dp)) {
-                items(choices, key = { it.id }) { scenario ->
+            LazyRow(Modifier.weight(1f).scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward }),
+                state = scenarioScroll,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                items(scenarioOrder, key = { it.id }) { scenario ->
                     PrismScenarioDisc(
                         label = if (ru) scenario.ru else scenario.en,
                         icon = PrismIcons.waveScenario(scenario.glyph),

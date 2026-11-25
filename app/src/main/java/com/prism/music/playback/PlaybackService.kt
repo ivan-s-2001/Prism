@@ -1840,7 +1840,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 val manual = c.queue.userQueued.value
                 val offset = queue.count { it.id !in manual }
                 val additions = try {
-                    c.yourMusic.waveBatch(emptyList(), waveStyle, offset, queue.lastOrNull(), queue)
+                    c.yourMusic.waveBatch(emptyList(), waveStyle, offset, queue.lastOrNull(),
+                        if (offline) queue.drop(player.currentMediaItemIndex + 1) else queue)
                 } catch (e: kotlinx.coroutines.CancellationException) { throw e }
                 catch (e: Exception) {
                     android.util.Log.w("PrismRadio", "Wave batch failed", e)

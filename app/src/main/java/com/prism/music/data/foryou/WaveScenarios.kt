@@ -58,6 +58,9 @@ internal object WaveScenarios {
         preset("calm_new", "Тихие открытия", "Quiet discoveries", Group.DISCOVERY, Glyph.CALM_NEW, mood = MyWave.Mood.CALM, character = MyWave.Character.DISCOVERY, diversity = 60),
     )
 
+    /** Capture once per screen: playback/selection must never reorder the carousel. */
+    fun stripOrder(hour: Int, weekend: Boolean): List<Scenario> = (forDay(hour, weekend) + all).distinctBy { it.id }
+
     fun forDay(hour: Int, weekend: Boolean): List<Scenario> {
         val first = when (hour) {
             in 5..8 -> "wake"
