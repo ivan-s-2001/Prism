@@ -66,6 +66,19 @@ class PcmBody(
     override val length = header.size + frames * 4
     override val converted get() = true
 
+    /** Rebuild the WAV header and map ranges to the original decoder's absolute frames. */
+    fun sliceFrom(positionMs: Long): PcmSlice {
+        require(wav && rate > 0 && frames > 0)
+        val duration = frames * 1000 / rate
+        val target = positionMs.coerceIn(0L, (duration - 1).coerceAtLeast(0))
+        val startFrame = (target * rate / 1000).coerceIn(0, frames - 1)
+        return PcmSlice(
+            PcmBody(rate, frames - startFrame, true, mime) { relative -> from(startFrame + relative) },
+            startFrame * 1000 / rate,
+            duration
+        )
+    }
+
     override fun write(start: Long, end: Long, out: OutputStream) {
         var pos = start
         if (pos < header.size) {
@@ -102,6 +115,8 @@ class PcmBody(
 
     private companion object { const val PIECE_BYTES = 32 * 1024 }
 }
+
+data class PcmSlice(val body: PcmBody, val offsetMs: Long, val durationMs: Long)
 
 object Wav {
     /** A canonical 44-byte PCM WAV header for [dataBytes] of 16-bit audio. */
