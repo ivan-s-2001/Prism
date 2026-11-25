@@ -6,6 +6,8 @@ import kotlin.random.Random
 /** A personal station, not a shuffled playlist. The existing radio engine replenishes it. */
 internal object MyWave {
     const val ORIGIN = "prism:my-wave"
+    // A short recommendation horizon lets new skips and likes affect the next refill sooner.
+    const val HORIZON = 8
 
     enum class Character(val bias: Float) { BALANCED(0f), FAMILIAR(-0.75f), DISCOVERY(0.75f) }
     enum class Mood(val energy: Float) { ANY(0f), CALM(-0.8f), ENERGETIC(0.8f) }
