@@ -53,12 +53,15 @@ jobs:
           CP="$WORK/junit.jar:$WORK/hamcrest.jar"
           kotlinc -jvm-target 17 -classpath "$CP" -include-runtime -d "$WORK/tests.jar" \
             "$MAIN/CastBodies.kt" "$MAIN/HttpServer.kt" "$MAIN/MediaServer.kt" "$MAIN/Upnp.kt" \
-            "$MAIN/yandex/StationLinkHealth.kt" \
-            "$TEST/StationWavSliceTest.kt" "$TEST/StationMediaSessionTest.kt" "$TEST/StationLinkHealthTest.kt"
+            "$MAIN/yandex/StationLinkHealth.kt" "$MAIN/yandex/LivePacer.kt" "$MAIN/yandex/LivePcmReplay.kt" \
+            "$TEST/StationWavSliceTest.kt" "$TEST/StationMediaSessionTest.kt" "$TEST/StationLinkHealthTest.kt" \
+            "$TEST/LivePacerTest.kt" "$TEST/LivePcmReplayTest.kt"
           java -cp "$WORK/tests.jar:$CP" org.junit.runner.JUnitCore \
             com.prism.music.connect.yandex.StationWavSliceTest \
             com.prism.music.connect.yandex.StationMediaSessionTest \
-            com.prism.music.connect.yandex.StationLinkHealthTest
+            com.prism.music.connect.yandex.StationLinkHealthTest \
+            com.prism.music.connect.yandex.LivePacerTest \
+            com.prism.music.connect.yandex.LivePcmReplayTest
   diagnostics:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -78,7 +81,7 @@ jobs:
       - name: Run protocol tests and assemble side-by-side APK
         run: |
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest --tests 'com.prism.music.connect.yandex.*' :app:assembleDebug -PsideBySide=station -PsideByLabel="Prism Station Lab" --stacktrace
+          ./gradlew :app:testDebugUnitTest --tests 'com.prism.music.connect.yandex.*' --tests 'com.prism.music.MyWaveTest' --tests 'com.prism.music.RecFeedbackTest' :app:assembleDebug -PsideBySide=station -PsideByLabel="Prism Station Lab" --stacktrace
       - uses: actions/upload-artifact@v4
         if: success()
         with:
