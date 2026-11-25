@@ -37,4 +37,12 @@ internal data class StationPlaybackState(
     }
 
     fun matches(url: String?): Boolean = url != null && id == url && type != "bluetooth"
+
+    /** Only used with independent delivery evidence from the session's private HLS URL.
+     * Modern external audio may explicitly report id="" instead of echoing the URL.
+     * An absent id, unrelated track id, stale state or Bluetooth cannot confirm it.
+     */
+    fun confirmsLive(url: String, expectedTitle: String, requestedAt: Long, allowEmptyId: Boolean): Boolean =
+        at >= requestedAt && playing == true && type != "bluetooth" &&
+            (matches(url) || (id.isNullOrEmpty() && title == expectedTitle) || (allowEmptyId && id == ""))
 }
