@@ -126,7 +126,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
             }
         }
         button("Volume 20%") { runOperation("Setting volume") { sessionOrThrow().volume(0.2); report("Volume command queued.") } }
-        button("Stop") { runOperation("Stopping") { sessionOrThrow().stop(); report("Stop command queued.") } }
+        button("Stop") { runOperation("Stopping") { sessionOrThrow().stop(); report("Station reports playback stopped.") } }
         button("Refresh diagnostics") {
             report("Connected: ${session != null}\nMP3: ${file?.length() ?: 0} bytes\nState frames: ${frames.get()}\nMP3 bytes delivered: ${delivered.get()}\nLast error: $lastError\nOnly audible playback confirms success.")
         }
@@ -166,7 +166,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
             }
         }
         button("Stop group") {
-            runOperation("Stop group") { group.stop(); renderGroup(); report("Group stop requested.") }
+            runOperation("Stop group") { group.stop(); renderGroup(); val failed = group.snapshot().count { it.error != null }; report(if (failed == 0) "All Stations report playback stopped." else "$failed Station(s): stop not confirmed. See group diagnostics.") }
         }
         button("Group volume 20%") {
             runOperation("Group volume") { group.volumeAll(20); renderGroup(); report("Group volume requested.") }
@@ -332,7 +332,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
             catch (e: Exception) {
                 val safeMessage = e.message.orEmpty().let { msg ->
                     when {
-                        msg in setOf("Sign in with device code first", "Disconnect the single Station first", "Disconnect the group first", "Add Stations first", "Group limit: 8 Stations", "Not connected", "No file", "No IPv4 route", "Select a Station", "Station is not in this Yandex account", "No Station certificate in account metadata", "Yandex rejected the device token request", "Station certificate mismatch", "Station connection closed", "Invalid Yandex device list") -> msg
+                        msg in setOf("Sign in with device code first", "Disconnect the single Station first", "Disconnect the group first", "Add Stations first", "Group limit: 8 Stations", "Not connected", "No file", "No IPv4 route", "Select a Station", "Station is not in this Yandex account", "No Station certificate in account metadata", "Yandex rejected the device token request", "Station certificate mismatch", "Station connection closed", "Station stop not confirmed", "Invalid Yandex device list") -> msg
                         Regex("Quasar HTTP [0-9]{3}").matches(msg) -> msg
                         else -> e.javaClass.simpleName
                     }
