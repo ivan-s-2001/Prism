@@ -151,46 +151,15 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         val current = c.player.currentSong.value.takeIf { previous.isMyWave }
         selectionJob = scope.launch {
             try {
-                val songs = withContext(Dispatchers.Default) {
-                    val taste = c.yourMusic.waveTaste()
-                    val base = if (online) recommendations else c.yourMusic.offlinePicks(60)
-                    val local = if (current != null) c.yourMusic.radio(listOf(current.id), setOf(current.id), 50, !online).map { it.song } else emptyList()
-                    val favoritesRanked = MyWave.fuse(listOf(taste.favorites, favorites, local))
-                    // On an empty feed, ask one fresh explicit-like seed; never stall an active Station stream.
-                    val seedSong = taste.likedSeeds.firstOrNull { current == null || it.id != current.id }
-                    val related = if (online && base.isEmpty() && !c.castingNow && seedSong != null) {
-                        kotlinx.coroutines.withTimeoutOrNull(1500L) {
-                            try { c.ytm.next(seedSong.id, playlistId = "RDAMVM${seedSong.id}").songs }
-                            catch (e: CancellationException) { throw e }
-                            catch (_: Exception) { emptyList() }
-                        }.orEmpty()
-                    } else emptyList()
-                    val combined = MyWave.fuse(listOf(base, related, local))
-                    val known = c.library.likedIds.value
-                    val signals = c.discover.radioSignals(combined + favoritesRanked + recent.take(60), selected.tune.copy(newness = 0.5f))
-                    MyWave.start(combined, favoritesRanked, recent, c.sessionHeard::has,
-                        allowed = { s ->
-                            (current == null || (!c.sessionHeard.has(s) && s.id != current.id)) &&
-                                !s.isEpisode && !s.isLive && !s.isVideo &&
-                                (online || c.availableOffline(s.id)) &&
-                                !c.library.isDisliked(s.id) && !c.exclusions.blocks(s) &&
-                                !c.exclusions.isSongExcluded(s.id) &&
-                                !c.recFeedback.turnedDown(s.id, known = s.id in known) &&
-                                ExplicitFilter.plays(c.settings.current.behavior.explicitContent, s)
-                        }, seed = seed, count = MyWave.HORIZON, style = selected, signals = signals,
-                        artistDoubt = c.recFeedback::artistDoubt,
-                        servedRecently = { c.recFeedback.servedDaysAgo(it.id)?.let { days -> days <= 1 } == true },
-                        profile = taste.profile, previousSong = current,
-                        avoid = current?.let { setOf(com.prism.music.data.foryou.LocalRadio.sameSong(it)) }.orEmpty(),
-                        artistEvidence = c.recFeedback.waveEvidence())
-                }
+                val songs = c.yourMusic.waveBatch(recommendations, selected, offset = 0,
+                    previous = current, existing = emptyList())
                 // Latest selection wins; a slow response cannot restore an older set of filters.
                 if (!isActive || version != requestVersion || c.queue.source.value !== previous) return@launch
                 val now = c.player.currentSong.value.takeIf { previous.isMyWave }
                 val nextSongs = songs.filter { candidate -> now == null || LocalRadio.sameSong(candidate) != LocalRadio.sameSong(now) }
                 if (nextSongs.isEmpty()) {
                     style = MyWave.style(previous.originId)
-                    c.player.reportError(l("Нет доступных новых треков для этих настроек.", "No new tracks available for these settings."))
+                    c.player.reportError(l("Недостаточно подходящих треков для выбранной пропорции. Измени процент или проверь подключение.", "Not enough tracks for the selected mix. Change the percentage or check your connection."))
                 } else {
                     val next = QueueSource(QueueKind.RADIO, title, seedId = nextSongs.first().id, originId = selected.origin)
                     c.recFeedback.served(nextSongs.map { it.id })
@@ -224,7 +193,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
     val activeFilters = listOfNotNull(
         activityName(style.activity).takeIf { style.activity != MyWave.Activity.ANY },
-        characterName(style.character).takeIf { style.character != MyWave.Character.BALANCED },
+        l("${style.discoveryPercent}% открытий", "${style.discoveryPercent}% discoveries"),
         moodName(style.mood).takeIf { style.mood != MyWave.Mood.ANY },
         depthName(style.depth).takeIf { style.depth != MyWave.Depth.ANY },
         l("Разнообразие", "Variety").takeIf { style.diversity != 50 },
@@ -349,6 +318,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
 
     if (settingsOpen) {
         var diversity by remember(style.diversity) { mutableFloatStateOf(style.diversity.toFloat()) }
+        var discovery by remember(style.discoveryPercent) { mutableFloatStateOf(style.discoveryPercent.toFloat()) }
         ModalBottomSheet(onDismissRequest = { settingsOpen = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = scheme.surfaceContainerHigh) {
@@ -360,7 +330,38 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     WaveChoices(l("Занятие", "Activity"), MyWave.Activity.entries, style.activity, ::activityName) { if (it != style.activity) start(style.copy(activity = it)) }
-                    WaveChoices(l("Характер музыки", "Discovery"), MyWave.Character.entries, style.character, ::characterName) { if (it != style.character) start(style.copy(character = it)) }
+                    Text(l("Характер волны", "Discovery mix"), style = MaterialTheme.typography.titleSmall)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column {
+                            Text("${100 - discovery.toInt()}%", style = MaterialTheme.typography.headlineSmall)
+                            Text(l("Лайки", "Liked songs"), style = MaterialTheme.typography.labelMedium)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("${discovery.toInt()}%", style = MaterialTheme.typography.headlineSmall, color = scheme.primary)
+                            Text(l("Открытия", "Discoveries"), style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                    fun selectPercent(percent: Int) {
+                        if (percent != style.discoveryPercent) start(style.copy(discoveryPercent = percent,
+                            character = when (percent) {
+                                0 -> MyWave.Character.FAMILIAR
+                                100 -> MyWave.Character.DISCOVERY
+                                else -> MyWave.Character.BALANCED
+                            }))
+                    }
+                    Slider(value = discovery, onValueChange = { discovery = it },
+                        onValueChangeFinished = { selectPercent((kotlin.math.round(discovery / 5f).toInt() * 5).coerceIn(0, 100)) },
+                        valueRange = 0f..100f, steps = 19, modifier = Modifier.testTag("wave:discovery-percent"))
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(0 to l("Лайки", "Liked"), 50 to l("Баланс", "Balance"),
+                            70 to l("Для меня", "For me"), 100 to l("Новое", "New")).forEach { (percent, label) ->
+                            FilterChip(selected = discovery.toInt() == percent, onClick = { discovery = percent.toFloat(); selectPercent(percent) },
+                                label = { Text(label) })
+                        }
+                    }
+                    Text(l("Открытия — похожие записи, которых нет в известной Prism истории. Лайки не заменяют их при нехватке.",
+                        "Discoveries are related recordings not in Prism's known history. Likes do not replace missing discoveries."),
+                        style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                     WaveChoices(l("Настроение", "Mood"), MyWave.Mood.entries, style.mood, ::moodName) { if (it != style.mood) start(style.copy(mood = it)) }
                     WaveChoices(l("Популярность", "Popularity"), MyWave.Depth.entries, style.depth, ::depthName) { if (it != style.depth) start(style.copy(depth = it)) }
                     Text(l("Разнообразие", "Variety"), style = MaterialTheme.typography.titleSmall)
