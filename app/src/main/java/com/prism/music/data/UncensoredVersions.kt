@@ -5,6 +5,8 @@ import com.prism.music.data.innertube.SearchFilter
 import com.prism.music.data.model.Song
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
@@ -20,7 +22,10 @@ object UncensoredRules {
     private val uncensored = Regex("""(?iu)\b(?:uncensored|uncut|без цензуры|нецензурированная версия)\b""")
     private val clean = Regex("""(?iu)\b(?:clean(?: version| edit)?|censored|radio edit|без мата|цензурированная версия)\b""")
     private val edit = Regex("""(?iu)\b(?:remix|cover|karaoke|instrumental|live|sped up|slowed|nightcore|acoustic|8d|ремикс|кавер|караоке|инструментал)\b""")
-    private fun normalized(value: String): String = value.lowercase().replace(Regex("""[^\p{L}\p{N}]"""), "")
+    private fun normalized(value: String): String = value.lowercase().replace(Regex("""[^\p{L}\p{N}]"""), "").let {
+        // Verified historical spelling of the same artist (2022 releases).
+        if (it == "heroinwater") "heronwater" else it
+    }
     private fun base(title: String): String =
         SongVersions.bare(title.replace(uncensored, "").replace(clean, "").replace(Regex("""(?iu)\bexplicit(?: version)?\b"""), ""))
 
@@ -87,12 +92,22 @@ class UncensoredVersions(
             return withTimeoutOrNull(4_000) {
                 withContext(Dispatchers.IO) {
                     val query = "${song.title} ${song.primaryArtist}".trim()
-                    val songs = search(query, SearchFilter.SONGS)
-                    val videos = search(query, SearchFilter.VIDEOS)
                     val hint = if (song.title.any { it in '\u0400'..'\u04ff' }) "без цензуры" else "uncensored"
-                    val candidate = UncensoredRules.best(song, songs + videos)
-                        ?: UncensoredRules.best(song, search("$query $hint", SearchFilter.VIDEOS))
-                    if (songs.isNotEmpty() || videos.isNotEmpty() || candidate != null) {
+                    val queries = buildList {
+                        add(query to SearchFilter.SONGS)
+                        add(query to SearchFilter.VIDEOS)
+                        add("$query $hint" to SearchFilter.VIDEOS)
+                        if (song.primaryArtist.equals("Heronwater", true)) {
+                            add("${song.title} Heroinwater $hint" to SearchFilter.VIDEOS)
+                        }
+                    }
+                    val results = kotlinx.coroutines.coroutineScope {
+                        queries.map { (q, filter) ->
+                            async { search(q, filter) }
+                        }.awaitAll().flatten()
+                    }
+                    val candidate = UncensoredRules.best(song, results)
+                    if (results.isNotEmpty()) {
                         if (checked.size >= 2048) checked.clear()
                         checked[song.id] = System.currentTimeMillis()
                     }
