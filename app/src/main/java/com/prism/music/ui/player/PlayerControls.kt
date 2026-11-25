@@ -1034,7 +1034,7 @@ fun PlayerActionRow(
                         ) { pc.cycleRepeat() }
                         if (!continuous) {
                             PillDivider()
-                            PillSegment(PrismIcons.Autoplay, tr(R.string.autoplay), settings.autoplay, width = PILL_SEGMENT_WIDTH_TRIPLE) { c.settings.setAutoplay(!settings.autoplay) }
+                            PillSegment(PrismIcons.Stream, tr(R.string.autoplay), settings.autoplay, width = PILL_SEGMENT_WIDTH_TRIPLE) { c.settings.setAutoplay(!settings.autoplay) }
                         }
                     }
                     // #294: "Tidier queue": Back or pulling its title down closes it.

@@ -929,7 +929,9 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         val song = mediaItem?.toSong() ?: return
         // Disliked songs are passed over when the queue reaches them on its own (tapping one still plays it), and so are
         // artists the listener doesn't want played when a radio or autoplay brought them (a playlist they picked plays as it is).
-        val picked = c.queue.source.value.kind == QueueKind.RADIO || player.currentMediaItemIndex >= c.queue.autoplayStart.value.let { if (it < 0) Int.MAX_VALUE else it }
+        val queueSource = c.queue.source.value
+        val picked = queueSource.isMyWave || (queueSource.isSongRadio && song.id != queueSource.seedId) ||
+            player.currentMediaItemIndex >= c.queue.autoplayStart.value.let { if (it < 0) Int.MAX_VALUE else it }
         val unwanted = c.library.isDisliked(song.id) || (picked && c.exclusions.blocks(song))
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && !c.queue.followingHost && unwanted && player.hasNextMediaItem()) {
             untrack()
@@ -1723,7 +1725,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         // The waveform progress bar is drawn from the scan too (1.7.4).
         val wave = s.scrubberStyle == com.prism.music.data.prefs.ScrubberStyle.WAVE
         // A radio tuned calm or energetic goes by what's been scanned, so songs heard are scanned for it too.
-        if (!s.mix.on && !s.normalize && !wave && s.behavior.radioTune.energy == 0f) return
+        val streamStyle = com.prism.music.data.foryou.MyWave.restore(c.queue.source.value.originId, s.streamStyleOrigin, s.streamRussianPercent)
+        if (!s.mix.on && !s.normalize && !wave && streamStyle.tune.energy == 0f) return
         val network = s.mix.tempoOnCellular || getSystemService(android.net.ConnectivityManager::class.java)?.isActiveNetworkMetered == false
         val playing = player.currentMediaItem?.mediaId
         val all = items.mapNotNull { it?.toSong() }.filter { !it.isLive && !it.isEpisode }.distinctBy { it.id }
@@ -1855,10 +1858,17 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                     emptyList()
                 }
                 if (!isActive || c.queue.source.value !== src) return@launch
-                if (additions.isNotEmpty()) {
+                val occupied = (0 until player.mediaItemCount).mapNotNull { index ->
+                    if (offline && index <= player.currentMediaItemIndex) null else player.getMediaItemAt(index).toSong()
+                }.mapTo(hashSetOf(), com.prism.music.data.foryou.LocalRadio::sameSong)
+                val accepted = additions.filter {
+                    com.prism.music.data.foryou.LocalRadio.sameSong(it) !in occupied &&
+                        c.yourMusic.recommendationAllowed(it, offlineOnly = offline)
+                }.distinctBy(com.prism.music.data.foryou.LocalRadio::sameSong)
+                if (accepted.isNotEmpty()) {
                     if (c.queue.autoplayStart.value < 0) c.queue.autoplayStart.value = player.mediaItemCount
-                    player.addMediaItems(additions.map { it.toMediaItem() })
-                    c.recFeedback.served(additions.map { it.id })
+                    player.addMediaItems(accepted.map { it.toMediaItem() })
+                    c.recFeedback.served(accepted.map { it.id })
                 } else if (player.mediaItemCount - player.currentMediaItemIndex <= 1) {
                     c.player.reportError(if (offline) tr(R.string.prism_stream_no_matching_downloaded_tracks)
                         else tr(R.string.prism_stream_not_enough_matching_tracks))
@@ -1921,11 +1931,15 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
     /** Switching Autoplay off takes its suggestions back out of the queue; on, fetches them. */
     private fun onAutoplayChanged(enabled: Boolean) {
         if (enabled) { maybeAutoplay(); return }
-        if (c.queue.source.value.isSongRadio || c.queue.source.value.isMyWave) return
+        if (c.queue.source.value.continuousRecommendations) return
+        dropAutoplay()
         val start = c.queue.autoplayStart.value
         if (start >= 0 && start < player.mediaItemCount) {
+            val manual = c.queue.userQueued.value
             val from = maxOf(start, player.currentMediaItemIndex + 1)
-            if (from < player.mediaItemCount) player.removeMediaItems(from, player.mediaItemCount)
+            for (index in player.mediaItemCount - 1 downTo from) {
+                if (player.getMediaItemAt(index).mediaId !in manual) player.removeMediaItem(index)
+            }
         }
         c.queue.autoplayStart.value = -1
         c.queue.autoplayContinuation = null

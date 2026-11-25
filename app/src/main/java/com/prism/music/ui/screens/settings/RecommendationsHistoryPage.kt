@@ -85,7 +85,6 @@ fun RecommendationsHistoryPage(bottomPadding: Dp, find: String? = null, showBack
 
     // What differs from how Prism comes, for the rows' dots and for Reset this page (top to bottom, as the page).
     val releasesChanged = reset.add(tr(R.string.new_release_notifications), s.releaseNotifications, d.releaseNotifications, onOff) { prefs.setReleaseNotifications(it) }
-    // The three sliders are stored together: any one's reset writes all three as they will be once all are back.
     val pauseChanged = reset.add(tr(R.string.hist_pause), pausedUntil, 0L, ::pauseText) { prefs.setHistoryPausedUntil(it) }
     val countAfterChanged = reset.add(tr(R.string.hist_count_after), countAfter, d.behavior.playCountSeconds, PlayCount::label) { prefs.setPlayCountSeconds(it) }
     val accountChanged = reset.add(tr(R.string.hist_count_account), b.playCountOnAccount, d.behavior.playCountOnAccount, onOff) { prefs.setPlayCountOnAccount(it) }
@@ -231,7 +230,7 @@ val recommendationsHistoryLookKeys: List<String> = emptyList()
  * called that). (The old "Liked songs" group is Home & Library's; "Bring your history" is Accounts & sharing's row since
  * 1.8.7.6, see [SettingsMap.movedGroups].)
  */
-val recommendationsHistoryOldGroups: Map<String, String> = emptyMap()
+val recommendationsHistoryOldGroups: Map<String, String> get() = mapOf(tr(R.string.tune_radios) to tr(R.string.stream))
 
 /** The page's lines in Settings' search (each names the group it is drawn in). */
 val recommendationsHistoryIndex: List<SettingEntry> by lazy {

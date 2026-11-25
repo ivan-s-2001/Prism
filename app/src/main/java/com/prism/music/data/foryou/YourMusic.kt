@@ -505,11 +505,17 @@ class YourMusic(private val c: AppContainer) {
         val out = ArrayList<Mix>()
 
         // Each mix is drawn by weighted chance (the day's own draw), resting what was heard lately, instead of the same top forty.
-        fun draw(songs: List<Song>, salt: String) = Variety.sample(songs, MIX_SIZE, Variety.daySeed(day, salt), sharpness = 1.5) { (score[it.id] ?: 0.0) * rest(s, it.id) }
+        val feedback = c.recFeedback
+        fun draw(songs: List<Song>, salt: String): List<Song> = MyWave.start(
+            emptyList(), songs.sortedByDescending { (score[it.id] ?: 0.0) * rest(s, it.id) }, emptyList(),
+            heard = { false }, allowed = play, seed = Variety.daySeed(day, salt), count = MIX_SIZE,
+            style = MyWave.Style(discoveryPercent = 0), artistDoubt = feedback::artistDoubt,
+            servedRecently = { (feedback.servedDaysAgo(it.id) ?: 99) <= 1 },
+            profile = profile, artistEvidence = feedback.waveEvidence(), quotaOffset = 0)
         val byGenre = known.groupBy { s.genres[it.id] }.filterKeys { it != null }
         byGenre.entries.sortedByDescending { (_, songs) -> songs.sumOf { score[it.id] ?: 0.0 } }.take(3).forEach { (genre, songs) ->
             if (songs.size < MIN_MIX) return@forEach
-            val list = spread(draw(songs, genre!!))
+            val list = draw(songs, genre!!)
             out += Mix("lib:genre:$genre", tr(R.string.your_mix, com.prism.music.data.meta.Genres.word(genre)), MadeForYou.namesLine(artists(list)), artists(list).take(4), color(genre), s.at, list)
         }
 
@@ -522,14 +528,16 @@ class YourMusic(private val c: AppContainer) {
                 theirs.take(3), LocalRadio.Pool(known, s.coListen, { s.model.score(it) * MyWave.affinity(profile, it) }, { s.genres[it] }),
                 theirs.map { it.id }.toSet(), 20,
             ).filter { it.related }.map { it.song }
-            val list = MadeForYou.interleave(theirs.take(20), around, MIX_SIZE) { it.primaryArtist.lowercase() }
+            val list = MyWave.start(around, theirs.take(20), emptyList(), { false }, play,
+                Variety.daySeed(day, "artist-mix:$artist"), MIX_SIZE, MyWave.Style(discoveryPercent = 40),
+                artistDoubt = feedback::artistDoubt, profile = profile, artistEvidence = feedback.waveEvidence(), quotaOffset = 0)
             if (list.size < MIN_MIX) return@forEach
             out += Mix("lib:artist:$artist", tr(R.string.mix_4, artist), tr(R.string.with_2, MadeForYou.namesLine(artists(list).filterNot { it.equals(artist, true) }.ifEmpty { listOf(artist) })), listOf(artist), color(artist), s.at, list)
         }
 
         // What plays with no connection at all: downloads, songs kept whole in the cache, files on the phone.
         val ready = known.filter { c.availableOffline(it.id) }.sortedByDescending { score[it.id] ?: 0.0 }
-        if (ready.size >= MIN_MIX) out += Mix(OFFLINE_MIX, tr(R.string.ready_offline), tr(R.string.a_mix_of_songs_already_on), artists(ready).take(4), 0xFF37474F.toInt(), s.at, spread(draw(ready, OFFLINE_MIX)))
+        if (ready.size >= MIN_MIX) out += Mix(OFFLINE_MIX, tr(R.string.ready_offline), tr(R.string.a_mix_of_songs_already_on), artists(ready).take(4), 0xFF37474F.toInt(), s.at, draw(ready, OFFLINE_MIX))
         return out
     }
 
@@ -556,14 +564,15 @@ class YourMusic(private val c: AppContainer) {
         val related = if (c.network.isOnline()) waveRelated(taste.likedSeeds, draw.coerceAtLeast(0) * MyWave.HORIZON,
             recentKeys, ::known) else emptyList()
         val candidates = MyWave.fuse(listOf(related.filter(::recommendable), youtube.filter(::recommendable)), 160)
-        val style = MyWave.Style()
+        val settings = c.settings.current
+        val style = MyWave.restore(null, settings.streamStyleOrigin, settings.streamRussianPercent)
         val seed = drawSeed(LocalDate.now().toString(), "personal", draw)
         val signals = RadioSignals(heard = { known(it) })
         fun select(avoidShown: Boolean, size: Int, avoid: Set<String>) = MyWave.start(candidates, taste.favorites,
             emptyList(), c.sessionHeard::has, { eligible(it) && (!avoidShown || it.id !in shown) },
             seed, size, style, signals, feedback::artistDoubt,
             { feedback.servedDaysAgo(it.id)?.let { days -> days <= 1 } == true },
-            taste.profile, avoid = avoid, artistEvidence = feedback.waveEvidence())
+            taste.profile, avoid = avoid, artistEvidence = feedback.waveEvidence(), quotaOffset = draw.coerceAtLeast(0) * count)
         val fresh = select(true, count, recentKeys)
         val rest = if (fresh.size < count && shown.isNotEmpty())
             select(false, count - fresh.size, recentKeys + fresh.map(LocalRadio::sameSong)) else emptyList()
@@ -574,8 +583,14 @@ class YourMusic(private val c: AppContainer) {
     suspend fun offlinePicks(count: Int = 20): List<Song> {
         val s = snapshot()
         val profile = waveTaste().profile
-        return s.songs.values.filter { ok(it) && !it.isVideo && c.availableOffline(it.id) }
-            .sortedByDescending { s.model.score(it) * MyWave.affinity(profile, it) }.distinctBy { LocalRadio.sameSong(it) }.take(count)
+        val feedback = c.recFeedback
+        val settings = c.settings.current
+        val style = MyWave.restore(null, settings.streamStyleOrigin, settings.streamRussianPercent)
+        val pool = s.songs.values.filter { recommendationAllowed(it, offlineOnly = true) }
+            .sortedByDescending { s.model.score(it) * rest(s, it.id) }.distinctBy(LocalRadio::sameSong)
+        return MyWave.offlineMix(pool, s.liked, emptyList(), null, c.sessionHeard::has, style,
+            RadioSignals(), profile, count, 0, Variety.daySeed(LocalDate.now().toString(), "offline"),
+            artistDoubt = feedback::artistDoubt, artistEvidence = feedback.waveEvidence())
     }
 
     private fun artists(list: List<Song>) = list.map { it.primaryArtist }.filter { it.isNotBlank() }.distinct()
