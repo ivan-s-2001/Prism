@@ -66,68 +66,104 @@ internal class GlagolSocket(
         .connectTimeout(8, TimeUnit.SECONDS)
         .pingInterval(20, TimeUnit.SECONDS)
         .build()
-    private val opened = CompletableDeferred<Unit>()
-    private val replies = ConcurrentHashMap<String, CompletableDeferred<String>>()
-    private val socket: WebSocket
+    private class Connection {
+        val opened = CompletableDeferred<Unit>()
+        val replies = ConcurrentHashMap<String, CompletableDeferred<String>>()
+        lateinit var socket: WebSocket
+        @Volatile var failed = false
+    }
+    private var connection: Connection? = null
+    private var closed = false
 
-    init {
+    @Synchronized private fun getConnection(): Connection {
+        check(!closed) { "Station connection closed" }
+        connection?.takeUnless { it.failed }?.let { return it }
+        connection?.socket?.cancel()
         require(station.address.isSiteLocalAddress || station.address.isLinkLocalAddress)
-        socket = client.newWebSocket(
+        val current = Connection()
+        connection = current
+        current.socket = client.newWebSocket(
             Request.Builder().url("wss://$host:${station.port}/").build(),
             object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
-                    opened.complete(Unit)
+                    current.opened.complete(Unit)
                 }
                 override fun onMessage(webSocket: WebSocket, text: String) {
-                    runCatching {
-                        val message = Json.parseToJsonElement(text).jsonObject
-                        val id = (message["requestId"] as? JsonPrimitive)?.contentOrNull
-                        val status = (message["status"] as? JsonPrimitive)?.contentOrNull
-                        if (id != null && status != null) replies[id]?.complete(status)
+                    synchronized(this@GlagolSocket) {
+                        if (connection !== current || current.failed || closed) return
+                        runCatching {
+                            val message = Json.parseToJsonElement(text).jsonObject
+                            val id = (message["requestId"] as? JsonPrimitive)?.contentOrNull
+                            val status = (message["status"] as? JsonPrimitive)?.contentOrNull
+                            if (id != null && status != null) current.replies[id]?.complete(status)
+                        }
+                        onState(text)
                     }
-                    onState(text)
                 }
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    opened.completeExceptionally(t)
-                    replies.values.forEach { it.completeExceptionally(t) }
+                    fail(current, t)
+                }
+                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                    fail(current, IOException("Station socket closing"))
+                    webSocket.close(code, null)
                 }
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    val error = IllegalStateException("Station disconnected")
-                    opened.completeExceptionally(error)
-                    replies.values.forEach { it.completeExceptionally(error) }
+                    fail(current, IOException("Station socket closed"))
                 }
             },
         )
+        return current
     }
 
-    /** Only queues a frame. A successful return does not prove audible playback. */
-    suspend fun send(conversationToken: String, payload: JsonObject) {
-        if (withTimeoutOrNull(10_000) { opened.await(); true } != true) throw IOException("Station socket open timed out")
-        check(socket.send(GlagolProtocol.envelope(conversationToken, payload))) {
-            "Station connection closed"
+    private fun fail(c: Connection, t: Throwable) {
+        c.failed = true
+        c.opened.completeExceptionally(t)
+        c.replies.values.forEach { it.completeExceptionally(t) }
+    }
+
+    private suspend fun ready(): Connection {
+        val c = getConnection()
+        if (withTimeoutOrNull(8000) { c.opened.await(); true } != true) {
+            fail(c, IOException("Station socket open timed out"))
+            c.socket.cancel()
+            throw IOException("Station socket open timed out")
+        }
+        if (c.failed) throw IOException("Station socket closed")
+        return c
+    }
+
+    private fun enqueue(c: Connection, frame: String) {
+        if (c.failed || !c.socket.send(frame)) {
+            val error = IOException("Station socket closed")
+            fail(c, error)
+            throw error
         }
     }
 
-    /** Wait for the reply carrying our requestId; do not confuse a queued frame with a reply. */
+    /** Reconnect on the next call, not by replaying an ambiguous command. */
+    suspend fun send(conversationToken: String, payload: JsonObject) {
+        val c = ready()
+        enqueue(c, GlagolProtocol.envelope(conversationToken, payload))
+    }
+
     suspend fun request(conversationToken: String, payload: JsonObject, timeoutMs: Long = 3000L): String? {
-        if (withTimeoutOrNull(10_000) { opened.await(); true } != true) throw IOException("Station socket open timed out")
+        val c = ready()
         val id = UUID.randomUUID().toString()
         val reply = CompletableDeferred<String>()
-        replies[id] = reply
+        c.replies[id] = reply
         try {
-            check(socket.send(GlagolProtocol.envelope(conversationToken, payload, id))) {
-                "Station connection closed"
-            }
+            enqueue(c, GlagolProtocol.envelope(conversationToken, payload, id))
             return withTimeoutOrNull(timeoutMs) { reply.await() }
-        } finally {
-            replies.remove(id)
-        }
+        } finally { c.replies.remove(id) }
     }
 
-    override fun close() {
-        replies.values.forEach { it.cancel() }
-        replies.clear()
-        socket.cancel()
+    @Synchronized override fun close() {
+        closed = true
+        connection?.let {
+            fail(it, IOException("Station connection closed"))
+            it.socket.cancel()
+        }
+        connection = null
         client.connectionPool.evictAll()
         client.dispatcher.executorService.shutdown()
     }
