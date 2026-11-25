@@ -7,9 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -27,7 +25,7 @@ internal fun WavePresetNameDialog(names: List<String>, onDismiss: () -> Unit, on
     AlertDialog(onDismissRequest = onDismiss,
         title = { Text(tr(R.string.prism_stream_new_preset)) },
         text = {
-            OutlinedTextField(value = name, onValueChange = { name = it.take(40) },
+            PrismTextField(value = name, onValueChange = { name = it.take(40) },
                 label = { Text(tr(R.string.prism_stream_name)) }, singleLine = true,
                 isError = duplicate, supportingText = { if (duplicate) Text(tr(R.string.prism_stream_name_already_used)) },
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
@@ -35,6 +33,6 @@ internal fun WavePresetNameDialog(names: List<String>, onDismiss: () -> Unit, on
                 keyboardActions = KeyboardActions(onDone = { if (cleaned.isNotEmpty() && !duplicate) onSave(cleaned) }))
             LaunchedEffect(Unit) { focus.requestFocus() }
         },
-        confirmButton = { TextButton(enabled = cleaned.isNotEmpty() && !duplicate, onClick = { onSave(cleaned) }) { Text(tr(R.string.prism_stream_save)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(tr(R.string.prism_stream_cancel)) } })
+        confirmButton = { PrismTextButton(enabled = cleaned.isNotEmpty() && !duplicate, onClick = { onSave(cleaned) }) { Text(tr(R.string.prism_stream_save)) } },
+        dismissButton = { PrismTextButton(onClick = onDismiss) { Text(tr(R.string.prism_stream_cancel)) } })
 }

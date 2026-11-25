@@ -140,15 +140,16 @@ internal fun TvWavePlace(nav: TvNav) {
         }
     }
 
+    val ui = com.prism.music.ui.theme.LocalUi.current
     BoxWithConstraints(Modifier.fillMaxSize().padding(TvSafe)) {
         val narrow = maxWidth < 760.dp
         val scheme = MaterialTheme.colorScheme
         if (tuning) {
             CompositionLocalProvider(LocalTvScreen provides "$screen/tune") {
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(ui.gap(24.dp))) {
+                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(com.prism.music.ui.theme.LocalUi.current.gap(12.dp))) {
                     Text(tr(R.string.prism_stream_tune_stream), style = MaterialTheme.typography.headlineMedium)
-                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(ui.gap(16.dp))) {
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         TvWaveScale(WaveTuningScale.DISCOVERY, draft, "discovery") {
                             editor = WaveTuningScale.DISCOVERY.change(editor, it)
@@ -186,14 +187,14 @@ internal fun TvWavePlace(nav: TvNav) {
                             MyWave.Depth.DEEP -> tr(R.string.prism_stream_deep_cuts)
                         } }, { editor = editor.tune(draft.copy(depth = it)) })
                     }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(com.prism.music.ui.theme.LocalUi.current.gap(12.dp))) {
                         WaveTvButton(tr(R.string.prism_stream_save_scenario), { namingPreset = true },
                             Modifier.weight(1f).tvItem("tv_wave/save"), icon = PrismIcons.Add)
                         WaveTvButton(tr(R.string.prism_stream_reset), { editor = editor.reset() },
                             Modifier.tvItem("tv_wave/reset"), icon = PrismIcons.Refresh)
                     }
                     }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(com.prism.music.ui.theme.LocalUi.current.gap(12.dp))) {
                         WaveTvButton(tr(R.string.prism_stream_cancel), { toggleTuning(false) }, Modifier.weight(1f).tvItem("tv_wave/cancel"))
                         WaveTvButton(tr(R.string.prism_stream_done), {
                             val final = editor
@@ -228,7 +229,7 @@ internal fun TvWavePlace(nav: TvNav) {
                         if (editor.presets.isEmpty()) Text(tr(R.string.prism_stream_no_saved_presets), color = scheme.onSurfaceVariant)
                         customPages.getOrElse(visiblePage) { emptyList() }.forEach { preset ->
                             key(preset.id) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(com.prism.music.ui.theme.LocalUi.current.gap(12.dp)), verticalAlignment = Alignment.CenterVertically) {
                                     WaveTvButton(preset.name, { editor = editor.choose(preset) },
                                         Modifier.weight(1f).tvItem("tv_wave/custom/${preset.id}"), icon = PrismIcons.Bookmark,
                                         primary = editor.presetId == preset.id && draft.origin == preset.origin)
@@ -249,16 +250,16 @@ internal fun TvWavePlace(nav: TvNav) {
             }
             }
         } else {
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(ui.gap(16.dp))) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(title, Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium)
                 }
-                Row(Modifier.weight(1f).fillMaxWidth().tvGlass(com.prism.music.ui.theme.LocalUi.current.shape(24.dp)).padding(24.dp),
+                Row(Modifier.weight(1f).fillMaxWidth().tvGlass(com.prism.music.ui.theme.LocalUi.current.shape(24.dp)).padding(ui.gap(24.dp)),
                     horizontalArrangement = Arrangement.spacedBy(if (narrow) 20.dp else 36.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     BoxWithConstraints(Modifier.weight(if (narrow) 0.65f else 0.85f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                         Artwork(now?.art, Modifier.size(minOf(maxWidth, maxHeight, 340.dp)),
-                            shape = com.prism.music.ui.theme.LocalUi.current.shape(18.dp), size = 1080)
+                            shape = com.prism.music.ui.theme.CoverShapes.of(appSettings.shapes.player, appSettings.player.artCorners.dp), size = 1080)
                     }
                     Column(Modifier.weight(1.15f), verticalArrangement = Arrangement.spacedBy(if (narrow) 8.dp else 16.dp)) {
                         Text(now?.title ?: tr(R.string.prism_stream_music_in_your_rhythm),
@@ -291,7 +292,7 @@ internal fun TvWavePlace(nav: TvNav) {
                         }
                     }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(16.dp)), verticalAlignment = Alignment.CenterVertically) {
                     TvScenarioDisc(tr(R.string.prism_stream_tune), PrismIcons.Customize, selected = false,
                         onClick = { toggleTuning(true) }, modifier = Modifier.tvItem("tv_wave/tune"))
                     val active = WaveScenarios.all.firstOrNull { it.id == chosenPresetId }
@@ -299,7 +300,7 @@ internal fun TvWavePlace(nav: TvNav) {
                     Row(Modifier.weight(1f).scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward })
                         .horizontalScroll(scenarioScroll).padding(vertical = 8.dp, horizontal = 14.dp)
                         .rememberedFocus().focusGroup(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        horizontalArrangement = Arrangement.spacedBy(ui.gap(16.dp)), verticalAlignment = Alignment.CenterVertically) {
                         savedPresets.forEach { preset ->
                             key(preset.id) {
                                 TvScenarioDisc(preset.name, PrismIcons.Bookmark, activeSaved?.id == preset.id,
@@ -333,7 +334,7 @@ private fun TvWaveScale(scale: WaveTuningScale, style: MyWave.Style, tag: String
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         val adjustedLabel = tr(if (scale.ratio) scale.left else scale.title)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            horizontalArrangement = Arrangement.spacedBy(com.prism.music.ui.theme.LocalUi.current.gap(12.dp))) {
             TvIconButton(PrismIcons.Remove, tr(R.string.prism_stream_decrease_share, adjustedLabel),
                 { change(scale.fromPosition((position - scale.step).toFloat())) },
                 Modifier.tvItem("tv_wave/$tag/down", entry = tag == "discovery"))
@@ -361,7 +362,7 @@ private fun <T> TvWaveChoices(title: String, values: List<T>, selected: T, tag: 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, style = MaterialTheme.typography.titleSmall)
         values.chunked(2).forEachIndexed { row, items ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(com.prism.music.ui.theme.LocalUi.current.gap(12.dp))) {
                 items.forEachIndexed { index, value ->
                     WaveTvButton(name(value), { choose(value) }, Modifier.weight(1f).tvItem("tv_wave/$tag/$row/$index"),
                         primary = selected == value)

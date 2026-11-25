@@ -531,10 +531,10 @@ fun PlayerScrubber(positionMs: Long, durationMs: Long, centerLabel: @Composable 
             val elapsed = settings.player.times == com.prism.music.data.prefs.PlayerTimes.BOTH || settings.player.times == com.prism.music.data.prefs.PlayerTimes.ELAPSED
             val left = settings.player.times == com.prism.music.data.prefs.PlayerTimes.BOTH || settings.player.times == com.prism.music.data.prefs.PlayerTimes.LEFT
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                if (elapsed) Text(formatTime((shown * duration).toLong()), style = times, color = playerInk.copy(alpha = 0.65f)) else Spacer(Modifier.width(1.dp))
+                if (elapsed) Text(formatTime((shown * duration).toLong()), style = times, color = playerInk.copy(alpha = if (embeddedInk == null) 0.55f else 0.65f)) else Spacer(Modifier.width(1.dp))
                 if (left) Text(
                     if (showLength) formatTime(duration) else "−" + formatTime(duration - (shown * duration).toLong()),
-                    style = times, color = playerInk.copy(alpha = 0.65f),
+                    style = times, color = playerInk.copy(alpha = if (embeddedInk == null) 0.55f else 0.65f),
                     modifier = Modifier
                         .clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
                         .clickable(onClickLabel = if (showLength) tr(R.string.show_time_left) else tr(R.string.show_song_length)) { c.settings.setShowTrackLength(!showLength) },

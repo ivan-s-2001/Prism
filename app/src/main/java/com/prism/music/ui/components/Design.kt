@@ -275,17 +275,18 @@ fun PrismScenarioDisc(
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
+    val ui = LocalUi.current
     val quiet = glassFill(1.4f)
     val lifted = glassFill(2.6f)
-    val bg by animateColorAsState(if (selected) lifted else quiet, tween(180), label = "scenarioGlass")
+    val bg by animateColorAsState(if (selected) lifted else quiet, tween(if (ui.reduceMotion) 0 else 180), label = "scenarioGlass")
     Column(
-        modifier.width(88.dp).clip(RoundedCornerShape(12.dp))
+        modifier.width(ui.gap(88.dp).coerceIn(76.dp, 108.dp)).clip(ui.shape(12.dp))
             .semantics { this.selected = selected }
             .clickable(onClick = onClick).padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(ui.gap(6.dp)),
     ) {
-        Box(Modifier.size(56.dp).clip(CircleShape).background(bg)
+        Box(Modifier.size(ui.gap(56.dp).coerceIn(48.dp, 68.dp)).clip(CircleShape).background(bg)
             .then(if (selected) Modifier.spectrumRing(CircleShape) else Modifier.border(1.dp, glassEdge(), CircleShape)),
             contentAlignment = Alignment.Center) {
             Icon(icon, null, Modifier.size(26.dp), tint = if (selected) scheme.onSurface else scheme.onSurfaceVariant)
