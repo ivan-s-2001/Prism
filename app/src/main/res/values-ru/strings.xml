@@ -5873,4 +5873,7 @@
     <string name="crossfade_automix_detail">Приёмы диджея, в такт</string>
     <string name="hear_it_on_the_next_song">Послушать на следующей песне</string>
     <string name="hear_it_on_the_next_song_none">Пока нет песни, с которой можно смешать</string>
+    <string name="uncensored_recordings">Предпочитать записи без цензуры</string>
+    <string name="uncensored_recordings_info">Экспериментально: поиск вероятных оригиналов следующих треков. Метаданные не гарантируют отсутствие цензуры.</string>
+    <string name="uncensored_candidate">Возможно, версия без цензуры</string>
 </resources>
