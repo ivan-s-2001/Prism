@@ -81,6 +81,10 @@ def main():
         not re.fullmatch(r"[a-f0-9]{64}", token) or secret == token or not owner or not skill):
         raise SystemExit("Set distinct random 64-character hex secrets, owner user ID and skill ID.")
     bridge = Bridge()
+    connect = None
+    if os.environ.get("PRISM_CONNECT_V2") == "1":
+        from connect_api import ConnectApi
+        connect = ConnectApi(os.path.join(os.environ.get("STATE_DIRECTORY", "/var/lib/prism-voice"), "devices.sqlite3"))
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "PrismVoice/0.1"
@@ -103,11 +107,26 @@ def main():
         def do_GET(self):
             if self.path == "/health":
                 return self.reply(200, {"ok": True})
+            if connect is not None:
+                return self.reply(404, {"error": "legacy_disabled"})
             if self.path != "/v1/pull" or not equal(self.headers.get("Authorization"), "Bearer " + token):
                 return self.reply(404, {"error": "not_found"})
             self.reply(200, {"command": bridge.pull()})
 
         def do_POST(self):
+            if self.path.startswith("/v2/") and connect is not None:
+                try:
+                    size = int(self.headers.get("Content-Length", "0"))
+                    if not 0 < size <= 65536:
+                        raise ValueError()
+                    data = json.loads(self.rfile.read(size))
+                    auth = self.headers.get("Authorization", "")
+                    if not auth.startswith("Bearer "):
+                        return self.reply(401, {"error": "unauthorized"})
+                    status, body = connect.post(self.path, auth[7:], data)
+                    return self.reply(status, body)
+                except (ValueError, TypeError, OSError):
+                    return self.reply(400, {"error": "invalid_request"})
             if not equal(self.path, "/alice/" + secret):
                 return self.reply(404, {"error": "not_found"})
             try:
@@ -132,10 +151,18 @@ def main():
                 return self.reply(400, {"error": "invalid_request"})
             end = command.lower().strip(" .!?") in ("выход", "закрой навык", "до свидания")
             intent = None if end else parse_command(command)
-            if end:
+            pairing = re.fullmatch(r"(?:подключи телефон|код подключения)\s+([0-9 ]{8,15})", command.lower().strip())
+            if connect is not None and pairing:
+                from paired_devices import PairingError
+                try:
+                    name = connect.approve(pairing[1].replace(" ", ""), f"{sid}:{mid}")
+                    answer = "Телефон подключен. Вернитесь в Призму."
+                except PairingError:
+                    answer = "Не удалось подтвердить код. Проверьте код в Призме."
+            elif end:
                 answer = "До свидания."
             elif intent:
-                result = bridge.enqueue((sid, mid), intent)
+                result = connect.alice(f"{sid}:{mid}", intent) if connect is not None else bridge.enqueue((sid, mid), intent)
                 answer = {"queued": "Передаю команду в Призму.", "duplicate": "Команда уже передана.",
                           "offline": "Призма сейчас не на связи. Откройте плеер на телефоне.",
                           "busy": "Слишком много команд. Попробуйте еще раз."}[result]
