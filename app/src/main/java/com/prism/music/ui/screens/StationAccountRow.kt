@@ -84,10 +84,6 @@ internal fun StationAccountRow(ink: Color) {
         }
         Icon(if (signedIn) PrismIcons.Logout else PrismIcons.ChevronRight, null, tint = ink)
     }
-    if (signedIn) {
-        YandexTransferRow(ink)
-        ConnectAccountControls(ink)
-    }
     if (show) AlertDialog(
         onDismissRequest = { show = false },
         title = { Text(label("Вход в Яндекс", "Yandex sign-in")) },
