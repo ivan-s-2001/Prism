@@ -371,4 +371,27 @@ class MyWaveTest {
         assertEquals(70, diversity.position(70))
         assertEquals(70, diversity.fromPosition(70f))
     }
+
+    @Test fun builtInScenarioTuningIsIsolatedAndRestorable() {
+        val scenarios = com.prism.music.data.foryou.WaveScenarios
+        val first = scenarios.all.first()
+        val second = scenarios.all[1]
+        val original = com.prism.music.data.foryou.WaveSettingsDraft(first.style, false, emptyList(), first.id)
+        val edited = original.discovery(35)
+        assertEquals(first.id, edited.presetId)
+        assertTrue(original.scenarioStyles.isEmpty())
+        assertEquals(edited.style, edited.choose(second).choose(first).style)
+        assertEquals(first.style, edited.reset().style)
+        assertTrue(edited.reset().scenarioStyles.isEmpty())
+        assertEquals(second.style, scenarios.resolve(second, edited.scenarioStyles, -1))
+    }
+
+    @Test fun editingSavedScenarioKeepsIdAndStagesNewSettings() {
+        val initial = com.prism.music.data.foryou.WaveSettingsDraft(MyWave.Style(), false, emptyList(), null)
+            .save("Custom", "custom")
+        val edited = initial.discovery(25)
+        assertEquals("custom", edited.presetId)
+        assertEquals(edited.style.origin, edited.presets.single().origin)
+        assertEquals(initial.style.origin, initial.presets.single().origin)
+    }
 }

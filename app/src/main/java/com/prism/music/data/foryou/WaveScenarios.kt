@@ -85,6 +85,10 @@ internal object WaveScenarios {
         preset("calm_new", "Тихие открытия", "Quiet discoveries", Group.DISCOVERY, Glyph.CALM_NEW, mood = MyWave.Mood.CALM, character = MyWave.Character.DISCOVERY, diversity = 60),
     )
 
+    fun resolve(scenario: Scenario, overrides: Map<String, String>, language: Int): MyWave.Style =
+        overrides[scenario.id]?.takeIf(MyWave::isOrigin)?.let(MyWave::style)
+            ?: scenario.style.copy(russianPercent = language)
+
     /** Capture once per screen: playback/selection must never reorder the carousel. */
     fun stripOrder(hour: Int, weekend: Boolean): List<Scenario> = (forDay(hour, weekend) + all).distinctBy { it.id }
 

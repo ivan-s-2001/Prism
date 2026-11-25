@@ -159,12 +159,12 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val scenarioScroll = androidx.compose.foundation.lazy.rememberLazyListState()
     val savedPresets = settings.streamPresets
     var namingPreset by rememberSaveable { mutableStateOf(false) }
-    var chosenPresetId by rememberSaveable { mutableStateOf<String?>(null) }
+    var chosenPresetId by rememberSaveable { mutableStateOf(settings.streamScenarioId) }
     var revealPresetId by rememberSaveable { mutableStateOf<String?>(null) }
     var baseline by remember { mutableStateOf<WaveSettingsDraft?>(null) }
     var editor by remember { mutableStateOf<WaveSettingsDraft?>(null) }
     fun openSettings() {
-        val initial = WaveSettingsDraft(style, settings.streamThemeColors, savedPresets, chosenPresetId)
+        val initial = WaveSettingsDraft(style, settings.streamThemeColors, savedPresets, chosenPresetId, settings.streamScenarioStyles)
         baseline = initial
         editor = initial
         namingPreset = false
@@ -202,10 +202,9 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         MyWave.Activity.SLEEP -> tr(R.string.prism_stream_sleep)
     }
 
-    fun start(selected: MyWave.Style = style) {
+    fun start(selected: MyWave.Style = style, scenarioId: String? = chosenPresetId) {
         selectionJob?.cancel()
         val version = ++requestVersion
-        style = selected
         starting = true
         val previous = c.queue.source.value
         val current = c.player.currentSong.value.takeIf { previous.isMyWave }
@@ -234,7 +233,9 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                         c.recFeedback.served(nextSongs.map { it.id })
                         c.player.playQueue(nextSongs, 0, next)
                     }
-                    c.settings.setStreamStyle(selected)
+                    style = selected
+                    chosenPresetId = scenarioId
+                    c.settings.setStreamStyle(selected, scenarioId)
                 }
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) {
@@ -457,15 +458,15 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 items(savedPresets, key = { it.id }) { preset ->
                     PrismScenarioDisc(label = preset.name, icon = PrismIcons.Bookmark,
                         selected = activeSaved?.id == preset.id,
-                        onClick = { chosenPresetId = preset.id; start(MyWave.style(preset.origin)) },
+                        onClick = { start(MyWave.style(preset.origin), preset.id) },
                         modifier = Modifier.testTag("wave:custom:${preset.id}"))
                 }
                 items(scenarioOrder, key = { it.id }) { scenario ->
                     PrismScenarioDisc(
                         label = scenario.label,
                         icon = PrismIcons.waveScenario(scenario.glyph),
-                        selected = activeSaved == null && style.copy(russianPercent = -1) == scenario.style,
-                        onClick = { chosenPresetId = scenario.id; start(scenario.style.copy(russianPercent = style.russianPercent)) },
+                        selected = activeSaved == null && (chosenPresetId == scenario.id || (chosenPresetId == null && style == WaveScenarios.resolve(scenario, settings.streamScenarioStyles, style.russianPercent))),
+                        onClick = { start(WaveScenarios.resolve(scenario, settings.streamScenarioStyles, style.russianPercent), scenario.id) },
                         modifier = Modifier.testTag("wave:scenario:${scenario.id}"))
                 }
             }
@@ -487,14 +488,16 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         fun applySettings() {
             val initial = baseline ?: return
             val final = editor ?: return
-            c.settings.applyStreamTuning(final.themeColors.takeIf { it != initial.themeColors }, initial.presets, final.presets)
-            chosenPresetId = final.presetId
+            c.settings.applyStreamTuning(final.themeColors.takeIf { it != initial.themeColors }, initial.presets, final.presets,
+                initial.scenarioStyles, final.scenarioStyles)
             if (final.presetId != null && initial.presets.none { it.id == final.presetId } && final.presets.any { it.id == final.presetId })
                 revealPresetId = final.presetId
             closeSettings()
-            if (final.style != style) {
-                if (c.queue.source.value.isMyWave) start(final.style)
-                else { style = final.style; c.settings.setStreamStyle(final.style) }
+            if (final.style != style && c.queue.source.value.isMyWave) start(final.style, final.presetId)
+            else {
+                style = final.style
+                chosenPresetId = final.presetId
+                c.settings.setStreamStyle(final.style, final.presetId)
             }
         }
         ModalBottomSheet(onDismissRequest = { closeSettings() },

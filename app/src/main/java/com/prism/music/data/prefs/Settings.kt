@@ -1917,6 +1917,8 @@ data class AppSettings(
     val streamRussianPercent: Int = -1,
     val streamPresets: List<SavedWavePreset> = emptyList(),
     val streamStyleOrigin: String? = null,
+    val streamScenarioId: String? = null,
+    val streamScenarioStyles: Map<String, String> = emptyMap(),
     /**
      * Performance mode (1.7.6): Prism drawn as lightly as 1.6 was, for slower phones ([effective]). Every feature stays;
      * only the effects that cost the phone the most each frame are paused, and the listener's own choices come back
@@ -2324,6 +2326,8 @@ class SettingsRepository(
         val streamRussianPercent = intPreferencesKey("stream_russian_percent")
         val streamPresets = stringPreferencesKey("stream_presets")
         val streamStyleOrigin = stringPreferencesKey("stream_style_origin")
+        val streamScenarioId = stringPreferencesKey("stream_scenario_id")
+        val streamScenarioStyles = stringPreferencesKey("stream_scenario_styles")
         // 1.7.8: the player's look ([ViewLook]) and Prism's behaviour ([BehaviorPrefs]).
         val panelPlayer = stringPreferencesKey("panel_player")
         val queueHeadings = booleanPreferencesKey("queue_headings")
@@ -2527,7 +2531,7 @@ class SettingsRepository(
         /** Settings that aren't part of a Look: what you listen to and how, your account, Home's contents. */
         val notLook: Set<String> by lazy {
             setOf(
-                "stream_presets", "stream_style_origin", "performance_mode", "performance_offered", "share_youtube_links", "mix_keep_albums",
+                "stream_presets", "stream_style_origin", "stream_scenario_id", "stream_scenario_styles", "performance_mode", "performance_offered", "share_youtube_links", "mix_keep_albums",
                 "player_menu_hidden", "player_menu_tiles",
                 "lyrics_file_words", "lyrics_file_translation",
                 "merge_liked_videos", "volume_control", "app_volume", "speed_dial_youtube_only", "swipe_tabs",
@@ -3108,6 +3112,8 @@ class SettingsRepository(
             streamRussianPercent = (p[K.streamRussianPercent] ?: d.streamRussianPercent).coerceIn(-1, 100),
             streamPresets = readStreamPresets(p[K.streamPresets]),
             streamStyleOrigin = p[K.streamStyleOrigin]?.takeIf(com.prism.music.data.foryou.MyWave::isOrigin),
+            streamScenarioId = p[K.streamScenarioId]?.takeIf { id -> com.prism.music.data.foryou.WaveScenarios.all.any { it.id == id } || readStreamPresets(p[K.streamPresets]).any { it.id == id } },
+            streamScenarioStyles = readStreamScenarioStyles(p[K.streamScenarioStyles]),
             performanceMode = p[K.performanceMode] ?: d.performanceMode,
             performanceOffered = p[K.performanceOffered] ?: d.performanceOffered,
         )
@@ -3950,9 +3956,16 @@ class SettingsRepository(
     fun setReplayThemeColors(v: Boolean) = edit { it[K.replayThemeColors] = v }
     fun setStreamThemeColors(v: Boolean) = edit { it[K.streamThemeColors] = v }
     fun setStreamRussianPercent(v: Int) = edit { it[K.streamRussianPercent] = v.coerceIn(-1, 100) }
-    internal fun setStreamStyle(style: com.prism.music.data.foryou.MyWave.Style) = edit {
+    internal fun setStreamStyle(style: com.prism.music.data.foryou.MyWave.Style, scenarioId: String? = null) = edit {
         it[K.streamStyleOrigin] = style.origin
         it[K.streamRussianPercent] = style.russianPercent.coerceIn(-1, 100)
+        if (scenarioId == null) it.remove(K.streamScenarioId) else it[K.streamScenarioId] = scenarioId
+    }
+
+    private fun readStreamScenarioStyles(raw: String?): Map<String, String> {
+        val ids = com.prism.music.data.foryou.WaveScenarios.all.mapTo(hashSetOf()) { it.id }
+        return raw?.let { runCatching { json.decodeFromString<Map<String, String>>(it) }.getOrNull() }
+            .orEmpty().filter { (id, origin) -> id in ids && com.prism.music.data.foryou.MyWave.isOrigin(origin) }
     }
 
     private fun readStreamPresets(raw: String?): List<SavedWavePreset> =
@@ -3972,14 +3985,22 @@ class SettingsRepository(
     }
 
     /** Merge only this tuning session's additions/deletions, preserving unrelated concurrent edits. */
-    internal fun applyStreamTuning(themeColors: Boolean?, initial: List<SavedWavePreset>, updated: List<SavedWavePreset>) = edit { p ->
+    internal fun applyStreamTuning(themeColors: Boolean?, initial: List<SavedWavePreset>, updated: List<SavedWavePreset>,
+        initialScenarios: Map<String, String> = emptyMap(), updatedScenarios: Map<String, String> = initialScenarios) = edit { p ->
         if (themeColors != null) p[K.streamThemeColors] = themeColors
-        val removed = initial.map { it.id }.toSet() - updated.map { it.id }.toSet()
-        val originalIds = initial.map { it.id }.toSet()
-        val additions = updated.filterNot { it.id in originalIds }
-        if (removed.isNotEmpty() || additions.isNotEmpty()) {
+        val originals = initial.associateBy { it.id }
+        val removed = originals.keys - updated.map { it.id }.toSet()
+        val changed = updated.filter { originals[it.id] != it }.associateBy { it.id }
+        if (removed.isNotEmpty() || changed.isNotEmpty()) {
             val current = readStreamPresets(p[K.streamPresets]).filterNot { it.id in removed }
-            p[K.streamPresets] = json.encodeToString<List<SavedWavePreset>>((current + additions).distinctBy { it.id })
+            val merged = current.map { changed[it.id] ?: it } + changed.values.filter { item -> current.none { it.id == item.id } }
+            p[K.streamPresets] = json.encodeToString<List<SavedWavePreset>>(merged.distinctBy { it.id })
+        }
+        val changedScenarios = updatedScenarios.filter { (id, origin) -> initialScenarios[id] != origin }
+        val removedScenarios = initialScenarios.keys - updatedScenarios.keys
+        if (changedScenarios.isNotEmpty() || removedScenarios.isNotEmpty()) {
+            val merged = (readStreamScenarioStyles(p[K.streamScenarioStyles]) - removedScenarios) + changedScenarios
+            p[K.streamScenarioStyles] = json.encodeToString<Map<String, String>>(merged)
         }
     }
 

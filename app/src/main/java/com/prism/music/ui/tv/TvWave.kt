@@ -47,7 +47,7 @@ internal fun TvWavePlace(nav: TvNav) {
     val appSettings by c.settings.flow.collectAsState()
     val savedPresets = appSettings.streamPresets
     var namingPreset by rememberSaveable { mutableStateOf(false) }
-    var chosenPresetId by rememberSaveable { mutableStateOf<String?>(null) }
+    var chosenPresetId by rememberSaveable { mutableStateOf(appSettings.streamScenarioId) }
     val scenarioOrder = remember {
         val clock = java.util.Calendar.getInstance()
         WaveScenarios.stripOrder(clock.get(java.util.Calendar.HOUR_OF_DAY),
@@ -61,7 +61,7 @@ internal fun TvWavePlace(nav: TvNav) {
     val title = tr(R.string.stream)
     fun restored() = MyWave.restore(source.originId, appSettings.streamStyleOrigin, appSettings.streamRussianPercent)
     var style by remember(source.originId) { mutableStateOf(restored()) }
-    var editor by remember { mutableStateOf(WaveSettingsDraft(style, appSettings.streamThemeColors, savedPresets, chosenPresetId)) }
+    var editor by remember { mutableStateOf(WaveSettingsDraft(style, appSettings.streamThemeColors, savedPresets, chosenPresetId, appSettings.streamScenarioStyles)) }
     var baseline by remember { mutableStateOf(editor) }
     val draft = editor.style
     val activeSaved = savedPresets.firstOrNull { it.id == chosenPresetId && it.origin == style.origin }
@@ -75,7 +75,7 @@ internal fun TvWavePlace(nav: TvNav) {
     val memory = LocalTvFocusMemory.current
     fun toggleTuning(open: Boolean) {
         if (open) {
-            baseline = WaveSettingsDraft(style, appSettings.streamThemeColors, savedPresets, chosenPresetId)
+            baseline = WaveSettingsDraft(style, appSettings.streamThemeColors, savedPresets, chosenPresetId, appSettings.streamScenarioStyles)
             editor = baseline
         }
         namingPreset = false
@@ -97,7 +97,7 @@ internal fun TvWavePlace(nav: TvNav) {
         catch (e: CancellationException) { throw e }
         catch (_: Exception) { }
     }
-    fun start(selected: MyWave.Style = style) {
+    fun start(selected: MyWave.Style = style, scenarioId: String? = chosenPresetId) {
         job?.cancel()
         val version = ++request
         val old = c.queue.source.value
@@ -126,7 +126,8 @@ internal fun TvWavePlace(nav: TvNav) {
                         c.player.playQueue(picks, 0, next)
                     }
                     style = selected
-                    c.settings.setStreamStyle(selected)
+                    chosenPresetId = scenarioId
+                    c.settings.setStreamStyle(selected, scenarioId)
                 }
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) {
@@ -201,12 +202,14 @@ internal fun TvWavePlace(nav: TvNav) {
                         TvButton(tr(R.string.prism_stream_cancel), { toggleTuning(false) }, Modifier.weight(1f).tvItem("tv_wave/cancel"))
                         TvButton(tr(R.string.prism_stream_done), {
                             val final = editor
-                            c.settings.applyStreamTuning(final.themeColors.takeIf { it != baseline.themeColors }, baseline.presets, final.presets)
-                            chosenPresetId = final.presetId
+                            c.settings.applyStreamTuning(final.themeColors.takeIf { it != baseline.themeColors }, baseline.presets, final.presets,
+                                baseline.scenarioStyles, final.scenarioStyles)
                             toggleTuning(false)
-                            if (final.style != style) {
-                                if (c.queue.source.value.isMyWave) start(final.style)
-                                else { style = final.style; c.settings.setStreamStyle(final.style) }
+                            if (final.style != style && c.queue.source.value.isMyWave) start(final.style, final.presetId)
+                            else {
+                                style = final.style
+                                chosenPresetId = final.presetId
+                                c.settings.setStreamStyle(final.style, final.presetId)
                             }
                         }, Modifier.weight(1f).tvItem("tv_wave/apply"), primary = true, icon = PrismIcons.Check)
                     }
@@ -243,7 +246,7 @@ internal fun TvWavePlace(nav: TvNav) {
                         TvButton(preset.label,
                             { editor = editor.choose(preset) },
                             Modifier.fillMaxWidth().tvItem("tv_wave/preset/${preset.id}"),
-                            primary = draft.copy(russianPercent = -1) == preset.style, icon = PrismIcons.waveScenario(preset.glyph))
+                            primary = editor.presetId == preset.id || (editor.presetId == null && draft == WaveScenarios.resolve(preset, editor.scenarioStyles, draft.russianPercent)), icon = PrismIcons.waveScenario(preset.glyph))
                     }
                     if (pageCount > 1) TvButton(tr(R.string.prism_stream_more_2), { page = (visiblePage + 1) % pageCount },
                         Modifier.tvItem("tv_wave/more"))
@@ -296,7 +299,8 @@ internal fun TvWavePlace(nav: TvNav) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     TvScenarioDisc(tr(R.string.prism_stream_tune), PrismIcons.Customize, selected = false,
                         onClick = { toggleTuning(true) }, modifier = Modifier.tvItem("tv_wave/tune"))
-                    val active = WaveScenarios.all.firstOrNull { it.style == style.copy(russianPercent = -1) }
+                    val active = WaveScenarios.all.firstOrNull { it.id == chosenPresetId }
+                        ?: WaveScenarios.all.firstOrNull { chosenPresetId == null && style == WaveScenarios.resolve(it, appSettings.streamScenarioStyles, style.russianPercent) }
                     Row(Modifier.weight(1f).scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward })
                         .horizontalScroll(scenarioScroll).padding(vertical = 8.dp, horizontal = 14.dp)
                         .rememberedFocus().focusGroup(),
@@ -304,13 +308,13 @@ internal fun TvWavePlace(nav: TvNav) {
                         savedPresets.forEach { preset ->
                             key(preset.id) {
                                 TvScenarioDisc(preset.name, PrismIcons.Bookmark, activeSaved?.id == preset.id,
-                                    { chosenPresetId = preset.id; start(MyWave.style(preset.origin)) }, Modifier.tvItem("tv_wave/custom/${preset.id}"))
+                                    { start(MyWave.style(preset.origin), preset.id) }, Modifier.tvItem("tv_wave/custom/${preset.id}"))
                             }
                         }
                         scenarioOrder.forEach { preset ->
                             TvScenarioDisc(label = preset.label,
                                 icon = PrismIcons.waveScenario(preset.glyph), selected = activeSaved == null && active?.id == preset.id,
-                                onClick = { chosenPresetId = preset.id; start(preset.style.copy(russianPercent = style.russianPercent)) },
+                                onClick = { start(WaveScenarios.resolve(preset, appSettings.streamScenarioStyles, style.russianPercent), preset.id) },
                                 modifier = Modifier.tvItem("tv_wave/quick/${preset.id}"))
                         }
                     }
