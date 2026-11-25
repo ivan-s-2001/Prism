@@ -164,4 +164,8 @@
     <string name="prism_yandex_seek_failed">Could not seek on Yandex Station</string>
     <string name="prism_yandex_live_device">%1$s · Live</string>
     <string name="prism_replay_whole_hours">%1$,d h</string>
+    <string name="prism_stream_share_percent">%1$d%%</string>
+    <string name="prism_stream_decrease_share">Less: %1$s</string>
+    <string name="prism_stream_increase_share">More: %1$s</string>
+    <string name="prism_stream_advanced">More settings</string>
 </resources>

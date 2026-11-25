@@ -24,7 +24,7 @@
     <string name="prism_stream_all">Всё</string>
     <string name="prism_stream_any">Любое</string>
     <string name="prism_stream_any_2">Любая</string>
-    <string name="prism_stream_approximate_title_language_balance_the_actual_mix_may_vary_when_matchi">Приблизительное соотношение по языку названий. При нехватке треков баланс может отличаться.</string>
+    <string name="prism_stream_approximate_title_language_balance_the_actual_mix_may_vary_when_matchi">Язык определяется по названию трека. Соотношение приблизительное.</string>
     <string name="prism_stream_auto">Авто</string>
     <string name="prism_stream_balance">Баланс</string>
     <string name="prism_stream_based_on_artist_top_songs_when_available">По топ-трекам исполнителей, если доступны.</string>
@@ -36,7 +36,7 @@
     <string name="prism_stream_deep_cuts">Редкое</string>
     <string name="prism_stream_delete">Удалить %1$s</string>
     <string name="prism_stream_discoveries">Открытия</string>
-    <string name="prism_stream_discoveries_are_recordings_outside_prism_s_known_history_offline_propo">Открытия — записи вне известной Prism истории. Офлайн пропорция зависит от скачанной музыки.</string>
+    <string name="prism_stream_discoveries_are_recordings_outside_prism_s_known_history_offline_propo">Баланс любимой музыки и новых треков. Без сети — по скачанной музыке.</string>
     <string name="prism_stream_discovery_mix">Характер потока</string>
     <string name="prism_stream_done">Готово</string>
     <string name="prism_stream_energetic">Бодрое</string>
@@ -50,7 +50,7 @@
     <string name="prism_stream_less">Меньше</string>
     <string name="prism_stream_like">Нравится</string>
     <string name="prism_stream_liked">Лайки</string>
-    <string name="prism_stream_liked_songs">Лайки</string>
+    <string name="prism_stream_liked_songs">Любимое</string>
     <string name="prism_stream_low">Низкое</string>
     <string name="prism_stream_maximum">Максимум</string>
     <string name="prism_stream_medium">Среднее</string>
@@ -101,7 +101,7 @@
     <string name="prism_stream_updating_your_mix">Обновляем подбор</string>
     <string name="prism_stream_uses_measured_tempo_and_loudness_when_available">Темп и громкость учитываются, если измерены.</string>
     <string name="prism_stream_variety">Разнообразие</string>
-    <string name="prism_stream_variety_of_artists_and_recordings">Уровень разнообразия исполнителей и записей.</string>
+    <string name="prism_stream_variety_of_artists_and_recordings">Больше разнообразия — больше разных исполнителей.</string>
     <string name="prism_stream_waking_up">Просыпаюсь</string>
     <string name="prism_stream_workout">Тренировка</string>
     <string name="prism_yandex_account_changed_preview_the_library_again">Аккаунт изменился. Проверьте медиатеку заново.</string>
@@ -164,4 +164,8 @@
     <string name="prism_yandex_seek_failed">Не удалось перемотать трек на Станции</string>
     <string name="prism_yandex_live_device">%1$s · Эфир</string>
     <string name="prism_replay_whole_hours">%1$,d ч</string>
+    <string name="prism_stream_share_percent">%1$d%%</string>
+    <string name="prism_stream_decrease_share">Меньше: %1$s</string>
+    <string name="prism_stream_increase_share">Больше: %1$s</string>
+    <string name="prism_stream_advanced">Дополнительно</string>
 </resources>

@@ -12,6 +12,9 @@ import com.prism.music.ui.components.PrismChip
 import com.prism.music.ui.components.PrismScenarioDisc
 import com.prism.music.ui.components.scenarioEdgeFade
 import com.prism.music.ui.components.WavePresetNameDialog
+import com.prism.music.ui.components.WaveTuningScale
+import com.prism.music.ui.components.WaveScaleLabels
+import com.prism.music.ui.components.WaveScaleRail
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -471,9 +474,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val editing = editor
     if (settingsOpen && editing != null) {
         val draftStyle = editing.style
-        val diversity = draftStyle.diversity.toFloat()
-        val discovery = draftStyle.discoveryPercent.toFloat()
-        val russian = draftStyle.russianPercent.takeIf { it >= 0 }?.toFloat() ?: 50f
         fun change(transform: (WaveSettingsDraft) -> WaveSettingsDraft) { editor = editor?.let(transform) }
         fun applySettings() {
             val initial = baseline ?: return
@@ -491,14 +491,53 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         ModalBottomSheet(onDismissRequest = { closeSettings() },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = scheme.surfaceContainerHigh) {
-            Column(Modifier.fillMaxWidth().heightIn(max = 640.dp).padding(horizontal = 20.dp).navigationBarsPadding().imePadding()) {
+            Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f).padding(horizontal = 20.dp).navigationBarsPadding().imePadding()) {
                 Row(Modifier.fillMaxWidth().padding(bottom = 18.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(tr(R.string.prism_stream_tune_your_stream), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    PrismChip(selected = false, onClick = { change { it.reset() } }, label = tr(R.string.prism_stream_reset), icon = PrismIcons.Refresh, modifier = Modifier.height(44.dp))
+                    RoundAction(PrismIcons.Refresh, tr(R.string.prism_stream_reset)) { change { it.reset() } }
                 }
-                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                var advanced by rememberSaveable { mutableStateOf(false) }
+                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(bottom = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(22.dp)) {
+                    WaveScale(WaveTuningScale.DISCOVERY, draftStyle, "wave:discovery-percent") { value ->
+                        change { WaveTuningScale.DISCOVERY.change(it, value) }
+                    }
+                    WaveScale(WaveTuningScale.LANGUAGE, draftStyle, "wave:language-percent") { value ->
+                        change { WaveTuningScale.LANGUAGE.change(it, value) }
+                    }
+                    WaveScale(WaveTuningScale.DIVERSITY, draftStyle, "wave:diversity-percent") { value ->
+                        change { WaveTuningScale.DIVERSITY.change(it, value) }
+                    }
+                    HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.65f))
+                    WaveChoices(tr(R.string.prism_stream_mood), MyWave.Mood.entries, draftStyle.mood, ::moodName) { value -> change { it.tune(it.style.copy(mood = value)) } }
+                    WaveChoices(tr(R.string.prism_stream_activity), MyWave.Activity.entries, draftStyle.activity, ::activityName) { value -> change { it.tune(it.style.copy(activity = value)) } }
+
+                    Row(Modifier.fillMaxWidth().clip(com.prism.music.ui.theme.LocalUi.current.shape(12.dp))
+                        .clickable { advanced = !advanced }.padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(tr(R.string.prism_stream_advanced), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                        Icon(if (advanced) PrismIcons.ChevronUp else PrismIcons.ChevronDown, null, Modifier.size(20.dp))
+                    }
+                    if (advanced) {
+                    WaveChoices(tr(R.string.prism_stream_popularity), MyWave.Depth.entries, draftStyle.depth, ::depthName) { value -> change { it.tune(it.style.copy(depth = value)) } }
+                    Text(tr(R.string.prism_stream_player_card_backdrop), style = MaterialTheme.typography.titleSmall)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        PrismChip(selected = !editing.themeColors,
+                            onClick = { change { it.copy(themeColors = false) } },
+                            modifier = Modifier.weight(1f).height(44.dp).testTag("stream:color:artwork"),
+                            label = tr(R.string.prism_stream_track_artwork))
+                        PrismChip(selected = editing.themeColors,
+                            onClick = { change { it.copy(themeColors = true) } },
+                            modifier = Modifier.weight(1f).height(44.dp).testTag("stream:color:theme"),
+                            label = tr(R.string.prism_stream_prism_theme))
+                    }
+
+                        if (draftStyle.mood != MyWave.Mood.ANY || draftStyle.activity != MyWave.Activity.ANY)
+                            Text(tr(R.string.prism_stream_uses_measured_tempo_and_loudness_when_available),
+                                color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    }
+                    HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.65f))
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(tr(R.string.prism_stream_my_presets), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
                         PrismChip(selected = false, onClick = { namingPreset = true }, icon = PrismIcons.Add,
@@ -516,67 +555,18 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                             }
                         }
                     }
-                    HorizontalDivider(color = scheme.outlineVariant)
-                    Text(tr(R.string.prism_stream_player_card_backdrop), style = MaterialTheme.typography.titleSmall)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        PrismChip(selected = !editing.themeColors,
-                            onClick = { change { it.copy(themeColors = false) } },
-                            modifier = Modifier.weight(1f).height(44.dp).testTag("stream:color:artwork"),
-                            label = tr(R.string.prism_stream_track_artwork))
-                        PrismChip(selected = editing.themeColors,
-                            onClick = { change { it.copy(themeColors = true) } },
-                            modifier = Modifier.weight(1f).height(44.dp).testTag("stream:color:theme"),
-                            label = tr(R.string.prism_stream_prism_theme))
-                    }
-                    WaveChoices(tr(R.string.prism_stream_activity), MyWave.Activity.entries, draftStyle.activity, ::activityName) { value -> change { it.tune(it.style.copy(activity = value)) } }
-                    WaveScale(
-                        title = tr(R.string.prism_stream_discovery_mix),
-                        value = discovery, onValueChange = { percent -> change { it.discovery(percent) } },
-                        left = tr(R.string.prism_stream_liked_songs), right = tr(R.string.prism_stream_discoveries),
-                        choices = listOf(0 to tr(R.string.prism_stream_liked), 50 to tr(R.string.prism_stream_balance),
-                            70 to tr(R.string.prism_stream_for_me), 100 to tr(R.string.prism_stream_new)),
-                        selectedChoice = discovery.toInt(), step = 5, tag = "wave:discovery-percent",
-                        detail = tr(R.string.prism_stream_discoveries_are_recordings_outside_prism_s_known_history_offline_propo)
-                    )
-                    HorizontalDivider(color = scheme.outlineVariant)
-                    WaveScale(
-                        title = tr(R.string.prism_stream_music_language),
-                        value = russian, onValueChange = { percent -> change { it.tune(it.style.copy(russianPercent = percent)) } },
-                        left = tr(R.string.prism_stream_foreign), right = tr(R.string.prism_stream_russian),
-                        automaticLabel = tr(R.string.prism_stream_auto).takeIf { draftStyle.russianPercent < 0 },
-                        choices = listOf(-1 to tr(R.string.prism_stream_auto), 0 to tr(R.string.prism_stream_foreign),
-                            50 to tr(R.string.prism_stream_balance), 100 to tr(R.string.prism_stream_russian)),
-                        selectedChoice = if (draftStyle.russianPercent < 0) -1 else russian.toInt(),
-                        step = 5, tag = "wave:language-percent",
-                        detail = tr(R.string.prism_stream_approximate_title_language_balance_the_actual_mix_may_vary_when_matchi)
-                    )
-                    HorizontalDivider(color = scheme.outlineVariant)
-                    WaveChoices(tr(R.string.prism_stream_mood), MyWave.Mood.entries, draftStyle.mood, ::moodName) { value -> change { it.tune(it.style.copy(mood = value)) } }
-                    WaveChoices(tr(R.string.prism_stream_popularity), MyWave.Depth.entries, draftStyle.depth, ::depthName) { value -> change { it.tune(it.style.copy(depth = value)) } }
-                    WaveScale(
-                        title = tr(R.string.prism_stream_variety),
-                        value = diversity, onValueChange = { percent -> change { it.tune(it.style.copy(diversity = percent)) } },
-                        left = tr(R.string.prism_stream_less), right = tr(R.string.prism_stream_more),
-                        ratio = false,
-                        choices = listOf(0 to tr(R.string.prism_stream_low), 50 to tr(R.string.prism_stream_medium),
-                            70 to tr(R.string.prism_stream_high), 100 to tr(R.string.prism_stream_maximum)),
-                        selectedChoice = diversity.toInt(), step = 10, tag = "wave:diversity-percent",
-                        detail = tr(R.string.prism_stream_variety_of_artists_and_recordings)
-                    )
-                    if (draftStyle.mood != MyWave.Mood.ANY || draftStyle.activity != MyWave.Activity.ANY)
-                        Text(tr(R.string.prism_stream_uses_measured_tempo_and_loudness_when_available),
-                            color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                    if (draftStyle.depth != MyWave.Depth.ANY)
-                        Text(tr(R.string.prism_stream_based_on_artist_top_songs_when_available),
-                            color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+
                 }
-                Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(tr(R.string.prism_stream_changes_apply_after_confirmation),
-                        style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        PrismChip(selected = false, onClick = { closeSettings() }, label = tr(R.string.prism_stream_cancel), modifier = Modifier.weight(1f).height(48.dp))
-                        PrismChip(selected = true, onClick = { applySettings() }, label = tr(R.string.prism_stream_done),
-                            icon = PrismIcons.Check, modifier = Modifier.weight(1f).height(48.dp).testTag("wave:settings:done"))
+                Row(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TextButton(onClick = { closeSettings() }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                        Text(tr(R.string.prism_stream_cancel))
+                    }
+                    Button(onClick = { applySettings() }, shape = LocalUi.current.shape(24.dp),
+                        modifier = Modifier.weight(1.6f).heightIn(min = 48.dp).testTag("wave:settings:done")) {
+                        Icon(PrismIcons.Check, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(tr(R.string.prism_stream_done))
                     }
                 }
             }
@@ -591,56 +581,38 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
 
 /** Shared layout for all numeric Stream controls. Ratio summaries follow the
  * same left-to-right order as the slider; variety is a level, not a track quota. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun WaveScale(
-    title: String, value: Float, onValueChange: (Int) -> Unit,
-    left: String, right: String, ratio: Boolean = true, automaticLabel: String? = null,
-    choices: List<Pair<Int, String>>, selectedChoice: Int, step: Int, tag: String,
-    detail: String,
-) {
+private fun WaveScale(scale: WaveTuningScale, style: MyWave.Style, tag: String, change: (Int) -> Unit) {
     val scheme = MaterialTheme.colorScheme
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    val value = scale.value(style)
+    val automatic = scale.automatic && value < 0
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            if (automaticLabel != null)
-                Text(automaticLabel, style = MaterialTheme.typography.titleMedium, color = scheme.primary)
+            Text(tr(scale.title), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            if (scale.automatic) PrismChip(selected = automatic, label = tr(R.string.prism_stream_auto),
+                onClick = { change(if (automatic) 50 else -1) }, modifier = Modifier.height(36.dp))
+            else if (!scale.ratio) Text(scale.level(value), style = MaterialTheme.typography.labelLarge, color = scheme.primary)
         }
-        val percent = value.toInt().coerceIn(0, 100)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.Bottom) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(left, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
-                if (ratio && automaticLabel == null)
-                    Text("${100 - percent}%", style = MaterialTheme.typography.headlineSmall, color = scheme.onSurface)
-            }
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(right, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.End)
-                if (ratio && automaticLabel == null)
-                    Text("$percent%", style = MaterialTheme.typography.headlineSmall, color = scheme.onSurface)
-            }
-        }
-        Slider(value = value, onValueChange = { next ->
-            onValueChange((kotlin.math.round(next / step).toInt() * step).coerceIn(0, 100))
-        }, valueRange = 0f..100f, steps = 100 / step - 1,
-            colors = if (ratio) SliderDefaults.colors(
-                activeTrackColor = scheme.onSurfaceVariant.copy(alpha = 0.28f),
-                inactiveTrackColor = scheme.onSurfaceVariant.copy(alpha = 0.28f),
-                activeTickColor = scheme.onSurfaceVariant.copy(alpha = 0.35f),
-                inactiveTickColor = scheme.onSurfaceVariant.copy(alpha = 0.35f),
-                thumbColor = if (automaticLabel != null) scheme.onSurfaceVariant else scheme.primary
-            ) else SliderDefaults.colors(),
-            modifier = Modifier.fillMaxWidth().testTag(tag))
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 2.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            choices.forEach { (percent, label) ->
-                PrismChip(selected = selectedChoice == percent, label = label,
-                    modifier = Modifier.height(44.dp),
-                    onClick = { onValueChange(percent) })
-            }
-        }
-        Text(detail, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+        WaveScaleLabels(scale, value, scheme.primary, scheme.onSurfaceVariant,
+            MaterialTheme.typography.labelMedium, MaterialTheme.typography.titleMedium)
+        Slider(
+            value = scale.position(value).toFloat(),
+            onValueChange = { change(scale.fromPosition(it)) },
+            valueRange = 0f..100f, steps = 100 / scale.step - 1,
+            modifier = Modifier.fillMaxWidth().testTag(tag),
+            thumb = {
+                Box(Modifier.size(22.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(scheme.surface).padding(3.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(if (automatic) scheme.onSurfaceVariant else scheme.primary))
+            },
+            track = {
+                WaveScaleRail(scale, value, scheme.primary, scheme.onSurfaceVariant, scheme.surface)
+            },
+        )
+        if (scale.automatic) Text(tr(scale.detail), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
     }
 }
 

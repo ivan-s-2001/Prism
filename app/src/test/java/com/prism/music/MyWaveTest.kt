@@ -352,4 +352,23 @@ class MyWaveTest {
         assertEquals(listOf(fresh), batch)
         assertTrue(RadioTopUp.comingRound(listOf(refused, blocked), { null }, rules).isEmpty())
     }
+
+    @Test fun tuningRatiosUseLeftShareForDividerAndRoundTripToRightShare() {
+        val discovery = com.prism.music.ui.components.WaveTuningScale.DISCOVERY
+        val language = com.prism.music.ui.components.WaveTuningScale.LANGUAGE
+        val diversity = com.prism.music.ui.components.WaveTuningScale.DIVERSITY
+        for (scale in listOf(discovery, language)) {
+            assertEquals(70, scale.position(30))
+            assertEquals(30, scale.position(70))
+            assertEquals(30, scale.fromPosition(70f))
+            assertEquals(100, scale.fromPosition(0f))
+            assertEquals(0, scale.fromPosition(100f))
+            for (share in 0..100 step 5) {
+                assertEquals(share, scale.fromPosition(scale.position(share).toFloat()))
+            }
+        }
+        assertEquals(50, language.position(-1))
+        assertEquals(70, diversity.position(70))
+        assertEquals(70, diversity.fromPosition(70f))
+    }
 }

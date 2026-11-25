@@ -26,6 +26,9 @@ import com.prism.music.playback.QueueSource
 import com.prism.music.ui.components.Artwork
 import com.prism.music.ui.components.scenarioEdgeFade
 import com.prism.music.ui.components.WavePresetNameDialog
+import com.prism.music.ui.components.WaveTuningScale
+import com.prism.music.ui.components.WaveScaleLabels
+import com.prism.music.ui.components.WaveScaleRail
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.prism.music.ui.theme.LocalContainer
 import com.prism.music.ui.theme.PrismIcons
@@ -134,19 +137,15 @@ internal fun TvWavePlace(nav: TvNav) {
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(tr(R.string.prism_stream_tune_stream), style = MaterialTheme.typography.headlineMedium)
                     Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    TvWaveScale(tr(R.string.prism_stream_discovery_mix), draft.discoveryPercent,
-                        tr(R.string.prism_stream_liked_songs), tr(R.string.prism_stream_discoveries), "discovery",
-                        { editor = editor.discovery(it) })
-                    val language = draft.russianPercent.takeIf { it >= 0 } ?: 50
-                    TvWaveScale(tr(R.string.prism_stream_music_language), language,
-                        tr(R.string.prism_stream_foreign), tr(R.string.prism_stream_russian), "language",
-                        { editor = editor.tune(draft.copy(russianPercent = it)) },
-                        automaticLabel = tr(R.string.prism_stream_auto).takeIf { draft.russianPercent < 0 })
-                    TvButton(tr(R.string.prism_stream_auto), { editor = editor.tune(draft.copy(russianPercent = -1)) },
-                        Modifier.tvItem("tv_wave/auto"), primary = draft.russianPercent < 0)
-                    TvWaveScale(tr(R.string.prism_stream_variety), draft.diversity,
-                        tr(R.string.prism_stream_less), tr(R.string.prism_stream_more), "diversity",
-                        { editor = editor.tune(draft.copy(diversity = it)) }, step = 10, ratio = false)
+                    TvWaveScale(WaveTuningScale.DISCOVERY, draft, "discovery") {
+                        editor = WaveTuningScale.DISCOVERY.change(editor, it)
+                    }
+                    TvWaveScale(WaveTuningScale.LANGUAGE, draft, "language") {
+                        editor = WaveTuningScale.LANGUAGE.change(editor, it)
+                    }
+                    TvWaveScale(WaveTuningScale.DIVERSITY, draft, "diversity") {
+                        editor = WaveTuningScale.DIVERSITY.change(editor, it)
+                    }
                     TvWaveChoices(tr(R.string.prism_stream_mood), MyWave.Mood.entries, draft.mood, "mood",
                         { when (it) {
                             MyWave.Mood.ANY -> tr(R.string.prism_stream_any)
@@ -162,12 +161,24 @@ internal fun TvWavePlace(nav: TvNav) {
                             MyWave.Activity.TRAIN -> tr(R.string.prism_stream_workout)
                             MyWave.Activity.SLEEP -> tr(R.string.prism_stream_sleep)
                         } }, { editor = editor.tune(draft.copy(activity = it)) })
+                    var advanced by rememberSaveable { mutableStateOf(false) }
+                    TvButton(tr(R.string.prism_stream_advanced), { advanced = !advanced },
+                        Modifier.fillMaxWidth().tvItem("tv_wave/advanced"), icon = if (advanced) PrismIcons.ChevronUp else PrismIcons.ChevronDown)
+                    if (advanced) {
                     TvWaveChoices(tr(R.string.prism_stream_popularity), MyWave.Depth.entries, draft.depth, "depth",
                         { when (it) {
                             MyWave.Depth.ANY -> tr(R.string.prism_stream_all)
                             MyWave.Depth.HITS -> tr(R.string.prism_stream_hits)
                             MyWave.Depth.DEEP -> tr(R.string.prism_stream_deep_cuts)
                         } }, { editor = editor.tune(draft.copy(depth = it)) })
+                    Text(tr(R.string.prism_stream_player_card_backdrop), style = MaterialTheme.typography.titleSmall)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        TvButton(tr(R.string.prism_stream_track_artwork), { editor = editor.copy(themeColors = false) },
+                            Modifier.weight(1f).tvItem("tv_wave/artwork"), primary = !editor.themeColors)
+                        TvButton(tr(R.string.prism_stream_prism_theme), { editor = editor.copy(themeColors = true) },
+                            Modifier.weight(1f).tvItem("tv_wave/theme"), primary = editor.themeColors)
+                    }
+                    }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         TvButton(tr(R.string.prism_stream_save_preset), { namingPreset = true },
                             Modifier.weight(1f).tvItem("tv_wave/save"), icon = PrismIcons.Add)
@@ -175,8 +186,6 @@ internal fun TvWavePlace(nav: TvNav) {
                             Modifier.tvItem("tv_wave/reset"), icon = PrismIcons.Refresh)
                     }
                     }
-                    Text(tr(R.string.prism_stream_changes_apply_after_confirmation),
-                        style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         TvButton(tr(R.string.prism_stream_cancel), { toggleTuning(false) }, Modifier.weight(1f).tvItem("tv_wave/cancel"))
                         TvButton(tr(R.string.prism_stream_done), {
@@ -307,38 +316,36 @@ internal fun TvWavePlace(nav: TvNav) {
 
 /** Consistent, remote-friendly version of the phone's numeric tuning controls. */
 @Composable
-private fun TvWaveScale(title: String, value: Int, left: String, right: String,
-    tag: String, change: (Int) -> Unit, step: Int = 5, ratio: Boolean = true, automaticLabel: String? = null) {
+private fun TvWaveScale(scale: WaveTuningScale, style: MyWave.Style, tag: String, change: (Int) -> Unit) {
     val scheme = MaterialTheme.colorScheme
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            if (automaticLabel != null) Text(automaticLabel, style = MaterialTheme.typography.titleMedium, color = scheme.primary)
-        }
-        val percent = value.coerceIn(0, 100)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Bottom) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(left, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
-                if (ratio && automaticLabel == null) Text("${100 - percent}%", style = MaterialTheme.typography.titleMedium)
-            }
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(right, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.End)
-                if (ratio && automaticLabel == null) Text("$percent%", style = MaterialTheme.typography.titleMedium)
-            }
-        }
+    val value = scale.value(style)
+    val position = scale.position(value)
+    val automatic = scale.automatic && value < 0
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TvButton("−$step", { change((value - step).coerceIn(0, 100)) }, Modifier.tvItem("tv_wave/$tag/down", entry = tag == "discovery"))
-            androidx.compose.foundation.Canvas(Modifier.weight(1f).height(12.dp)) {
-                val y = size.height / 2
-                drawLine(scheme.onSurfaceVariant.copy(alpha = 0.25f), androidx.compose.ui.geometry.Offset(0f, y),
-                    androidx.compose.ui.geometry.Offset(size.width, y), strokeWidth = 4.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
-                if (!ratio) drawLine(scheme.primary, androidx.compose.ui.geometry.Offset(0f, y),
-                    androidx.compose.ui.geometry.Offset(size.width * value / 100f, y), strokeWidth = 4.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
-                drawCircle(if (automaticLabel != null) scheme.onSurfaceVariant else scheme.primary, radius = 5.dp.toPx(), center = androidx.compose.ui.geometry.Offset(size.width * value / 100f, y))
-            }
-            TvButton("+$step", { change((value + step).coerceIn(0, 100)) }, Modifier.tvItem("tv_wave/$tag/up"))
+            Text(tr(scale.title), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            if (scale.automatic) TvButton(tr(R.string.prism_stream_auto), { change(if (automatic) 50 else -1) },
+                Modifier.tvItem("tv_wave/auto"), primary = automatic)
+            else if (!scale.ratio) Text(scale.level(value), style = MaterialTheme.typography.labelLarge, color = scheme.primary)
         }
+        val adjustedLabel = tr(if (scale.ratio) scale.left else scale.title)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            TvIconButton(PrismIcons.Remove, tr(R.string.prism_stream_decrease_share, adjustedLabel),
+                { change(scale.fromPosition((position - scale.step).toFloat())) },
+                Modifier.tvItem("tv_wave/$tag/down", entry = tag == "discovery"))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                WaveScaleLabels(scale, value, scheme.primary, scheme.onSurfaceVariant,
+                    MaterialTheme.typography.labelMedium, MaterialTheme.typography.titleMedium)
+                WaveScaleRail(scale, value, scheme.primary, scheme.onSurfaceVariant, scheme.surface,
+                    showThumb = true)
+            }
+            TvIconButton(PrismIcons.Add, tr(R.string.prism_stream_increase_share, adjustedLabel),
+                { change(scale.fromPosition((position + scale.step).toFloat())) },
+                Modifier.tvItem("tv_wave/$tag/up"))
+        }
+        if (scale.automatic) Text(tr(scale.detail), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
     }
 }
 
