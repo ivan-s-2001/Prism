@@ -48,7 +48,11 @@ internal class StationSmokeSession(
     init {
         require(identity.deviceId == station.deviceId && identity.platform == station.platform)
     }
-    private val socket = GlagolSocket(station, identity.certificatePem, onState)
+    private val stopControl = StationStopControl()
+    private val socket = GlagolSocket(station, identity.certificatePem) { text ->
+        stopControl.onState(text)
+        onState(text)
+    }
     private var server: StationMp3Server? = null
 
     suspend fun ping() = send(GlagolProtocol.ping())
@@ -60,7 +64,9 @@ internal class StationSmokeSession(
         onDownloaded: (Long) -> Unit = {},
     ) {
         // A fresh path prevents reuse of the receiver's old HTTP state.
-        stop()
+        server?.close()
+        server = null
+        send(GlagolProtocol.stop())
         delay(150)
         val stream = StationMp3Server(phoneAddress, station.address, file, onDownloaded)
         server = stream
@@ -76,8 +82,9 @@ internal class StationSmokeSession(
     suspend fun volume(value: Double) = send(GlagolProtocol.volume(value))
 
     suspend fun stop() {
-        try { send(GlagolProtocol.stop()) }
-        finally { server?.close(); server = null }
+        server?.close()
+        server = null
+        stopControl.stop(socket, tokens.tokenFor(identity))
     }
 
     private suspend fun send(payload: JsonObject) {
