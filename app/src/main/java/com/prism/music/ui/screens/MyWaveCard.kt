@@ -5,8 +5,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import com.prism.music.ui.theme.GlassSurface
-import com.prism.music.ui.components.pane
-import com.prism.music.ui.components.quietFill
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -224,7 +222,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     // The artwork mode is a real player backdrop, not an extracted palette.
     // The player's own white ink stays stable as covers change.
     val accent = if (settings.streamThemeColors) lerp(scheme.primary, Color.White, if (scheme.primary.luminance() < 0.28f) 0.48f else 0f) else Color.White
-    val selectionColor = scheme.primaryContainer
     val blurred = rememberFullArtworkBlur(cover.takeUnless { settings.streamThemeColors }, settings.player.blur)
     var lastBlur by remember { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(cover, blurred, settings.streamThemeColors) {
@@ -276,20 +273,24 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
     @Composable fun Header() {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(title, style = MaterialTheme.typography.headlineMedium, color = scheme.onBackground, maxLines = 1)
-                Text(status, color = scheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                Text(status, color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+            }
+            IconButton(onClick = { if (onRetry != null && !wave) onRetry() else start() },
+                enabled = !starting, modifier = Modifier.testTag("home:my_wave:refresh")) {
+                Icon(PrismIcons.Refresh, l("Встряхнуть", "Refresh Stream"))
             }
             IconButton(onClick = { settingsOpen = true }, modifier = Modifier.testTag("home:my_wave:settings")) {
-                Icon(PrismIcons.Equalizer, l("Настроить поток", "Tune Stream"), tint = scheme.onSurface)
+                Icon(PrismIcons.Equalizer, l("Настроить поток", "Tune Stream"))
             }
         }
     }
     // One player card, not a decorative hero followed by a second mini player.
-    @Composable fun Hero(modifier: Modifier, compact: Boolean) {
+    @Composable fun Hero(modifier: Modifier) {
         // The surrounding route keeps Home's ScreenBackdrop. All media effects are clipped to this one panel.
-        GlassSurface(modifier.testTag("home:my_wave"), shape = ui.shape(28.dp),
-            onMedia = true, inPage = true, elevation = 8.dp) {
+        GlassSurface(modifier.testTag("home:my_wave"), shape = ui.shape(24.dp),
+            onMedia = true, inPage = true) {
             if (settings.streamThemeColors) ThemeBackdrop()
             else Crossfade(targetState = lastBlur, animationSpec = tween(fadeMs), label = "streamBackdrop",
                 modifier = Modifier.matchParentSize()) { image ->
@@ -320,45 +321,48 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                         })
                 }
             }
-            @Composable fun Metadata() {
-                Column(Modifier.fillMaxWidth().then(if (current != null) Modifier.clickable(onClick = onOpenPlayer) else Modifier)) {
-                    Text(current?.title ?: l("Музыка в твоём ритме", "Music in your rhythm"),
-                        style = playerTitleStyle(MaterialTheme.typography, settings), color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(current?.primaryArtist ?: l("Начни слушать", "Start listening"),
-                        style = playerArtistStyle(MaterialTheme.typography, settings), color = Color.White.copy(alpha = 0.78f),
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-            @Composable fun Feedback() {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    if (current != null) {
-                        val on = current.id in liked
-                        CircleGlyph(if (on) PrismIcons.HeartFilled else PrismIcons.Heart, l("Нравится", "Like"), active = on) {
-                            c.library.toggleLike(current)
-                        }
-                    } else IconButton(onClick = {}, enabled = false) {
-                        Icon(PrismIcons.Heart, l("Нравится", "Like"), tint = Color.White.copy(alpha = 0.3f))
-                    }
-                    CircleGlyph(PrismIcons.Refresh, l("Встряхнуть", "Refresh Stream"),
-                        modifier = Modifier.testTag("home:my_wave:refresh")) {
-                        if (!starting) { if (onRetry != null && !wave) onRetry() else start() }
-                    }
-                    if (current != null) {
-                        val on = current.id in disliked
-                        CircleGlyph(if (on) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown, l("Не моё", "Not for me"), active = on) {
-                            c.library.setDisliked(current, !on)
+            @Composable fun Reaction(like: Boolean) {
+                val item = current
+                val on = if (like) item?.id in liked else item?.id in disliked
+                val glyph = if (like) {
+                    if (on) PrismIcons.HeartFilled else PrismIcons.Heart
+                } else if (on) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown
+                val label = if (like) l("Нравится", "Like") else l("Не моё", "Not for me")
+                Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                    if (item == null) Icon(glyph, label, tint = Color.White.copy(alpha = 0.3f), modifier = Modifier.size(20.dp))
+                    else CircleGlyph(glyph, label, active = on) {
+                        if (like) c.library.toggleLike(item)
+                        else {
+                            c.library.setDisliked(item, !on)
                             if (!on && c.player.hasNext.value) c.player.next()
                         }
-                    } else IconButton(onClick = {}, enabled = false) {
-                        Icon(PrismIcons.ThumbDown, l("Не моё", "Not for me"), tint = Color.White.copy(alpha = 0.3f))
                     }
                 }
             }
-            @Composable fun Transport() {
+            @Composable fun Metadata(modifier: Modifier = Modifier, reactions: Boolean = false) {
+                Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f).then(if (current != null) Modifier.clickable(onClick = onOpenPlayer) else Modifier),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(current?.title ?: l("Музыка в твоём ритме", "Music in your rhythm"),
+                            style = playerTitleStyle(MaterialTheme.typography, settings), color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(current?.primaryArtist ?: l("Начни слушать", "Start listening"),
+                            style = playerArtistStyle(MaterialTheme.typography, settings), color = Color.White.copy(alpha = 0.72f),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (reactions) {
+                        Spacer(Modifier.width(4.dp))
+                        Reaction(true)
+                        Reaction(false)
+                    }
+                }
+            }
+            @Composable fun Transport(withReactions: Boolean) {
                 TransportRow(isPlaying = wave && playing, isLoading = pending && !wave,
                     previousEnabled = wave && hasPrevious, nextEnabled = wave && hasNext,
                     compact = true, showModes = false, playAction = { if (wave) c.player.togglePlay() else if (!starting) start() },
-                    playAccent = accent.takeIf { settings.streamThemeColors }, playTag = "home:my_wave:play")
+                    playAccent = accent.takeIf { settings.streamThemeColors }, playTag = "home:my_wave:play",
+                    leadingAction = if (withReactions) ({ Reaction(true) }) else null,
+                    trailingAction = if (withReactions) ({ Reaction(false) }) else null)
             }
             @Composable fun Progress() {
                 val id = current?.id
@@ -383,12 +387,13 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     }
                 }
             }
-            val tagline = activeScenario?.let { if (ru) it.ru else it.en } ?: l("Музыка в твоём ритме", "Music in your rhythm")
-            if (maxHeight < 380.dp) {
-                // Compact phone or landscape: square cover and title occupy one row, transport stays below.
-                Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(tagline, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.8f),
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // One composition: cover, metadata, scrubber, transport. Reactions share the
+            // native transport row rather than occupying another full row of buttons.
+            val inset = if (maxWidth < 340.dp) 12.dp else 16.dp
+            val sideBySide = maxHeight < 325.dp && maxWidth >= 340.dp
+            val withReactions = maxWidth - inset * 2 >= 296.dp
+            if (sideBySide) {
+                Column(Modifier.fillMaxSize().padding(inset), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         BoxWithConstraints(Modifier.weight(0.85f).fillMaxHeight(), contentAlignment = Alignment.Center) {
@@ -397,101 +402,66 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                         Box(Modifier.weight(1.15f)) { Metadata() }
                     }
                     Progress()
-                    Transport()
-                    Feedback()
+                    Transport(withReactions = true)
                 }
             } else {
-                Column(Modifier.fillMaxSize().padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(tagline, style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.85f),
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Column(Modifier.fillMaxSize().padding(inset), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                         CoverArt(Modifier.size(minOf(maxWidth, maxHeight)))
                     }
-                    Metadata()
+                    Metadata(reactions = !withReactions)
                     Progress()
-                    Transport()
-                    Feedback()
+                    Transport(withReactions)
                 }
+            }
+        }
+        }
+    }
+
+    @Composable fun Controls(compact: Boolean) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(l("Сценарии", "Scenarios"), style = MaterialTheme.typography.titleMedium,
+                    color = scheme.onBackground, modifier = Modifier.weight(1f))
+                TextButton(onClick = { scenariosOpen = true }) { Text(l("Все", "All")) }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val choices = (listOfNotNull(activeScenario) + quickScenarios).distinctBy { it.id }.take(if (compact) 2 else 3)
+                choices.forEach { scenario ->
+                    FilterChip(selected = style.copy(russianPercent = -1) == scenario.style,
+                        onClick = { start(scenario.style.copy(russianPercent = style.russianPercent)) },
+                        modifier = Modifier.weight(1f).testTag("wave:scenario:${scenario.id}"),
+                        label = { Text(if (ru) scenario.ru else scenario.en, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+                }
+            }
+            // Keep the controls themselves in the existing tuning sheet. The summary
+            // is the only extra entry on the main page, not another decorative card.
+            val language = if (style.russianPercent < 0) l("Язык: авто", "Language: auto")
+                else l("${style.russianPercent}% рус. · ${100 - style.russianPercent}% иностр.",
+                    "${style.russianPercent}% Russian · ${100 - style.russianPercent}% foreign")
+            Column(Modifier.fillMaxWidth().clickable { settingsOpen = true }.padding(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(l("${100 - style.discoveryPercent}% лайки · ${style.discoveryPercent}% открытия",
+                    "${100 - style.discoveryPercent}% liked · ${style.discoveryPercent}% discoveries"),
+                    style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1)
+                Text(language, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1)
             }
         }
     }
 
-    }
-    @Composable fun Controls(compact: Boolean) {
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(l("Сценарии", "Scenarios"), style = MaterialTheme.typography.titleMedium, color = scheme.onBackground, modifier = Modifier.weight(1f))
-                TextButton(onClick = { scenariosOpen = true }) { Text(l("Все", "All")) }
-            }
-            if (!compact) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(WaveScenarios.Group.DAY to l("День", "Day"), WaveScenarios.Group.ACTIVITY to l("Дела", "Activity"),
-                    WaveScenarios.Group.DISCOVERY to l("Вкус", "Taste")).forEach { (value, label) ->
-                    FilterChip(selected = group == value, onClick = { group = value }, modifier = Modifier.weight(1f),
-                        label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) })
-                }
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                quickScenarios.take(3).forEach { scenario ->
-                    Surface(onClick = { start(scenario.style.copy(russianPercent = style.russianPercent)) }, modifier = Modifier.weight(1f).height(if (compact) 60.dp else 80.dp)
-                        .testTag("wave:scenario:${scenario.id}"), shape = ui.shape(16.dp),
-                        color = if (style.copy(russianPercent = -1) == scenario.style) selectionColor else quietFill(scheme.surfaceContainerHigh),
-                        contentColor = if (style.copy(russianPercent = -1) == scenario.style) scheme.onPrimaryContainer else scheme.onSurface) {
-                        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.Center) {
-                            if (!compact) {
-                                val glyph = when (scenario.glyph) {
-                                    WaveScenarios.Glyph.SUN -> PrismIcons.Sun
-                                    WaveScenarios.Glyph.MOON -> PrismIcons.Moon
-                                    WaveScenarios.Glyph.CAR -> PrismIcons.Car
-                                    WaveScenarios.Glyph.WORK -> PrismIcons.Headphones
-                                    WaveScenarios.Glyph.ENERGY -> PrismIcons.Flame
-                                    WaveScenarios.Glyph.HEART -> PrismIcons.Heart
-                                    WaveScenarios.Glyph.STAR -> PrismIcons.Star
-                                    WaveScenarios.Glyph.DISCOVER -> PrismIcons.SmartShuffle
-                                    WaveScenarios.Glyph.RADIO -> PrismIcons.Equalizer
-                                }
-                                Icon(glyph, null, Modifier.size(20.dp), tint = scheme.primary)
-                                Spacer(Modifier.height(4.dp))
-                            }
-                            Text(if (ru) scenario.ru else scenario.en, style = MaterialTheme.typography.labelLarge,
-                                maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                }
-            }
-            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(ui.shape(16.dp)).pane(ui.shape(16.dp)).clickable { settingsOpen = true }
-                .padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(l("Настройки потока", "Stream settings"), style = MaterialTheme.typography.labelLarge, color = scheme.onSurface)
-                    Text(l("${100 - style.discoveryPercent}% лайки · ${style.discoveryPercent}% новое",
-                        "${100 - style.discoveryPercent}% liked · ${style.discoveryPercent}% new"),
-                        style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1)
-                    if (style.russianPercent >= 0) Text(l("${style.russianPercent}% русская · ${100 - style.russianPercent}% иностранная",
-                        "${style.russianPercent}% Russian · ${100 - style.russianPercent}% foreign"),
-                        style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, maxLines = 1)
-                }
-                Icon(PrismIcons.Equalizer, l("Настройки", "Settings"), tint = scheme.onSurface)
-            }
-        }
-    }
-    // The Stream route reserves navigation and system bars; no mini player or scroll container.
-    BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 6.dp)) {
-        val compact = maxHeight < 740.dp
+    // Same page inset and navigation as the rest of Prism. No nested scroll or mini-player.
+    BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
         val wide = maxWidth >= 600.dp || maxWidth > maxHeight * 1.25f
-        if (wide) {
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Header()
-                    Hero(Modifier.weight(1f).fillMaxWidth(), true)
+        val compact = maxWidth < 350.dp
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Header()
+            if (wide) {
+                Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Hero(Modifier.weight(1.55f).fillMaxHeight())
+                    Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) { Controls(false) }
                 }
-                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
-                    Controls(true)
-                }
-            }
-        } else {
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Header()
-                Hero(Modifier.weight(1f).fillMaxWidth(), compact)
+            } else {
+                Hero(Modifier.weight(1f).fillMaxWidth())
                 Controls(compact)
             }
         }
