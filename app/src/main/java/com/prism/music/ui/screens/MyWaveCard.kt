@@ -136,7 +136,11 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     var settingsOpen by remember { mutableStateOf(false) }
     var scenariosOpen by remember { mutableStateOf(false) }
     var group by remember { mutableStateOf(WaveScenarios.Group.DAY) }
-    var style by remember(source.originId) { mutableStateOf(MyWave.style(source.originId)) }
+    val settings = LocalAppSettings.current
+    fun restoredStyle(origin: String?) = MyWave.style(origin).let {
+        if (MyWave.isOrigin(origin)) it else it.copy(russianPercent = settings.streamRussianPercent)
+    }
+    var style by remember(source.originId) { mutableStateOf(restoredStyle(source.originId)) }
     val calendar = java.util.Calendar.getInstance()
     val dayScenarios = WaveScenarios.forDay(calendar.get(java.util.Calendar.HOUR_OF_DAY),
         calendar.get(java.util.Calendar.DAY_OF_WEEK) in listOf(java.util.Calendar.SATURDAY, java.util.Calendar.SUNDAY))
@@ -186,17 +190,18 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 val now = c.player.currentSong.value.takeIf { previous.isMyWave }
                 val nextSongs = songs.filter { candidate -> now == null || LocalRadio.sameSong(candidate) != LocalRadio.sameSong(now) }
                 if (nextSongs.isEmpty()) {
-                    style = MyWave.style(previous.originId)
+                    style = restoredStyle(previous.originId)
                     c.player.reportError(l("Недостаточно подходящих треков для выбранной пропорции. Измени процент или проверь подключение.", "Not enough tracks for the selected mix. Change the percentage or check your connection."))
                 } else {
                     val next = QueueSource(QueueKind.RADIO, title, seedId = nextSongs.first().id, originId = selected.origin)
                     c.recFeedback.served(nextSongs.map { it.id })
                     c.player.playQueue(nextSongs, 0, next)
+                    c.settings.setStreamRussianPercent(selected.russianPercent)
                 }
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) {
                 if (version == requestVersion && c.queue.source.value === previous) {
-                    style = MyWave.style(previous.originId)
+                    style = restoredStyle(previous.originId)
                     c.player.reportError(l("Не удалось обновить поток", "Could not update Stream"))
                 }
             } finally {
@@ -209,7 +214,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val pending = starting || waiting || (wave && buffering)
     val ui = LocalUi.current
     val scheme = MaterialTheme.colorScheme
-    val settings = LocalAppSettings.current
     val liked by c.library.likedIds.collectAsState()
     val disliked by c.library.dislikedIds.collectAsState()
     val hasNext by c.player.hasNext.collectAsState()
@@ -263,7 +267,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         !online -> l("Офлайн", "Offline")
         else -> l("Персональный поток", "Personal stream")
     }
-    val activeScenario = WaveScenarios.all.firstOrNull { it.style == style }
+    val activeScenario = WaveScenarios.all.firstOrNull { it.style == style.copy(russianPercent = -1) }
     val quickScenarios = when (group) {
         WaveScenarios.Group.DAY -> dayScenarios
         WaveScenarios.Group.ACTIVITY -> WaveScenarios.all.filter { it.group == group }
@@ -426,7 +430,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
 
     }
     @Composable fun Controls(compact: Boolean) {
-        Column(verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp)) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(l("Сценарии", "Scenarios"), style = MaterialTheme.typography.titleMedium, color = scheme.onBackground, modifier = Modifier.weight(1f))
                 TextButton(onClick = { scenariosOpen = true }) { Text(l("Все", "All")) }
@@ -438,12 +442,12 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                         label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) })
                 }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 quickScenarios.take(3).forEach { scenario ->
-                    Surface(onClick = { start(scenario.style) }, modifier = Modifier.weight(1f).height(if (compact) 60.dp else 82.dp)
+                    Surface(onClick = { start(scenario.style.copy(russianPercent = style.russianPercent)) }, modifier = Modifier.weight(1f).height(if (compact) 60.dp else 80.dp)
                         .testTag("wave:scenario:${scenario.id}"), shape = ui.shape(16.dp),
-                        color = if (style == scenario.style) selectionColor else quietFill(scheme.surfaceContainerHigh),
-                        contentColor = if (style == scenario.style) scheme.onPrimaryContainer else scheme.onSurface) {
+                        color = if (style.copy(russianPercent = -1) == scenario.style) selectionColor else quietFill(scheme.surfaceContainerHigh),
+                        contentColor = if (style.copy(russianPercent = -1) == scenario.style) scheme.onPrimaryContainer else scheme.onSurface) {
                         Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.Center) {
                             if (!compact) {
                                 val glyph = when (scenario.glyph) {
@@ -466,13 +470,16 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).pane(ui.shape(14.dp)).clickable { settingsOpen = true }
+            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(ui.shape(16.dp)).pane(ui.shape(16.dp)).clickable { settingsOpen = true }
                 .padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(l("Характер потока", "Discovery mix"), style = MaterialTheme.typography.labelLarge, color = scheme.onSurface)
+                    Text(l("Настройки потока", "Stream settings"), style = MaterialTheme.typography.labelLarge, color = scheme.onSurface)
                     Text(l("${100 - style.discoveryPercent}% лайки · ${style.discoveryPercent}% новое",
                         "${100 - style.discoveryPercent}% liked · ${style.discoveryPercent}% new"),
                         style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1)
+                    if (style.russianPercent >= 0) Text(l("${style.russianPercent}% русская · ${100 - style.russianPercent}% иностранная",
+                        "${style.russianPercent}% Russian · ${100 - style.russianPercent}% foreign"),
+                        style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, maxLines = 1)
                 }
                 Icon(PrismIcons.Equalizer, l("Настройки", "Settings"), tint = scheme.onSurface)
             }
@@ -480,11 +487,11 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
     // The route already reserves system bars, bottom tabs and the mini player. No scroll container.
     BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 6.dp)) {
-        val compact = maxHeight < 650.dp
+        val compact = maxHeight < 690.dp
         val wide = maxWidth >= 600.dp || maxWidth > maxHeight * 1.25f
         if (wide) {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Header()
                     Hero(Modifier.weight(1f).fillMaxWidth(), true)
                 }
@@ -493,7 +500,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 }
             }
         } else {
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Header()
                 Hero(Modifier.weight(1f).fillMaxWidth(), compact)
                 Controls(compact)
@@ -514,7 +521,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 quickScenarios.chunked(2).forEach { row ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         row.forEach { scenario ->
-                            FilterChip(selected = style == scenario.style, onClick = { scenariosOpen = false; start(scenario.style) },
+                            FilterChip(selected = style.copy(russianPercent = -1) == scenario.style, onClick = { scenariosOpen = false; start(scenario.style.copy(russianPercent = style.russianPercent)) },
                                 modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                                 label = { Text(if (ru) scenario.ru else scenario.en, maxLines = 2) })
                         }
@@ -529,6 +536,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     if (settingsOpen) {
         var diversity by remember(style.diversity) { mutableFloatStateOf(style.diversity.toFloat()) }
         var discovery by remember(style.discoveryPercent) { mutableFloatStateOf(style.discoveryPercent.toFloat()) }
+        var russian by remember(style.russianPercent) { mutableFloatStateOf(if (style.russianPercent < 0) 50f else style.russianPercent.toFloat()) }
         ModalBottomSheet(onDismissRequest = { settingsOpen = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = scheme.surfaceContainerHigh) {
@@ -583,6 +591,34 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     Text(l("Открытия — похожие записи, которых нет в известной Prism истории. Лайки не заменяют их при нехватке.",
                         "Discoveries are related recordings not in Prism's known history. Likes do not replace missing discoveries."),
                         style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                    HorizontalDivider(color = scheme.outlineVariant)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(l("Язык музыки", "Music language"), style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.weight(1f))
+                        FilterChip(selected = style.russianPercent < 0,
+                            onClick = { if (style.russianPercent >= 0) start(style.copy(russianPercent = -1)) },
+                            label = { Text(l("Авто", "Auto")) })
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column {
+                            Text("${russian.toInt()}%", style = MaterialTheme.typography.headlineSmall,
+                                color = scheme.primary)
+                            Text(l("Русская", "Russian"), style = MaterialTheme.typography.labelMedium)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("${100 - russian.toInt()}%", style = MaterialTheme.typography.headlineSmall)
+                            Text(l("Иностранная", "Foreign"), style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                    Slider(value = russian, onValueChange = { russian = it },
+                        onValueChangeFinished = {
+                            val percent = (kotlin.math.round(russian / 5f).toInt() * 5).coerceIn(0, 100)
+                            if (percent != style.russianPercent) start(style.copy(russianPercent = percent))
+                        }, valueRange = 0f..100f, steps = 19, modifier = Modifier.testTag("wave:language-percent"))
+                    Text(l("Приблизительное соотношение по языку названий. При нехватке подходящих записей баланс может отличаться.",
+                        "Approximate title-language balance. The actual mix may vary when matching tracks are scarce."),
+                        style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                    HorizontalDivider(color = scheme.outlineVariant)
                     WaveChoices(l("Настроение", "Mood"), MyWave.Mood.entries, style.mood, ::moodName) { if (it != style.mood) start(style.copy(mood = it)) }
                     WaveChoices(l("Популярность", "Popularity"), MyWave.Depth.entries, style.depth, ::depthName) { if (it != style.depth) start(style.copy(depth = it)) }
                     Text(l("Разнообразие", "Variety"), style = MaterialTheme.typography.titleSmall)
