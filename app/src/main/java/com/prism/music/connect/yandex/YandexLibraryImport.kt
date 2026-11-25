@@ -16,7 +16,7 @@ import kotlin.coroutines.coroutineContext
 
 /** Metadata only. No download of audio, no changes to the Yandex account. */
 internal class YandexLibraryImport(private val token: suspend (String?) -> String) {
-    data class Preview(val library: ParsedLibrary, val missing: Int)
+    data class Preview(val library: ParsedLibrary, val missing: Int, val accountId: String)
     private val client = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
         .callTimeout(20, TimeUnit.SECONDS).build()
     private val root = "https://api.music.yandex.net".toHttpUrl()
@@ -81,7 +81,7 @@ internal class YandexLibraryImport(private val token: suspend (String?) -> Strin
             }
         }
         token(null) // Fail if the account changed during reading.
-        return Preview(ParsedLibrary(liked = likes.distinctBy { it.key }, playlists = lists), missing)
+        return Preview(ParsedLibrary(liked = likes.distinctBy { it.key }, playlists = lists), missing, uid)
     }
 
     companion object {
@@ -91,10 +91,15 @@ internal class YandexLibraryImport(private val token: suspend (String?) -> Strin
         internal fun track(obj: JsonObject?): LibraryTrack? {
             val id = obj?.str("id") ?: return null
             val title = obj.str("title")?.trim()?.takeIf { it.isNotBlank() } ?: return null
-            val artists = (obj["artists"] as? JsonArray).orEmpty().mapNotNull { it.obj()?.str("name") }.joinToString(", ")
+            val credits = (obj["artists"] as? JsonArray).orEmpty().mapNotNull { it.obj()?.str("name") }
+            val artists = credits.joinToString(", ")
             if (artists.isBlank()) return null
             val album = (obj["albums"] as? JsonArray)?.firstOrNull().obj()?.str("title")
-            return LibraryTrack(title, artists, album, "yandex:$id")
+            val duration = obj.str("durationMs")?.toLongOrNull()?.takeIf { it in 1..86400000L } ?: 0L
+            val isrc = (obj["isrc"] as? JsonPrimitive)?.contentOrNull
+                ?: (obj["isrcs"] as? JsonArray)?.firstOrNull()?.let { (it as? JsonPrimitive)?.contentOrNull }
+            // Keep the original key format for previously imported tracks; use discrete credits for search.
+            return LibraryTrack(title, artists, album, "yandex:$id", duration, isrc, credits.joinToString("; "))
         }
     }
 }
