@@ -16,30 +16,11 @@ internal class StationRendererLink(
     private val identity: OwnedStationIdentity,
     private val tokens: StationTokenSource,
 ) : RendererLink {
-    private data class Snapshot(
-        val type: String?, val id: String?, val title: String?, val playing: Boolean?,
-        val position: Long?, val duration: Long?, val volume: Int?,
-        val at: Long,
-    )
-    @Volatile private var state: Snapshot? = null
+    @Volatile private var state: StationPlaybackState? = null
     private val stopControl = StationStopControl()
     private val socket = GlagolSocket(station, identity.certificatePem) { text ->
         stopControl.onState(text)
-        runCatching {
-            val root = Json.parseToJsonElement(text).jsonObject["state"] as? JsonObject ?: return@runCatching
-            val p = root["playerState"] as? JsonObject
-            fun JsonObject?.field(k: String) = this?.get(k) as? JsonPrimitive
-            state = Snapshot(
-                p.field("playerType")?.contentOrNull,
-                p.field("id")?.contentOrNull,
-                p.field("title")?.contentOrNull,
-                root.field("playing")?.booleanOrNull,
-                p.field("progress")?.doubleOrNull?.takeIf { it.isFinite() && it >= 0 }?.let { (it * 1000).toLong() },
-                p.field("duration")?.doubleOrNull?.takeIf { it.isFinite() && it > 0 }?.let { (it * 1000).toLong() },
-                root.field("volume")?.doubleOrNull?.takeIf { it in 0.0..1.0 }?.let { (it * 100).toInt() },
-                SystemClock.elapsedRealtime(),
-            )
-        }
+        StationPlaybackState.parse(text, SystemClock.elapsedRealtime())?.let { state = it }
     }
     private var loaded: Pair<String, CastMedia>? = null
     private var requested = false
@@ -74,7 +55,7 @@ internal class StationRendererLink(
 
     override suspend fun play() {
         val (url, media) = loaded ?: throw IOException("No track")
-        if (requested && !paused && state?.id == url && state?.playing == true) return
+        if (requested && !paused && state?.matches(url) == true && state?.playing == true) return
         if (state?.type == "bluetooth" && state?.playing == true) {
             throw IOException("Station is playing Bluetooth")
         }
@@ -124,7 +105,7 @@ internal class StationRendererLink(
         }
         val s = state ?: throw IOException("No Station state")
         val currentUrl = loaded?.first
-        val matching = currentUrl != null && s.id == currentUrl
+        val matching = s.matches(currentUrl)
         val mode = when {
             !requested -> "STOPPED"
             matching && s.playing == true -> "PLAYING"
@@ -138,7 +119,7 @@ internal class StationRendererLink(
     override suspend fun position(): PositionInfo {
         val s = state
         val track = loaded
-        if (requested && track != null && s != null && s.id == track.first) {
+        if (requested && track != null && s != null && s.matches(track.first)) {
             return PositionInfo(track.first, s.position, s.duration ?: track.second.durationMs)
         }
         // A foreign source must not be mistaken for the current Prism stream.
