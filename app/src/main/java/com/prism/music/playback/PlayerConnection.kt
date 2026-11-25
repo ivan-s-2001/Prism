@@ -735,6 +735,40 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         service?.maybeAutoplay()
     }
 
+    /** Retune a running Wave without changing the current MediaItem, its position, or play/pause state. */
+    internal fun retuneWave(expected: QueueSource, next: QueueSource, candidates: List<Song>): Boolean {
+        val p = player ?: return false
+        if (!expected.isMyWave || !next.isMyWave || c.queue.source.value !== expected || c.queue.followingHost) return false
+        val at = p.currentMediaItemIndex
+        if (at !in 0 until p.mediaItemCount) return false
+        val manual = c.queue.userQueued.value
+        val oldSize = p.mediaItemCount
+        val occupied = (0 until oldSize).filter { it <= at || p.getMediaItemAt(it).mediaId in manual }
+            .mapTo(hashSetOf()) { p.getMediaItemAt(it).mediaId }
+        val songs = candidates.filter { it.id !in occupied && !c.sessionHeard.has(it) &&
+            !c.library.isDisliked(it.id) && !c.exclusions.blocks(it) && !c.exclusions.isSongExcluded(it.id) &&
+            com.prism.music.data.ExplicitFilter.plays(c.settings.current.behavior.explicitContent, it) }.distinctBy { it.id }
+        if (songs.isEmpty()) return false
+        ++playToken
+        stopFill()
+        service?.dropAutoplay()
+        c.queue.filling = true
+        try {
+            c.queue.source.value = next
+            c.queue.autoplayContinuation = null
+            c.queue.autoplayStart.value = -1
+            // Add first so the active item always has a successor. Keep anything explicitly queued.
+            p.addMediaItems(songs.map { it.toMediaItem() })
+            for (i in oldSize - 1 downTo at + 1) {
+                if (p.getMediaItemAt(i).mediaId !in manual) p.removeMediaItem(i)
+            }
+            c.queue.autoplayStart.value = p.mediaItemCount - songs.size
+        } finally { c.queue.filling = false }
+        c.recFeedback.served(songs.map { it.id })
+        service?.maybeAutoplay()
+        return true
+    }
+
     fun playNext(song: Song) = playNext(listOf(song), null)
 
     fun addToQueue(song: Song) = addToQueue(listOf(song), null)
