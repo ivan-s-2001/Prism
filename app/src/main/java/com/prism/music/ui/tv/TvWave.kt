@@ -140,7 +140,7 @@ internal fun TvWavePlace(nav: TvNav) {
                     TvButton(l("Авто", "Auto"), { editor = editor.tune(draft.copy(russianPercent = -1)) },
                         Modifier.tvItem("tv_wave/auto"), primary = draft.russianPercent < 0)
                     TvWaveScale(l("Разнообразие", "Variety"), draft.diversity,
-                        l("Похожее", "Similar"), l("Разное", "Varied"), "diversity",
+                        l("Меньше", "Less"), l("Больше", "More"), "diversity",
                         { editor = editor.tune(draft.copy(diversity = it)) }, step = 10, ratio = false)
                     Text(l("Изменения вступят в силу после подтверждения", "Changes apply after confirmation"),
                         style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)

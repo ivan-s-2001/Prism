@@ -580,10 +580,10 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     WaveScale(
                         title = l("Разнообразие", "Variety"),
                         value = diversity, onValueChange = { percent -> change { it.tune(it.style.copy(diversity = percent.toInt())) } },
-                        left = l("Похожее", "Similar"), right = l("Разное", "Varied"),
+                        left = l("Меньше", "Less"), right = l("Больше", "More"),
                         ratio = false,
-                        choices = listOf(0 to l("Похожее", "Similar"), 50 to l("Баланс", "Balance"),
-                            70 to l("Разное", "Varied"), 100 to l("Максимум", "Maximum")),
+                        choices = listOf(0 to l("Низкое", "Low"), 50 to l("Среднее", "Medium"),
+                            70 to l("Высокое", "High"), 100 to l("Максимум", "Maximum")),
                         selectedChoice = diversity.toInt(), step = 10, tag = "wave:diversity-percent",
                         onCommit = { percent -> change { it.tune(it.style.copy(diversity = percent)) } },
                         detail = l("Уровень разнообразия исполнителей и записей.", "Variety of artists and recordings.")
