@@ -342,7 +342,7 @@ class HistoryImports(private val c: AppContainer) {
     }
 
     /** Authenticated metadata import; uses existing matching, review and repeat-import machinery. */
-    suspend fun bringYandexLibrary(lib: ParsedLibrary): LibraryNews = lock.withLock {
+    suspend fun bringYandexLibrary(lib: ParsedLibrary, sourceMissing: Int = 0): LibraryNews = lock.withLock {
         matching.withLock {
             withContext(Dispatchers.IO) {
                 val news = addLibrary(lib, LibraryJob.LibraryChoice(albums = false, artists = false))
@@ -361,7 +361,9 @@ class HistoryImports(private val c: AppContainer) {
                     if (retry.isNotEmpty()) dao.putMatches(retry)
                 }
                 prefs.edit().putStringSet("yandex_last_keys", tracks.map { it.key }.toSet())
-                    .putInt("yandex_last_playlists", lib.playlists.size)
+                    .putStringSet("yandex_last_likes", lib.liked.map { it.key }.toSet())
+                    .putStringSet("yandex_last_playlist_uris", lib.playlists.mapNotNull { it.uri }.toSet())
+                    .putInt("yandex_last_missing_metadata", sourceMissing.coerceAtLeast(0))
                     .putLong("yandex_last_read", System.currentTimeMillis()).apply()
                 applyLibraryNow()
                 ImportMatchWorker.enqueue(c.app, _matchOnMobile.value, explicitTransfer = true)
@@ -373,6 +375,7 @@ class HistoryImports(private val c: AppContainer) {
     data class YandexProgress(
         val lastRead: Long, val total: Int, val matched: Int, val pending: Int,
         val review: Int, val missing: Int, val skipped: Int, val likesPlaced: Int, val playlistsPlaced: Int,
+        val placementComplete: Boolean, val missingMetadata: Int,
     )
 
     suspend fun yandexProgress(): YandexProgress = withContext(Dispatchers.IO) {
@@ -380,13 +383,19 @@ class HistoryImports(private val c: AppContainer) {
         val rows = keys.chunked(400).flatMap { c.db.imports().matches(it) }
         val job = LibraryJob.load(jobFile)
         val matched = rows.filter { MatchStatus.of(it.status).matched && it.matchedId != null }.map { it.songKey }.toSet()
+        val wantedLikes = prefs.getStringSet("yandex_last_likes", emptySet()).orEmpty()
+        val wantedLists = prefs.getStringSet("yandex_last_playlist_uris", emptySet()).orEmpty()
+        val importedLists = job.playlists.filter { it.uri in wantedLists }
+        val completeLists = importedLists.filter { p -> p.prismId != null && p.keys.filter { it in keys }.all { it in p.added } }
+        val placed = wantedLikes.all { it in job.likedDone } && completeLists.size == wantedLists.size
         YandexProgress(prefs.getLong("yandex_last_read", 0L), keys.size, matched.size,
             rows.count { it.status == MatchStatus.PENDING.name } + (keys.size - rows.size).coerceAtLeast(0),
             rows.count { it.status == MatchStatus.REVIEW.name },
             rows.count { it.status == MatchStatus.NONE.name },
             rows.count { it.status == MatchStatus.SKIPPED.name },
-            job.likedDone.count { it in matched },
-            job.playlists.count { it.uri?.startsWith("yandex:") == true && it.prismId != null && it.keys.any { key -> key in keys } })
+            wantedLikes.count { it in job.likedDone },
+            importedLists.count { it.prismId != null },
+            placed, prefs.getInt("yandex_last_missing_metadata", 0))
     }
 
     /** Lines [lib] up (as far as [choice] says); returns what of it is new. */
