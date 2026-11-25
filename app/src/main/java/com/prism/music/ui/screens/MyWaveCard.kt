@@ -6,6 +6,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import com.prism.music.ui.theme.GlassSurface
 import com.prism.music.ui.components.PrismChip
+import com.prism.music.ui.components.PrismScenarioDisc
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import com.prism.music.ui.components.RoundAction
 import com.prism.music.ui.components.pageTitleStyle
 import androidx.compose.foundation.clickable
@@ -136,7 +139,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     fun l(a: String, b: String) = if (ru) a else b
     var starting by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
-    var scenariosOpen by remember { mutableStateOf(false) }
     var group by remember { mutableStateOf(WaveScenarios.Group.DAY) }
     val settings = LocalAppSettings.current
     fun restoredStyle(origin: String?) = MyWave.style(origin).let {
@@ -423,16 +425,28 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
 
     @Composable fun Controls() {
         val choices = (listOfNotNull(activeScenario) + quickScenarios + WaveScenarios.all).distinctBy { it.id }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            RoundAction(PrismIcons.Equalizer, l("Настроить поток", "Tune Stream"),
-                modifier = Modifier.testTag("home:my_wave:settings")) { settingsOpen = true }
-            Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(vertical = 3.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                choices.forEach { scenario ->
-                    PrismChip(selected = style.copy(russianPercent = -1) == scenario.style,
-                        onClick = { start(scenario.style.copy(russianPercent = style.russianPercent)) },
+            PrismScenarioDisc(l("Настройки", "Tune"), PrismIcons.Equalizer, selected = false,
+                onClick = { settingsOpen = true }, modifier = Modifier.testTag("home:my_wave:settings"))
+            LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(end = 4.dp)) {
+                items(choices, key = { it.id }) { scenario ->
+                    PrismScenarioDisc(
                         label = if (ru) scenario.ru else scenario.en,
+                        icon = when (scenario.glyph) {
+                            WaveScenarios.Glyph.SUN -> PrismIcons.Sun
+                            WaveScenarios.Glyph.MOON -> PrismIcons.Moon
+                            WaveScenarios.Glyph.CAR -> PrismIcons.Car
+                            WaveScenarios.Glyph.WORK -> PrismIcons.Headphones
+                            WaveScenarios.Glyph.ENERGY -> PrismIcons.Flame
+                            WaveScenarios.Glyph.HEART -> PrismIcons.Heart
+                            WaveScenarios.Glyph.STAR -> PrismIcons.Star
+                            WaveScenarios.Glyph.DISCOVER -> PrismIcons.SmartShuffle
+                            WaveScenarios.Glyph.RADIO -> PrismIcons.Equalizer
+                        },
+                        selected = style.copy(russianPercent = -1) == scenario.style,
+                        onClick = { start(scenario.style.copy(russianPercent = style.russianPercent)) },
                         modifier = Modifier.testTag("wave:scenario:${scenario.id}"))
                 }
             }
@@ -447,32 +461,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             Controls()
         }
     }
-    if (scenariosOpen) {
-        ModalBottomSheet(onDismissRequest = { scenariosOpen = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Text(l("Сценарии потока", "Stream scenarios"), style = MaterialTheme.typography.headlineSmall)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf(WaveScenarios.Group.DAY to l("День", "Day"), WaveScenarios.Group.ACTIVITY to l("Дела", "Activity"),
-                        WaveScenarios.Group.DISCOVERY to l("Вкус", "Taste")).forEach { (value, label) ->
-                        PrismChip(selected = group == value, onClick = { group = value }, modifier = Modifier.weight(1f), label = label)
-                    }
-                }
-                quickScenarios.chunked(2).forEach { row ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        row.forEach { scenario ->
-                            PrismChip(selected = style.copy(russianPercent = -1) == scenario.style, onClick = { scenariosOpen = false; start(scenario.style.copy(russianPercent = style.russianPercent)) },
-                                modifier = Modifier.weight(1f),
-                                label = if (ru) scenario.ru else scenario.en)
-                        }
-                        if (row.size == 1) Spacer(Modifier.weight(1f))
-                    }
-                }
-                TextButton(onClick = { scenariosOpen = false }, modifier = Modifier.align(Alignment.End)) { Text(l("Готово", "Done")) }
-            }
-        }
-    }
-
     if (settingsOpen) {
         var diversity by remember(style.diversity) { mutableFloatStateOf(style.diversity.toFloat()) }
         var discovery by remember(style.discoveryPercent) { mutableFloatStateOf(style.discoveryPercent.toFloat()) }
