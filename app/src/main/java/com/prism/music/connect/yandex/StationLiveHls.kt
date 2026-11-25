@@ -25,9 +25,14 @@ internal class StationLiveHls(
     companion object {
         const val RATE = 44100
         const val FRAME = 1024
-        const val FRAMES = 64
-        private const val KEEP = 12
-        private const val WINDOW = 6
+        // ~743 ms packed AAC segments; TARGETDURATION rounds up to one second.
+        // Keep >3 target durations in the sliding playlist, plus an unpublished
+        // retention window for in-flight segment requests.
+        const val FRAMES = 32
+        private const val KEEP = 18
+        private const val WINDOW = 5
+        private const val TARGET_DURATION = 1
+        private const val READY_SEGMENTS = 5
         private const val FRAME_BYTES = FRAME * 4
         private const val MIME = "audio/mp4a-latm"
         private val DURATION = FRAMES * FRAME.toDouble() / RATE
@@ -59,7 +64,7 @@ internal class StationLiveHls(
     @Volatile private var lastDelivery = 0L
     @Volatile var failure: String? = null
         private set
-    val ready: Boolean get() = synchronized(segments) { segments.size >= 3 }
+    val ready: Boolean get() = synchronized(segments) { segments.size >= READY_SEGMENTS }
     val receiving: Boolean get() = delivered.get() > 0 && android.os.SystemClock.elapsedRealtime() - lastDelivery < 15000L
     private val http = HttpServer("prism-live-hls", 0, maxBody = 0, allow = { it == station }, handler = ::handle)
     val url: String
@@ -69,7 +74,7 @@ internal class StationLiveHls(
         check(http.start()) { "Live HTTP bind failed" }
         url = "http://${phone.hostAddress}:${http.port}$prefix/index.m3u8"
         worker = Thread(::encode, "Prism-Live-AAC").apply { isDaemon = true; start() }
-        android.util.Log.i("PrismLive", "HLS server started port=${http.port}")
+        android.util.Log.i("PrismLive", "HLS server started port=${http.port} segmentMs=${(DURATION * 1000).toInt()} window=$WINDOW")
     }
 
     private fun handle(req: HttpRequest, res: HttpResponse) {
@@ -80,7 +85,7 @@ internal class StationLiveHls(
             val current = synchronized(segments) { segments.toList().takeLast(WINDOW) }
             if (current.isEmpty()) { res.text(503, "Preparing"); return }
             val playlist = buildString {
-                append("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:2\n")
+                append("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:$TARGET_DURATION\n")
                 append("#EXT-X-MEDIA-SEQUENCE:${current.first().seq}\n")
                 for (seg in current) {
                     append("#EXTINF:${String.format(java.util.Locale.US, "%.6f", DURATION)},\n")
@@ -93,13 +98,14 @@ internal class StationLiveHls(
         }
         val seq = req.path.takeIf { it.startsWith("$prefix/") && it.endsWith(".aac") }
             ?.substringAfterLast('/')?.removeSuffix(".aac")?.toLongOrNull()
-        val seg = synchronized(segments) { segments.firstOrNull { it.seq == seq } }
+        val (seg, newest) = synchronized(segments) { segments.firstOrNull { it.seq == seq } to segments.lastOrNull()?.seq }
         if (seg == null) { android.util.Log.i("PrismLive", "HLS missing segment=$seq"); res.text(404, "Not found"); return }
         res.send(200, "audio/aac", seg.bytes, headers)
         if (req.method == "GET") {
             delivered.incrementAndGet()
             lastDelivery = android.os.SystemClock.elapsedRealtime()
-            android.util.Log.i("PrismLive", "HLS GET segment=$seq bytes=${seg.bytes.size}")
+            val lagMs = ((newest?.minus(seg.seq) ?: 0L) * DURATION * 1000).toLong()
+            android.util.Log.i("PrismLive", "HLS GET segment=$seq bytes=${seg.bytes.size} behindLiveEdgeMs=$lagMs")
         }
     }
 
