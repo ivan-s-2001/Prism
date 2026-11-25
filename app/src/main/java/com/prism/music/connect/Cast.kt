@@ -183,8 +183,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                     is StationDiscoveryEvent.Found -> {
                         val d = event.station
                         val api = StationConnectAccount.api() ?: return@collect
-                        try {
-                            api.verify(d)
+                        val name = try {
+                            api.verifiedDisplayName(d)
                         } catch (e: CancellationException) {
                             throw e
                         } catch (_: Exception) {
@@ -192,8 +192,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                         }
                         if (!StationConnectAccount.signedIn.value) return@collect
                         val id = "yandex:${d.deviceId}"
-                        val name = StationNames.model(d.platform)
-                        val renderer = Renderer(id, name, "Yandex", name,
+                        val renderer = Renderer(id, name, "Yandex", StationNames.model(d.platform),
                             "yandexstation://${d.address.hostAddress}:${d.port}", null,
                             kind = RendererKind.YANDEX_STATION)
                         stationDevices[id] = d
