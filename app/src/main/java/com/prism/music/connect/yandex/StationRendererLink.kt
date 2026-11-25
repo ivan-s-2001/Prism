@@ -18,6 +18,7 @@ internal class StationRendererLink(
     private val tokens: StationTokenSource,
     private val delivery: (String) -> Long = { 0L },
     private val slice: ((String, Long) -> MediaServer.StationSlice)? = null,
+    private val retireSlice: (String) -> Unit = {},
 ) : RendererLink {
     private data class Attempt(val physical: String, val logical: String, val offset: Long, val duration: Long, val at: Long)
     @Volatile private var state: StationPlaybackState? = null
@@ -62,6 +63,7 @@ internal class StationRendererLink(
         val fresh = state?.takeIf { a != null && it.at >= a.at && SystemClock.elapsedRealtime() - it.at <= 1000 }
         if (fresh?.playing != false) stopControl.stop(socket, currentToken(), allowTextFallback = false)
         requested = false
+        a?.physical?.let(retireSlice)
     }
 
     override suspend fun load(url: String, didl: String, media: CastMedia) {
@@ -93,8 +95,13 @@ internal class StationRendererLink(
         val part = slice?.invoke(logical, ms) ?: if (ms == 0L) {
             MediaServer.StationSlice(logical, 0, media.durationMs)
         } else throw IOException("Seekable Station stream is unavailable")
-        stopActive()
-        val auth = currentToken()
+        val auth = try {
+            stopActive()
+            currentToken()
+        } catch (e: Exception) {
+            retireSlice(part.url)
+            throw e
+        }
         val at = SystemClock.elapsedRealtime()
         evidence.begin(part.url, delivery(part.url), at)
         attempt = Attempt(part.url, logical, part.offsetMs, part.durationMs, at)
@@ -131,6 +138,7 @@ internal class StationRendererLink(
         confirmedPausePosition = position
         target = position ?: target
         paused = true
+        attempt?.physical?.let(retireSlice)
         Log.i("PrismStation", "pause confirmed position=${position ?: -1}")
     }
 
@@ -138,6 +146,7 @@ internal class StationRendererLink(
         try {
             if (requested && !paused) stopControl.stop(socket, currentToken())
         } finally {
+            attempt?.physical?.let(retireSlice)
             evidence.clear()
             attempt = null
             requested = false
@@ -218,5 +227,5 @@ internal class StationRendererLink(
     override suspend fun volume(): Int? = observed()?.volume
     override suspend fun setVolume(v: Int) = send(GlagolProtocol.volume(v.coerceIn(0, 100) / 100.0))
     override suspend fun sinkMimes(): Set<String> = setOf("audio/wav")
-    override suspend fun close() { evidence.clear(); socket.close(); token = null }
+    override suspend fun close() { attempt?.physical?.let(retireSlice); evidence.clear(); socket.close(); token = null }
 }
