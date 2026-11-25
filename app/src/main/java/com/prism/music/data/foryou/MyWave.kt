@@ -145,6 +145,13 @@ internal object MyWave {
      * Mix in favorites, prefer songs not recently heard, and vary each new session.
      * Never relax exclusions, explicit-content restrictions, or offline availability.
      */
+    /** Shared personalized score; absent signals remain neutral. */
+    fun affinity(profile: Profile, song: Song): Double {
+        val taste = profile.taste(song)?.coerceIn(0.0, 1.0)?.let { 0.65 + 0.7 * it } ?: 1.0
+        val likes = 1.0 + 1.35 * profile.likedAffinity(song).coerceIn(0.0, 1.0)
+        return taste * likes
+    }
+
     fun start(
         recommendations: List<Song>,
         favorites: List<Song>,
@@ -180,12 +187,11 @@ internal object MyWave {
                 val energy = signals.energy(s)?.let { 1.0 + energyBias * (2.0 * it - 1.0) } ?: 1.0
                 val rest = if (heard(s) || LocalRadio.sameSong(s) in recentKeys) 0.12 else if (servedRecently(s)) 0.55 else 1.0
                 val feedback = 1.0 - 0.65 * artistDoubt(s.primaryArtist).coerceIn(0.0, 1.0)
-                val taste = profile.taste(s)?.coerceIn(0.0, 1.0)?.let { 0.65 + 0.7 * it } ?: 1.0
+                val taste = affinity(profile, s)
                 val context = profile.context(s)?.coerceIn(0.0, 1.0)?.let { 0.8 + 0.4 * it } ?: 1.0
                 val depth = signals.onTopList(s)?.let { if (it) 1.0 - style.depth.bias else 1.0 + style.depth.bias } ?: 1.0
                 val learned = artistEvidence(s.primaryArtist).weight(if (familiar(s) == false) explore else 0.0)
-                val likes = 1.0 + 1.35 * profile.likedAffinity(s).coerceIn(0.0, 1.0)
-                s to rank * novelty * energy * depth * rest * feedback * taste * context * learned * likes * (0.93 + 0.14 * random.nextDouble())
+                s to rank * novelty * energy * depth * rest * feedback * taste * context * learned * (0.93 + 0.14 * random.nextDouble())
             }
             .sortedByDescending { it.second }
             .toMutableList()
