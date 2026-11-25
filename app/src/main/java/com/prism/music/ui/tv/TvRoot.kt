@@ -43,6 +43,7 @@ import kotlinx.coroutines.launch
 /** Prism TV's top-level places, in the side navigation's order. */
 enum class TvSection(val label: () -> String, val icon: () -> ImageVector) {
     HOME({ tr(R.string.home) }, { PrismIcons.Home }),
+    STREAM({ if (java.util.Locale.getDefault().language == "ru") "Поток" else "Stream" }, { PrismIcons.Equalizer }),
     SEARCH({ tr(R.string.search) }, { PrismIcons.Search }),
     LIBRARY({ tr(R.string.library) }, { PrismIcons.Library }),
     SETTINGS({ tr(R.string.settings) }, { PrismIcons.Settings }),
@@ -278,6 +279,7 @@ private fun TvPlace(section: TvSection, nav: TvNav, onSection: (TvSection) -> Un
     Box(Modifier.fillMaxSize().testTag("$TAG_PLACE/${section.name}")) {
         when (section) {
             TvSection.HOME -> TvHomePlace(nav) { onSection(TvSection.SEARCH) }
+            TvSection.STREAM -> TvWavePlace(nav)
             TvSection.SEARCH -> TvSearchPlace(nav)
             TvSection.LIBRARY -> TvLibraryPlace(nav)
 
