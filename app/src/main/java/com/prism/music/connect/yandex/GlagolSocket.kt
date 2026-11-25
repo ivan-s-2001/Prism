@@ -8,6 +8,13 @@ import java.security.cert.CertificateException
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.contentOrNull
 import javax.net.ssl.SSLContext
 import javax.net.ssl.X509TrustManager
 import kotlinx.coroutines.CompletableDeferred
@@ -60,6 +67,7 @@ internal class GlagolSocket(
         .pingInterval(20, TimeUnit.SECONDS)
         .build()
     private val opened = CompletableDeferred<Unit>()
+    private val replies = ConcurrentHashMap<String, CompletableDeferred<String>>()
     private val socket: WebSocket
 
     init {
@@ -71,13 +79,22 @@ internal class GlagolSocket(
                     opened.complete(Unit)
                 }
                 override fun onMessage(webSocket: WebSocket, text: String) {
+                    runCatching {
+                        val message = Json.parseToJsonElement(text).jsonObject
+                        val id = (message["requestId"] as? JsonPrimitive)?.contentOrNull
+                        val status = (message["status"] as? JsonPrimitive)?.contentOrNull
+                        if (id != null && status != null) replies[id]?.complete(status)
+                    }
                     onState(text)
                 }
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     opened.completeExceptionally(t)
+                    replies.values.forEach { it.completeExceptionally(t) }
                 }
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    opened.completeExceptionally(IllegalStateException("Station disconnected"))
+                    val error = IllegalStateException("Station disconnected")
+                    opened.completeExceptionally(error)
+                    replies.values.forEach { it.completeExceptionally(error) }
                 }
             },
         )
@@ -91,7 +108,25 @@ internal class GlagolSocket(
         }
     }
 
+    /** Wait for the reply carrying our requestId; do not confuse a queued frame with a reply. */
+    suspend fun request(conversationToken: String, payload: JsonObject): String? {
+        withTimeout(10_000) { opened.await() }
+        val id = UUID.randomUUID().toString()
+        val reply = CompletableDeferred<String>()
+        replies[id] = reply
+        try {
+            check(socket.send(GlagolProtocol.envelope(conversationToken, payload, id))) {
+                "Station connection closed"
+            }
+            return withTimeoutOrNull(3000) { reply.await() }
+        } finally {
+            replies.remove(id)
+        }
+    }
+
     override fun close() {
+        replies.values.forEach { it.cancel() }
+        replies.clear()
         socket.cancel()
         client.connectionPool.evictAll()
         client.dispatcher.executorService.shutdown()
