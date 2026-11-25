@@ -1,6 +1,8 @@
 package com.prism.music
 
 import com.prism.music.data.foryou.MyWave
+import com.prism.music.data.foryou.LocalRadio
+import com.prism.music.data.foryou.RadioTopUp
 import com.prism.music.data.model.ArtistRef
 import com.prism.music.data.model.Song
 import org.junit.Assert.*
@@ -325,5 +327,29 @@ class MyWaveTest {
         assertEquals(listOf(next), MyWave.initialPicks(listOf(alias, next), current, false))
         assertTrue(MyWave.initialPicks(listOf(current), current, false).isEmpty())
         assertEquals(listOf(current), MyWave.initialPicks(listOf(current), current, true))
+    }
+
+    @Test fun radioAndStreamUseTheSameRecordingIdentity() {
+        val queued = song("queued", "A", "Title")
+        val alias = song("alias", "A", "Title (Remastered)")
+        val own = song("own", "B", "Another")
+        val remoteAlias = song("remote", "B", "Another (Remastered)")
+        val fresh = song("fresh", "C")
+        val rules = RadioTopUp.Rules(setOf(queued.id), emptySet(), { false }, { true },
+            queuedRecordings = setOf(LocalRadio.sameSong(queued)))
+        val batch = RadioTopUp.batch(listOf(alias, own), listOf(remoteAlias, fresh), true, rules)
+        assertEquals(setOf(LocalRadio.sameSong(own), LocalRadio.sameSong(fresh)), batch.map(LocalRadio::sameSong).toSet())
+        assertEquals(2, batch.size)
+    }
+
+    @Test fun radioRefusesUnwantedSongsFromBothSources() {
+        val refused = song("refused", "A")
+        val blocked = song("blocked", "B")
+        val recent = song("recent", "C")
+        val fresh = song("fresh", "D")
+        val rules = RadioTopUp.Rules(emptySet(), setOf(recent.id), { it.id == refused.id }, { it.id != blocked.id })
+        val batch = RadioTopUp.batch(listOf(refused, recent, fresh), listOf(blocked, refused), true, rules)
+        assertEquals(listOf(fresh), batch)
+        assertTrue(RadioTopUp.comingRound(listOf(refused, blocked), { null }, rules).isEmpty())
     }
 }
