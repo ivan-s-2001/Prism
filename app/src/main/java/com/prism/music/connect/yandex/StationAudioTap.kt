@@ -24,6 +24,9 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
     @Volatile var captured = 0L
         private set
 
+    @Synchronized fun formatSummary(): String =
+        "rate=$inputRate channels=$channels encoding=$encoding running=$running queuedBytes=$size"
+
     @Synchronized fun start(playing: Boolean) {
         clear()
         captured = 0
