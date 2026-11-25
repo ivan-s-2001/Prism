@@ -387,7 +387,7 @@ class YourMusic(private val c: AppContainer) {
             .sortedByDescending { plays[it.id] ?: 0 }
             .filter(play).distinctBy { LocalRadio.sameSong(it) }.take(30).takeIf { it.size >= MIN_LIST }.orEmpty()
 
-        val mixes = libraryMixes(s, play)
+        val mixes = libraryMixes(s, play, waveTaste().profile)
         Sections(onRepeat, repeatRewind, forgotten, mixes).also { lastSections = it }
     }
 
@@ -398,11 +398,11 @@ class YourMusic(private val c: AppContainer) {
      * Mixes from your music: one for each of your top genres and artists, made from songs you know (played, liked,
      * downloaded, on the phone), best first with a day's shuffle; and, when there's enough, what's ready offline.
      */
-    private fun libraryMixes(s: Snapshot, play: (Song) -> Boolean): List<Mix> {
+    private fun libraryMixes(s: Snapshot, play: (Song) -> Boolean, profile: MyWave.Profile): List<Mix> {
         val day = LocalDate.now().toString()
         fun j(id: String) = 0.85 + 0.3 * (((id + day).hashCode().toLong() and 0xffff) / 65535.0)
         val candidates = s.songs.values.filter(play)
-        val score = candidates.associate { it.id to s.model.score(it) * j(it.id) }
+        val score = candidates.associate { it.id to s.model.score(it) * MyWave.affinity(profile, it) * j(it.id) }
         // One copy of each song (the best liked), however many uploads of it you've played.
         val known = candidates.sortedByDescending { score[it.id] ?: 0.0 }.distinctBy { LocalRadio.sameSong(it) }
         val out = ArrayList<Mix>()
@@ -422,7 +422,7 @@ class YourMusic(private val c: AppContainer) {
             if (theirs.size < 3) return@forEach
             // Their songs you know, with the ones you play around them.
             val around = LocalRadio.pick(
-                theirs.take(3), LocalRadio.Pool(known, s.coListen, { s.model.score(it) }, { s.genres[it] }),
+                theirs.take(3), LocalRadio.Pool(known, s.coListen, { s.model.score(it) * MyWave.affinity(profile, it) }, { s.genres[it] }),
                 theirs.map { it.id }.toSet(), 20,
             ).filter { it.related }.map { it.song }
             val list = MadeForYou.interleave(theirs.take(20), around, MIX_SIZE) { it.primaryArtist.lowercase() }
@@ -476,8 +476,9 @@ class YourMusic(private val c: AppContainer) {
     /** Songs ready offline, most likely first: Quick picks' stand-in with no connection. */
     suspend fun offlinePicks(count: Int = 20): List<Song> {
         val s = snapshot()
+        val profile = waveTaste().profile
         return s.songs.values.filter { ok(it) && !it.isVideo && c.availableOffline(it.id) }
-            .sortedByDescending { s.model.score(it) }.distinctBy { LocalRadio.sameSong(it) }.take(count)
+            .sortedByDescending { s.model.score(it) * MyWave.affinity(profile, it) }.distinctBy { LocalRadio.sameSong(it) }.take(count)
     }
 
     private fun artists(list: List<Song>) = list.map { it.primaryArtist }.filter { it.isNotBlank() }.distinct()
