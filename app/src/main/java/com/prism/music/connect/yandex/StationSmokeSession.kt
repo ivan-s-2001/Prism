@@ -124,7 +124,7 @@ internal class StationSmokeSession(
         }
     }
 
-    suspend fun playMusicLive(phoneAddress: Inet4Address, direct: Boolean = false) {
+    suspend fun playMusicLive(phoneAddress: Inet4Address, direct: Boolean = false, source: (Int) -> ByteArray = StationAudioTap::read, initialVolume: Int = 20) {
         liveMusicSession = true
         liveCommandAttempted = false
         liveStoppedBoundary = false
@@ -136,8 +136,8 @@ internal class StationSmokeSession(
         liveHls = null
         livePcm?.close()
         livePcm = null
-        if (direct) livePcm = StationLivePcm(phoneAddress, station.address, StationAudioTap::read)
-        else liveHls = StationLiveHls(phoneAddress, station.address, StationAudioTap::read)
+        if (direct) livePcm = StationLivePcm(phoneAddress, station.address, source)
+        else liveHls = StationLiveHls(phoneAddress, station.address, source)
         val stream = liveHls
         val url = livePcm?.url ?: requireNotNull(stream).url
         try {
@@ -152,7 +152,7 @@ internal class StationSmokeSession(
             stopControl.stop(socket, tokens.tokenFor(identity), allowTextFallback = false)
             liveStoppedBoundary = true
             delay(150)
-            send(GlagolProtocol.volume(0.20))
+            send(GlagolProtocol.volume(initialVolume.coerceIn(0, 100) / 100.0))
             // Encoder fills the playlist while the socket negotiates and the old source stops.
             val ready = if (stream == null) true else kotlinx.coroutines.withTimeoutOrNull(8000L) {
                 while (!stream.ready) {
