@@ -1910,6 +1910,7 @@ data class AppSettings(
     val frostedPages: Boolean = true,
     val replayThemeColors: Boolean = false,
     val streamThemeColors: Boolean = false,
+    val streamRussianPercent: Int = -1,
     /**
      * Performance mode (1.7.6): Prism drawn as lightly as 1.6 was, for slower phones ([effective]). Every feature stays;
      * only the effects that cost the phone the most each frame are paused, and the listener's own choices come back
@@ -2314,6 +2315,7 @@ class SettingsRepository(
         val frostedPages = booleanPreferencesKey("frosted_pages")
         val replayThemeColors = booleanPreferencesKey("replay_theme_colors")
         val streamThemeColors = booleanPreferencesKey("stream_theme_colors")
+        val streamRussianPercent = intPreferencesKey("stream_russian_percent")
         // 1.7.8: the player's look ([ViewLook]) and Prism's behaviour ([BehaviorPrefs]).
         val panelPlayer = stringPreferencesKey("panel_player")
         val queueHeadings = booleanPreferencesKey("queue_headings")
@@ -2453,7 +2455,7 @@ class SettingsRepository(
             listOf(
                 fontChoice, textScale, corners, uiDensity, titleSize, cardSize, reduceMotion, navStyle, navLabels, navHideOnScroll,
                 navTabs, startTab, miniPlayerStyle, miniSkipButtons, miniPrevButton, miniPlayButton, miniProgress, miniProgressColor, miniFillStrength, playRing, playingInPageColor, playerBackground, playerBackdropShow, playerArtCorners, transportStyle,
-                coverSize, scrubberStyle, artShrinkOnPause, showOutputDevice, lyricsAlign, libraryView, playlistHeroCover, frostedPages, replayThemeColors, streamThemeColors,
+                coverSize, scrubberStyle, artShrinkOnPause, showOutputDevice, lyricsAlign, libraryView, playlistHeroCover, frostedPages, replayThemeColors, streamThemeColors, streamRussianPercent,
                 immersiveArt, immersiveLyrics, immersiveControls, playerShuffleRepeat, lightStyle,
                 playerLayout, vinylTonearm, playerDeck, playerButtons, scrubberColor, playerTitleAlign, playerTitleSize, playerTitleScroll,
                 playerTimes, meshSpeed, meshIntensity, playerBlur, canvasFillsBackground,
@@ -2499,7 +2501,7 @@ class SettingsRepository(
                 volumeMatchesProgress to 'b', playerHandle to 'b', hideStatusBarPlayer to 'b', playerNavBand to 'b',
                 lyricsAlign to 's', lyricsBlur to 'b', lyricsProgressLine to 'b', lyricsSourceButton to 'b', lyricsScale to 'f',
                 libraryView to 's', libraryViews to 's', libraryColumns to 's', librarySubtitles to 'b', playlistHeroCover to 'b',
-                homeHeader to 's', homeHeaderHeight to 's', replayThemeColors to 'b', streamThemeColors to 'b', replayCard to 's', hideStatusBar to 'b',
+                homeHeader to 's', homeHeaderHeight to 's', replayThemeColors to 'b', streamThemeColors to 'b', streamRussianPercent to 'i', replayCard to 's', hideStatusBar to 'b',
                 cornerScale to 'f', songShape to 's', albumShape to 's', artistShape to 's', playerShape to 's', buttonShape to 's', playOutlined to 'b',
                 typeWeight to 's', typeSpacing to 's', titleFont to 's', tabTint to 's', playerTitleWeight to 's', typeClassic to 'b', controlsClassic to 'b',
                 panelPlayer to 's', queueHeadings to 'b', queueDjChip to 'b', castMark to 'b', immersiveVideo to 'b', bleedFit to 's', coverFlight to 'b',
@@ -3095,6 +3097,7 @@ class SettingsRepository(
             frostedPages = p[K.frostedPages] ?: d.frostedPages,
             replayThemeColors = p[K.replayThemeColors] ?: d.replayThemeColors,
             streamThemeColors = p[K.streamThemeColors] ?: d.streamThemeColors,
+            streamRussianPercent = (p[K.streamRussianPercent] ?: d.streamRussianPercent).coerceIn(-1, 100),
             performanceMode = p[K.performanceMode] ?: d.performanceMode,
             performanceOffered = p[K.performanceOffered] ?: d.performanceOffered,
         )
@@ -3936,6 +3939,7 @@ class SettingsRepository(
     fun setFrostedPages(v: Boolean) = edit { it[K.frostedPages] = v }
     fun setReplayThemeColors(v: Boolean) = edit { it[K.replayThemeColors] = v }
     fun setStreamThemeColors(v: Boolean) = edit { it[K.streamThemeColors] = v }
+    fun setStreamRussianPercent(v: Int) = edit { it[K.streamRussianPercent] = v.coerceIn(-1, 100) }
     fun setPerformanceMode(v: Boolean) = edit { it[K.performanceMode] = v; it[K.performanceOffered] = true }
     fun setPerformanceOffered() = edit { it[K.performanceOffered] = true }
 
