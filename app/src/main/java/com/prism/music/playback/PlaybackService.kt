@@ -331,12 +331,14 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                     when (command.action) {
                         "next" -> if (player.hasNextMediaItem()) player.seekToNextMediaItem() else return "unavailable"
                         "previous" -> if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem() else return "unavailable"
-                        "pause" -> player.pause()
-                        "resume" -> if (player.mediaItemCount > 0) player.play() else return "unavailable"
+                        "pause" -> if (!c.cast.requestStationPlaying(false)) player.pause()
+                        "resume" -> if (player.mediaItemCount > 0) {
+                            if (!c.cast.requestStationPlaying(true)) player.play()
+                        } else return "unavailable"
                         "seek_relative" -> {
                             val seconds = command.value?.takeIf { it in -3600..3600 } ?: return "failed"
                             val max = player.duration.takeIf { it > 0 } ?: return "unavailable"
-                            player.seekTo((player.currentPosition + seconds * 1000L).coerceIn(0L, max))
+                            player.seekTo((c.player.position + seconds * 1000L).coerceIn(0L, max))
                         }
                         "volume" -> {
                             val value = command.value?.takeIf { it in 0..100 } ?: return "failed"
