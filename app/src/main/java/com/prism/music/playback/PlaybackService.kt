@@ -216,7 +216,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                     // was left out (#210).
                     .setAudioProcessorChain(
                         EdgeSilenceProcessor.Chain(
-                            edges, arrayOf(vocals, edges, transitionFx, headphoneEq, spatial, normalizer, androidx.media3.exoplayer.audio.TeeAudioProcessor(VisualizerTap), androidx.media3.exoplayer.audio.TeeAudioProcessor(com.prism.music.connect.yandex.StationAudioTap)),
+                            edges, arrayOf(vocals, edges, transitionFx, headphoneEq, spatial, normalizer, androidx.media3.exoplayer.audio.TeeAudioProcessor(VisualizerTap), com.prism.music.connect.yandex.StationLiveOutputProcessor()),
                         )
                     )
                     .build()
