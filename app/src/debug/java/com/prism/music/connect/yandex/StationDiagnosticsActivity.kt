@@ -130,6 +130,41 @@ class StationDiagnosticsActivity : ComponentActivity() {
                 report("Play command queued. Listen to the Station and check counters.")
             }
         }
+        column.addView(TextView(this).apply {
+            text = "Prism Live · continuous audio experiment"
+            textSize = 20f
+        })
+        button("Start Live WAV (10 min)") {
+            runOperation("Starting real-time WAV") {
+                val active = sessionOrThrow()
+                val station = connectedStation ?: error("Not connected")
+                val address = withContext(Dispatchers.IO) {
+                    DatagramSocket().use {
+                        it.connect(station.address, station.port)
+                        it.localAddress as? Inet4Address ?: error("No IPv4 route")
+                    }
+                }
+                withContext(Dispatchers.IO) {
+                    active.playLive(address) { android.util.Log.i("PrismLive", it) }
+                }
+                report("Live command sent at low volume. Wait for tone A. Then switch to B and silence without restarting.")
+            }
+        }
+        fun signal(label: String, value: StationLiveProbe.Signal) {
+            button(label) {
+                runOperation("Changing live signal") {
+                    sessionOrThrow().liveSignal(value)
+                    report(sessionOrThrow().liveSummary())
+                }
+            }
+        }
+        signal("Tone A · 440 Hz", StationLiveProbe.Signal.A)
+        signal("Tone B · 880 Hz", StationLiveProbe.Signal.B)
+        signal("Silence (stream stays open)", StationLiveProbe.Signal.SILENCE)
+        button("Live diagnostics") { report(session?.liveSummary() ?: "Not connected") }
+        button("Stop Live") {
+            runOperation("Stopping Live") { sessionOrThrow().stop(); report("Live server closed; Station stop confirmed.") }
+        }
         button("Volume 20%") { runOperation("Setting volume") { sessionOrThrow().volume(0.2); report("Volume command queued.") } }
         button("Stop") { runOperation("Stopping") { sessionOrThrow().stop(); report("Station reports playback stopped.") } }
         button("Refresh diagnostics") {
@@ -367,7 +402,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
             catch (e: Exception) {
                 val safeMessage = e.message.orEmpty().let { msg ->
                     when {
-                        msg in setOf("Sign in with device code first", "Disconnect the single Station first", "Disconnect the group first", "Add Stations first", "Group limit: 8 Stations", "Not connected", "No file", "No IPv4 route", "Select a Station", "Station is not in this Yandex account", "No Station certificate in account metadata", "Yandex rejected the device token request", "Station certificate mismatch", "Station connection closed", "Station stop not confirmed", "Invalid Yandex device list") -> msg
+                        msg in setOf("Sign in with device code first", "Disconnect the single Station first", "Disconnect the group first", "Add Stations first", "Group limit: 8 Stations", "Not connected", "Start Live probe first", "No file", "No IPv4 route", "Select a Station", "Station is not in this Yandex account", "No Station certificate in account metadata", "Yandex rejected the device token request", "Station certificate mismatch", "Station connection closed", "Station stop not confirmed", "Invalid Yandex device list") -> msg
                         Regex("Quasar HTTP [0-9]{3}").matches(msg) -> msg
                         else -> e.javaClass.simpleName
                     }
