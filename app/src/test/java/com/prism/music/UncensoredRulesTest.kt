@@ -39,4 +39,25 @@ class UncensoredRulesTest {
         assertNull(UncensoredRules.best(source.copy(id = "local:42"), listOf(original)))
         assertNull(UncensoredRules.best(source.copy(isUpload = true), listOf(original)))
     }
+
+    @Test fun thirdPartyArtistPrefixedUploadIsShownButNotAutoPicked() {
+        val original = source.copy(title = "Божественный план", explicit = true, artists = listOf(ArtistRef("Heronwater")))
+        val upload = original.copy(id = "upload", title = "Heroinwater — Божественный план (без цензуры)",
+            artists = listOf(ArtistRef("Another uploader")), isVideo = true)
+        assertEquals(listOf(upload), UncensoredRules.review(original, listOf(upload)))
+        assertNull(UncensoredRules.best(original, listOf(upload)))
+    }
+
+    @Test fun officialTopicChannelMaySupplyMarkedOriginal() {
+        val original = source.copy(title = "Божественный план", explicit = true, artists = listOf(ArtistRef("Heronwater")))
+        val upload = original.copy(id = "upload", title = "Heroinwater - Божественный план (без запикиваний)",
+            artists = listOf(ArtistRef("Heroinwater - Topic")), isVideo = true)
+        assertEquals(upload, UncensoredRules.best(original, listOf(upload)))
+    }
+
+    @Test fun soundCloudRequiresManualVerification() {
+        val alternative = source.copy(id = "sc:artist:track", explicit = true)
+        assertEquals(listOf(alternative), UncensoredRules.review(source, listOf(alternative)))
+        assertNull(UncensoredRules.best(source, listOf(alternative)))
+    }
 }
