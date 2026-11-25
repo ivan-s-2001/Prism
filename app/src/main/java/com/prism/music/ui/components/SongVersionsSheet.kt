@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -31,6 +32,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.prism.music.data.SongVersions
+import com.prism.music.data.UncensoredRules
 import com.prism.music.data.innertube.SearchFilter
 import com.prism.music.data.model.Song
 import com.prism.music.data.model.SongItem
@@ -41,6 +43,7 @@ import com.prism.music.ui.theme.LocalUi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -54,21 +57,65 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val picks by c.versions.picks.collectAsState()
     val picked = picks[song.id]?.id
-    // null while looking; a failure when the search didn't answer.
-    val found by produceState<Result<List<Song>>?>(null, song.id) {
-        value = withContext(Dispatchers.IO) {
-            runCatching {
-                val query = "${song.title} ${song.primaryArtist}".trim()
-                coroutineScope {
-                    val songs = async { runCatching { c.ytm.search(query, SearchFilter.SONGS).items }.getOrDefault(emptyList()) }
-                    val videos = async { runCatching { c.ytm.search(query, SearchFilter.VIDEOS).items }.getOrDefault(emptyList()) }
-                    val all = (songs.await() + videos.await()).filterIsInstance<SongItem>().map { it.song }
-                    // Neither search answered (offline, or refused): shown as "couldn't look".
-                    if (all.isEmpty()) throw java.io.IOException()
-                    SongVersions.candidates(song, all)
-                }
-            }
+    val autoOriginals by c.uncensored.enabled.collectAsState()
+    // Results arrive independently: one unavailable provider cannot hide the others.
+    var queryOverride by androidx.compose.runtime.saveable.rememberSaveable(song.id) { mutableStateOf("") }
+    var queryInput by androidx.compose.runtime.saveable.rememberSaveable(song.id) { mutableStateOf("") }
+    var found by remember(song.id, queryOverride) { mutableStateOf<List<Song>>(emptyList()) }
+    var pending by remember(song.id, queryOverride) { mutableStateOf(true) }
+    var verifying by remember(song.id) { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    androidx.compose.runtime.LaunchedEffect(song.id, queryOverride) {
+        val query = queryOverride.ifBlank { "${song.primaryArtist} ${song.title}".trim() }
+        val hint = if (song.title.any { it in '\u0400'..'\u04ff' }) "без цензуры" else "uncensored"
+        val alias = if (song.primaryArtist.equals("Heronwater", true)) query.replace("Heronwater", "Heroinwater", ignoreCase = true) else query
+        fun publish(results: List<Song>) {
+            found = (found + results).distinctBy { it.id }
         }
+        try {
+            coroutineScope {
+                listOf(
+                    async {
+                        val results = withContext(Dispatchers.IO) {
+                            runCatching { c.ytm.search(query, SearchFilter.SONGS).items }.getOrDefault(emptyList())
+                        }
+                        publish(results.filterIsInstance<SongItem>().map { it.song })
+                    },
+                    async {
+                        val results = withContext(Dispatchers.IO) {
+                            runCatching { c.ytm.search("$alias $hint", SearchFilter.VIDEOS).items }.getOrDefault(emptyList())
+                        }
+                        publish(results.filterIsInstance<SongItem>().map { it.song })
+                    },
+                    async {
+                        val results = withContext(Dispatchers.IO) {
+                            runCatching {
+                                c.streams
+                                com.prism.music.data.OriginalSources.search("$alias $hint", false)
+                            }.getOrDefault(emptyList())
+                        }
+                        publish(results)
+                    },
+                    async {
+                        val results = withContext(Dispatchers.IO) {
+                            runCatching {
+                                c.streams
+                                com.prism.music.data.OriginalSources.search(alias, true)
+                            }.getOrDefault(emptyList())
+                        }
+                        publish(results)
+                    },
+                ).forEach { it.await() }
+            }
+        } finally {
+            pending = false
+        }
+    }
+    val versions = remember(song, found, queryOverride) {
+        val ranked = UncensoredRules.review(song, found)
+        // Explicit custom searches expose all results, making it possible to find an upload with different metadata.
+        if (queryOverride.isBlank()) (ranked + SongVersions.candidates(song, found)).distinctBy { it.id }
+        else (ranked + found).distinctBy { it.id }.take(40)
     }
     fun choose(pick: SongVersions.Pick?) {
         c.pickVersion(song, pick)
@@ -96,6 +143,16 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                 Text(tr(R.string.play_a_different_version), style = MaterialTheme.typography.titleLarge)
                 Text(tr(R.string.the_one_you_pick_plays_for), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text(tr(R.string.uncensored_recordings), style = MaterialTheme.typography.bodyLarge)
+                    Text(tr(R.string.uncensored_recordings_info), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = autoOriginals, onCheckedChange = c.uncensored::setEnabled)
+            }
             VersionRow(song, tr(R.string.version_original), picked == null, Modifier.testTag("version:own")) { choose(null) }
             // A file of the song on the phone plays from the file (a FLAC of an album bought elsewhere, say).
             if (!song.isLocal) {
@@ -117,15 +174,36 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                     Text(tr(R.string.choose_a_file_on_this_phone), style = MaterialTheme.typography.bodyLarge)
                 }
             }
-            val r = found
-            when {
-                r == null -> PrismSpinner(Modifier.padding(22.dp).size(22.dp), stroke = 2.dp)
-                r.isFailure -> Quiet(tr(R.string.couldn_t_look_for_other_versions))
-                r.getOrThrow().isEmpty() -> Quiet(tr(R.string.youtube_has_no_other_version_of))
-                else -> r.getOrThrow().forEach { v ->
-                    VersionRow(v, if (SongVersions.sameRecording(song, v)) tr(R.string.another_upload) else null, picked == v.id, Modifier.testTag("version:${v.id}")) {
-                        // The version itself is kept too: the song shows as it from now on (#328).
-                        choose(SongVersions.Pick(v.id, versionLabel(v), v))
+            SearchField(queryInput, tr(R.string.search), { queryInput = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+            Text(
+                tr(R.string.search), Modifier.padding(horizontal = 22.dp, vertical = 10.dp).clickable {
+                    queryOverride = queryInput.trim()
+                },
+                color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge,
+            )
+            if (pending || verifying) PrismSpinner(Modifier.padding(22.dp).size(22.dp), stroke = 2.dp)
+            if (!pending && versions.isEmpty()) Quiet(tr(R.string.youtube_has_no_other_version_of))
+            versions.forEach { v ->
+                val sc = com.prism.music.data.OriginalSources.isSoundCloud(v.id)
+                val provider = if (sc) "SoundCloud" else if (v.isVideo) "YouTube" else "YouTube Music"
+                val tag = listOfNotNull(provider, tr(R.string.uncensored_candidate).takeIf { UncensoredRules.markedOriginal(v) }).joinToString(" · ")
+                VersionRow(v, tag, picked == v.id, Modifier.testTag("version:${v.id}")) {
+                    if (verifying) return@VersionRow
+                    verifying = true
+                    scope.launch {
+                        try {
+                            val playable = withContext(Dispatchers.IO) {
+                                runCatching { c.streams.resolve(v.id) }.isSuccess
+                            }
+                            if (playable) {
+                                val shown = v.copy(title = song.title, artists = song.artists, album = song.album, thumbnail = song.thumbnail)
+                                choose(SongVersions.Pick(v.id, "$provider · ${versionLabel(v)}", shown))
+                            } else {
+                                android.widget.Toast.makeText(context, tr(R.string.no_playable_audio_stream_was_found), android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        } finally {
+                            verifying = false
+                        }
                     }
                 }
             }

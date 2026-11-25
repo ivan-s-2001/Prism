@@ -587,6 +587,7 @@ class StreamResolver(
         val videoId = versionOf(songId) ?: songId
         refusedSongs.forget(videoId)
         val was = cache.remove(videoId)
+        if (com.prism.music.data.OriginalSources.isSoundCloud(videoId)) return
         if (unavailable) {
             // Told by the stream already, as a rule ([fetched]): the same way noted twice is noted once.
             was?.let { busyWays.note(videoId, it.way.name) }
@@ -865,6 +866,10 @@ class StreamResolver(
     }
 
     private fun load(videoId: String, forVideo: Boolean = false): Formats {
+        if (com.prism.music.data.OriginalSources.isSoundCloud(videoId)) {
+            if (forVideo) throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
+            return soundCloudFormats(videoId)
+        }
         val signedIn = settings.current.isLoggedIn
         // #408: the way whose link was just refused, asked once more over IPv4 only, so the link and its stream leave by
         // the same family; when it can't answer, the ladder goes on as before.
@@ -1059,6 +1064,25 @@ class StreamResolver(
         val f = parsePlayer(res, null)
         if (f.live) return f.takeIf { it.hlsUrl != null }
         return f.takeIf { it.audio.isNotEmpty() }?.also { Log.i("PrismStream", "$videoId resolved directly (visionOS)") }
+    }
+
+    /** Public, full-length, non-DRM progressive SoundCloud audio only. HLS-only tracks are not supported by this path. */
+    private fun soundCloudFormats(id: String): Formats {
+        val url = com.prism.music.data.OriginalSources.soundCloudUrl(id)
+            ?: throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
+        val info = StreamInfo.getInfo(ServiceList.SoundCloud, url)
+        val audio = info.audioStreams
+            .filter { it.isUrl && it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP && it.content.startsWith("https://") }
+            .map { a ->
+                Fmt(
+                    itag = 9000 + (a.format?.id ?: 0), mime = a.format?.mimeType ?: "audio/mpeg",
+                    codec = null, kbps = a.averageBitrate.coerceAtLeast(0), sampleRate = 0, channels = 2,
+                    contentLength = -1L,
+                ) { a.content }
+            }
+        if (audio.isEmpty()) throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
+        return Formats(audio, emptyList(), emptyList(), info.duration,
+            System.currentTimeMillis() + 5 * 60_000L, via = "SoundCloud", notASong = true)
     }
 
     private fun anonymousFormats(videoId: String, ipv4: Boolean = false): Formats {

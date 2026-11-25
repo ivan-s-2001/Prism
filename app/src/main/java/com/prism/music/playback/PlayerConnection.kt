@@ -438,7 +438,15 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         // Live streams play as they are: they have no "song version" to swap in.
         if ((shuffle && !everywhere) || !tapped.isVideo || tapped.isLive || tapped.isEpisode) {
             if (pairsFrom != null) scope.launch { pairPlaylist(pairsFrom, tapped.id, source.title) }
-            startQueue(songs, first, source, shuffle, null, rest = rest)
+            if (c.uncensored.enabled.value && !tapped.isVideo && com.prism.music.data.UncensoredRules.eligible(tapped)) {
+                // Opt-in: resolve the first recording before handing it to the player. The resolver is time-bounded.
+                scope.launch {
+                    c.resolveOriginalVersion(tapped)
+                    if (token == playToken) startQueue(songs, first, source, shuffle, null, rest = rest)
+                }
+            } else {
+                startQueue(songs, first, source, shuffle, null, rest = rest)
+            }
             return
         }
         // With the Song / Video switch off the player is audio only (#48): a music video plays as its song, or as
