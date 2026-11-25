@@ -135,15 +135,21 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         starting = true
         val previous = c.queue.source.value
         val seed = System.nanoTime()
+        val current = song.takeIf { previous.isMyWave }
         scope.launch {
             try {
                 val songs = withContext(Dispatchers.Default) {
+                    val taste = c.yourMusic.waveTaste()
                     val base = if (online) recommendations else c.yourMusic.offlinePicks(60)
+                    val local = if (current != null) c.yourMusic.radio(listOf(current.id), setOf(current.id), 50, !online).map { it.song } else emptyList()
+                    val favoritesRanked = MyWave.fuse(listOf(taste.favorites, favorites, local))
+                    val combined = MyWave.fuse(listOf(base, local))
                     val known = c.library.likedIds.value
-                    val signals = c.discover.radioSignals(base + favorites.take(100) + recent.take(60), selected.tune.copy(newness = 0.5f))
-                    MyWave.start(base, favorites, recent, c.sessionHeard::has,
+                    val signals = c.discover.radioSignals(combined + favoritesRanked + recent.take(60), selected.tune.copy(newness = 0.5f))
+                    MyWave.start(combined, favoritesRanked, recent, c.sessionHeard::has,
                         allowed = { s ->
-                            !s.isEpisode && !s.isLive && !s.isVideo &&
+                            (current == null || (!c.sessionHeard.has(s) && s.id != current.id)) &&
+                                !s.isEpisode && !s.isLive && !s.isVideo &&
                                 (online || c.availableOffline(s.id)) &&
                                 !c.library.isDisliked(s.id) && !c.exclusions.blocks(s) &&
                                 !c.exclusions.isSongExcluded(s.id) &&
@@ -151,15 +157,24 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                                 ExplicitFilter.plays(c.settings.current.behavior.explicitContent, s)
                         }, seed = seed, style = selected, signals = signals,
                         artistDoubt = c.recFeedback::artistDoubt,
-                        servedRecently = { c.recFeedback.servedDaysAgo(it.id)?.let { days -> days <= 1 } == true })
+                        servedRecently = { c.recFeedback.servedDaysAgo(it.id)?.let { days -> days <= 1 } == true },
+                        profile = taste.profile, previousSong = current,
+                        avoid = current?.let { setOf(com.prism.music.data.foryou.LocalRadio.sameSong(it)) }.orEmpty())
                 }
                 // If the listener chose another queue while this was being prepared, it wins.
                 if (c.queue.source.value !== previous) return@launch
                 if (songs.isEmpty()) c.player.reportError(l("Нет доступных треков для волны. Попробуйте после загрузки рекомендаций.", "No tracks available for Wave. Try after recommendations load."))
                 else {
-                    c.recFeedback.served(songs.map { it.id })
-                    c.player.playQueue(songs, 0, QueueSource(QueueKind.RADIO, title,
-                        seedId = songs.first().id, originId = selected.origin))
+                    val next = QueueSource(QueueKind.RADIO, title, seedId = current?.id ?: songs.first().id, originId = selected.origin)
+                    if (previous.isMyWave && current != null) {
+                        if (!c.player.retuneWave(previous, next, songs)) {
+                            style = MyWave.style(previous.originId)
+                            c.player.reportError(l("Не удалось обновить очередь. Текущий трек сохранён.", "Could not retune. Current track preserved."))
+                        }
+                    } else {
+                        c.recFeedback.served(songs.map { it.id })
+                        c.player.playQueue(songs, 0, next)
+                    }
                 }
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { c.player.reportError(l("Не удалось запустить волну", "Could not start Wave")) }
@@ -258,7 +273,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         AlertDialog(onDismissRequest = { settingsOpen = false },
             title = { Text(l("Настроить волну", "Tune your Wave")) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(l("Характер музыки", "Music discovery"), style = MaterialTheme.typography.titleSmall)
                     MyWave.Character.entries.forEach { value ->
                         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { draft = draft.copy(character = value) },
@@ -275,11 +290,23 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                             Text(moodName(value))
                         }
                     }
+                    Text(l("Популярность", "Popularity"), style = MaterialTheme.typography.titleSmall)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        MyWave.Depth.entries.forEach { value ->
+                            val label = when (value) {
+                                MyWave.Depth.ANY -> l("Всё", "All")
+                                MyWave.Depth.HITS -> l("Хиты", "Hits")
+                                MyWave.Depth.DEEP -> l("Редкое", "Deep cuts")
+                            }
+                            FilterChip(selected = draft.depth == value, onClick = { draft = draft.copy(depth = value) },
+                                label = { Text(label, maxLines = 1) })
+                        }
+                    }
                     if (draft.mood != MyWave.Mood.ANY) Text(l("Настроение учитывается по измеренным темпу и громкости, если они известны.",
                         "Mood uses measured tempo and loudness when available."), style = MaterialTheme.typography.bodySmall)
                 }
             },
-            confirmButton = { TextButton(onClick = { settingsOpen = false; style = draft; start(draft) }) { Text(l("Включить", "Play")) } },
+            confirmButton = { TextButton(onClick = { settingsOpen = false; style = draft; start(draft) }) { Text(if (wave) l("Применить", "Apply") else l("Включить", "Play")) } },
             dismissButton = { TextButton(onClick = { draft = MyWave.Style() }) { Text(l("Сбросить", "Reset")) } })
     }
 }
