@@ -30,6 +30,7 @@ class StationStreamEvidenceTest {
         assertEquals(url, gate.observe(frame(""), { 1 }).id)
         assertEquals("native", gate.observe(frame("native", at = 102), { 1 }).id)
         assertEquals("", gate.observe(frame("", at = 103, playing = false), { 1 }).id)
+        assertEquals("", gate.observe(frame("", at = 104, playing = true), { 1 }).id)
         assertEquals("", gate.observe(frame("", type = "bluetooth"), { 1 }).id)
     }
 
