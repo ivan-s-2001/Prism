@@ -19,6 +19,7 @@ import com.prism.music.AppContainer
 import com.prism.music.BuildConfig
 import com.prism.music.connect.yandex.ConnectDeviceClient
 import kotlinx.serialization.json.*
+import com.prism.music.connect.yandex.StationLinkHealth
 import com.prism.music.connect.yandex.StationClock
 import com.prism.music.connect.yandex.StationEndGate
 import com.prism.music.connect.yandex.StationNames
@@ -433,7 +434,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         var lastTransport: TransportInfo? = null
         val misses = CastMisses(MAX_FAILURES)
         var lastFailure: String? = null
-        var stationFailureSince: Long? = null
+        val stationHealth = StationLinkHealth()
         var foreign = 0
         var volume: Int? = null
         var volumeSetAt = 0L
@@ -1130,16 +1131,14 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 if (session !== s) break
                 r.onSuccess { (ti, pi) ->
                     s.misses.ok()
-                    s.stationFailureSince = null
+                    s.stationHealth.recovered()
                     runCatching { onPoll(s, ti, pi, rtt) }.onFailure { Log.w(TAG, "following ${s.renderer.name} failed", it) }
                 }.onFailure { e ->
                     if (e is CancellationException) throw e
                     if (station != null) publishStationClock(_stationClock.value?.copy(playing = null, loading = s.wantPlaying))
                     s.lastFailure = "${e.javaClass.simpleName}: ${e.message?.take(80)}"
                     val lost = if (station != null) {
-                        val now = SystemClock.elapsedRealtime()
-                        val since = s.stationFailureSince ?: now.also { s.stationFailureSince = it }
-                        !netBlocked && now - since >= 30_000L
+                        s.stationHealth.failed(SystemClock.elapsedRealtime(), netBlocked)
                     } else s.misses.failed(blocked = netBlocked)
                     com.prism.music.playback.AudioDiagnostics.log("cast", "no answer (${s.misses.count}/$MAX_FAILURES${if (netBlocked) ", network held back: not counted" else ""}) after ${rtt * 2} ms: ${s.lastFailure}")
                     if (lost) {
