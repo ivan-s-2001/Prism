@@ -17,6 +17,18 @@ class YandexLibraryImportTest {
         assertEquals("Album", track.album)
     }
 
+    @Test fun preservesOriginalIdentityAndSeparatesArtistCreditsForMatching() {
+        val t = YandexLibraryImport.track(Json.parseToJsonElement(
+            """{"id":123,"title":"Song","durationMs":185000,"isrcs":["USAAA2600001"],"artists":[{"name":"Artist"},{"name":"Guest"}]}"""
+        ).jsonObject)!!
+        assertEquals("Artist, Guest", t.artist)
+        assertEquals("Artist; Guest", t.artistCredit)
+        assertEquals(185000L, t.durationMs)
+        assertEquals("USAAA2600001", t.isrc)
+        assertEquals(LibraryTrack("Song", "Artist, Guest", sourceId = "yandex:123").key, t.key)
+        assertEquals("Song Artist", TrackMatcher.queryFor(TrackToMatch(t.title, t.artistCredit!!, durationMs = t.durationMs)))
+    }
+
     @Test fun incompleteMetadataIsNotAnInventedTrack() {
         assertNull(YandexLibraryImport.track(null))
         assertNull(YandexLibraryImport.track(buildJsonObject { put("id", 123); put("title", "Song") }))
