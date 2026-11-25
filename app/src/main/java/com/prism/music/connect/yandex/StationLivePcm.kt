@@ -4,6 +4,7 @@ import com.prism.music.connect.HttpServer
 import com.prism.music.connect.HttpRequest
 import com.prism.music.connect.HttpResponse
 import com.prism.music.connect.Wav
+import com.prism.music.connect.ByteRange
 import java.io.Closeable
 import java.net.Inet4Address
 import java.util.UUID
@@ -11,9 +12,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
-/** Direct PCM without encoder or segment buffering. The WAV header marks an unknown
- * duration; fixed HTTP length is needed by Station firmware (Music Assistant live sources).
- * The receiver may still maintain its own playback buffer.
+/** Sequential live WAV, with a bounded, RIFF-compatible resource size.
+ * Honor Station's HTTP range requests. No random access to audio that has not
+ * been captured; a new session is required to seek outside this live resource.
  */
 internal class StationLivePcm(phone: Inet4Address, station: Inet4Address,
     private val source: (Int) -> ByteArray) : Closeable {
@@ -21,16 +22,16 @@ internal class StationLivePcm(phone: Inet4Address, station: Inet4Address,
         private const val RATE = 44100
         private const val FRAME_BYTES = 4
         private const val CHUNK = RATE * FRAME_BYTES / 50
-        private const val LENGTH = 12L * 3600 * RATE * FRAME_BYTES + 44
-        internal fun header(): ByteArray = Wav.header(RATE, 2, 0L).apply {
-            for (i in 4..7) this[i] = 0xff.toByte()
-            for (i in 40..43) this[i] = 0xff.toByte()
-        }
+        // RIFF's 32-bit sizes must match the advertised HTTP entity.
+        internal const val DATA_LENGTH = 3600L * RATE * FRAME_BYTES
+        internal const val LENGTH = DATA_LENGTH + 44
+        internal fun header(): ByteArray = Wav.header(RATE, 2, DATA_LENGTH)
     }
     private val closed = AtomicBoolean()
     private val consumer = AtomicReference<HttpResponse?>(null)
     private val requests = AtomicLong()
     private val delivered = AtomicLong()
+    private val nextOffset = AtomicLong(44L)
     @Volatile private var lastWrite = 0L
     private val path = "/live/${UUID.randomUUID()}/stream.wav"
     private val http = HttpServer("prism-live-pcm", 0, maxBody = 0,
@@ -42,7 +43,7 @@ internal class StationLivePcm(phone: Inet4Address, station: Inet4Address,
         android.util.Log.i("PrismLive", "Direct PCM listening port=${http.port}")
     }
 
-    val receiving: Boolean get() = consumer.get() != null && delivered.get() >= RATE * FRAME_BYTES / 2 &&
+    val receiving: Boolean get() = !closed.get() && delivered.get() >= RATE * FRAME_BYTES / 2 &&
         android.os.SystemClock.elapsedRealtime() - lastWrite < 5000L
 
     private fun handle(req: HttpRequest, res: HttpResponse) {
@@ -51,38 +52,75 @@ internal class StationLivePcm(phone: Inet4Address, station: Inet4Address,
         }
         requests.incrementAndGet()
         val headers = mapOf("Content-Type" to "audio/wav", "Cache-Control" to "no-store",
-            "Accept-Ranges" to "none", "icy-name" to "Prism Live")
+            "Accept-Ranges" to "bytes")
         android.util.Log.i("PrismLive", "Direct PCM ${req.method} range=${req.headers["range"] ?: "none"}")
-        if (req.method == "HEAD") { res.start(200, headers, LENGTH); return }
+        val range = ByteRange.parse(req.header("range"), LENGTH)
+        if (range == ByteRange.Unsatisfiable) {
+            res.text(416, "Invalid range", mapOf("Content-Range" to "bytes */$LENGTH"))
+            return
+        }
+        val first = if (range is ByteRange.Part) range.start else 0L
+        val last = if (range is ByteRange.Part) range.end else LENGTH - 1
+        val length = last - first + 1
+        val responseHeaders = if (range is ByteRange.Part)
+            headers + ("Content-Range" to "bytes $first-$last/$LENGTH") else headers
+        val status = if (range is ByteRange.Part) 206 else 200
+        if (req.method == "HEAD") { res.start(status, responseHeaders, length); return }
+        val wav = header()
+        // Header-only probes never consume the live audio.
+        if (last < 44) {
+            res.send(status, "audio/wav", wav.copyOfRange(first.toInt(), (last + 1).toInt()), responseHeaders)
+            return
+        }
         if (!consumer.compareAndSet(null, res)) { res.text(503, "Already streaming"); return }
         try {
             if (closed.get()) return
-            val out = res.start(200, headers, LENGTH)
-            out.write(header())
+            val pcmStart = maxOf(first, 44L)
+            if (pcmStart != nextOffset.get() || (pcmStart - 44) % FRAME_BYTES != 0L ||
+                (last + 1 - 44) % FRAME_BYTES != 0L) {
+                res.text(416, "Live range unavailable", mapOf("Content-Range" to "bytes */$LENGTH"))
+                android.util.Log.w("PrismLive", "PCM non-sequential range $first-$last next=${nextOffset.get()}")
+                return
+            }
+            val out = res.start(status, responseHeaders, length)
+            android.util.Log.i("PrismLive", "PCM HTTP $status bytes=$first-$last/$LENGTH")
+            var pos = first
+            if (pos < wav.size) {
+                val n = (wav.size - pos).toInt()
+                out.write(wav, pos.toInt(), n)
+                pos += n
+            }
             out.flush()
-            var sent = 44L
             var deadline = System.nanoTime()
-            while (!closed.get() && sent < LENGTH) {
-                val n = minOf(CHUNK.toLong(), LENGTH - sent).toInt()
+            var lastLog = deadline
+            var nonZero = 0L
+            while (!closed.get() && pos <= last) {
+                val n = minOf(CHUNK.toLong(), last - pos + 1).toInt()
                 val pcm = source(n)
                 check(pcm.size == n) { "Unexpected PCM chunk size" }
+                nonZero += pcm.count { it != 0.toByte() }
                 out.write(pcm)
                 out.flush()
-                sent += n
+                pos += n
+                nextOffset.set(pos)
                 delivered.addAndGet(n.toLong())
                 lastWrite = android.os.SystemClock.elapsedRealtime()
-                // Use an absolute sample clock, not a fresh 20ms sleep each time:
-                // otherwise scheduler oversleep accumulates indefinitely.
                 val now = System.nanoTime()
+                if (now - lastLog >= 1_000_000_000L) {
+                    android.util.Log.i("PrismLive", "PCM wire bytes=${delivered.get()} nonZeroBytes=$nonZero; ${StationAudioTap.formatSummary()}")
+                    nonZero = 0
+                    lastLog = now
+                }
                 deadline += n.toLong() * 1_000_000_000L / (RATE * FRAME_BYTES)
-                // Never burst seconds of stale audio after TCP backpressure.
                 if (now - deadline > 40_000_000L) deadline = now
                 val wait = deadline - now
                 if (wait > 0) Thread.sleep(wait / 1_000_000L, (wait % 1_000_000L).toInt())
             }
+        } catch (e: java.io.IOException) {
+            android.util.Log.w("PrismLive", "PCM HTTP ended: ${e.javaClass.simpleName}; bytes=${delivered.get()}")
         } finally {
             consumer.compareAndSet(res, null)
-            android.util.Log.i("PrismLive", "Direct PCM closed; bytes=${delivered.get()}")
+            android.util.Log.i("PrismLive", "Direct PCM request closed; bytes=${delivered.get()} next=${nextOffset.get()}")
         }
     }
 
