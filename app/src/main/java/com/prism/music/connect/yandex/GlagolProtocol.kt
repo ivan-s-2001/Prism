@@ -1,0 +1,83 @@
+package com.prism.music.connect.yandex
+
+import java.io.ByteArrayOutputStream
+import java.net.URI
+import java.util.Base64
+import java.util.UUID
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+
+/**
+ * Experimental local Yandex Station transport message encoder.
+ * Protocol reference: https://github.com/volodarskij/yandex-station-local-streaming
+ * No network calls, credentials, or TLS policy are handled here.
+ */
+internal object GlagolProtocol {
+    const val SERVICE_TYPE = "_yandexio._tcp."
+    const val DEFAULT_PORT = 1961
+
+    fun envelope(
+        conversationToken: String,
+        payload: JsonObject,
+        id: String = UUID.randomUUID().toString(),
+        sentTime: Long = System.currentTimeMillis(),
+    ): String {
+        require(conversationToken.isNotBlank())
+        return buildJsonObject {
+            put("conversationToken", conversationToken)
+            put("id", id)
+            put("sentTime", sentTime)
+            put("payload", payload)
+        }.toString()
+    }
+
+    fun ping(): JsonObject = buildJsonObject { put("command", "ping") }
+
+    fun stop(): JsonObject = buildJsonObject { put("command", "stop") }
+
+    fun volume(value: Double): JsonObject {
+        require(value.isFinite() && value in 0.0..1.0)
+        return buildJsonObject {
+            put("command", "setVolume")
+            put("volume", value)
+        }
+    }
+
+    /** The Station pulls a fresh HTTP URL from a phone-hosted server. */
+    fun playStream(url: String, title: String, artist: String): JsonObject {
+        val uri = URI(url)
+        require(uri.scheme.equals("http", ignoreCase = true) && uri.host != null)
+        require(uri.userInfo == null && uri.fragment == null)
+        val params = buildJsonObject {
+            put("streamUrl", url)
+            put("force_restart_player", true)
+            put("title", title)
+            put("subtitle", artist)
+        }.toString()
+        val message = ByteArrayOutputStream().apply {
+            stringField(1, "radio_play")
+            stringField(2, params)
+        }.toByteArray()
+        return buildJsonObject {
+            put("command", "externalCommandBypass")
+            put("data", Base64.getEncoder().encodeToString(message))
+        }
+    }
+
+    private fun ByteArrayOutputStream.stringField(number: Int, value: String) {
+        val bytes = value.toByteArray(Charsets.UTF_8)
+        varint((number shl 3) or 2)
+        varint(bytes.size)
+        write(bytes)
+    }
+
+    private fun ByteArrayOutputStream.varint(value: Int) {
+        var remaining = value
+        while (remaining >= 128) {
+            write((remaining and 0x7f) or 0x80)
+            remaining = remaining ushr 7
+        }
+        write(remaining)
+    }
+}
