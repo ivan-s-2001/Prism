@@ -363,6 +363,10 @@ class AppContainer(val app: Application) {
     val versions = com.prism.music.data.SongVersions(app.getSharedPreferences("song_versions", android.content.Context.MODE_PRIVATE))
     val uncensored = com.prism.music.data.UncensoredVersions(
         app.getSharedPreferences("uncensored_versions", Context.MODE_PRIVATE),
+        searchYouTube = { query ->
+            streams
+            com.prism.music.data.OriginalSources.search(query, false)
+        },
     ) { query, filter ->
         ytm.search(query, filter).items.filterIsInstance<com.prism.music.data.model.SongItem>().map { it.song }
     }
@@ -725,26 +729,26 @@ class AppContainer(val app: Application) {
                 if (songs.isEmpty()) return@collectLatest
                 quietNetwork()
                 for (song in songs.distinctBy { it.id }) {
-                    resolveOriginalVersion(song)
+                    resolveOriginalVersion(song, includeExternal = true)
                 }
             }
         }
     }
 
-    suspend fun resolveOriginalVersion(song: com.prism.music.data.model.Song) {
+    suspend fun resolveOriginalVersion(song: com.prism.music.data.model.Song, includeExternal: Boolean = false) {
         if (!uncensored.enabled.value || dataSaving() ||
             settings.current.behavior.explicitContent != com.prism.music.data.prefs.ExplicitContent.SHOW ||
             versions.of(song.id) != null || uncensored.wasManual(song.id) ||
             player.currentSong.value?.id == song.id
         ) return
-        val candidate = uncensored.find(song) ?: return
+        val candidate = uncensored.find(song, includeExternal) ?: return
         kotlinx.coroutines.withContext(Dispatchers.Main) {
             if (uncensored.enabled.value && !dataSaving() &&
                 settings.current.behavior.explicitContent == com.prism.music.data.prefs.ExplicitContent.SHOW &&
                 versions.of(song.id) == null && !uncensored.wasManual(song.id) &&
                 player.currentSong.value?.id != song.id
             ) {
-                pickVersion(song, com.prism.music.data.SongVersions.Pick(candidate.id, candidate.artistText, candidate), automatic = true)
+                pickVersion(song, com.prism.music.data.SongVersions.Pick(candidate.id, candidate.artistText, candidate.copy(title = song.title, artists = song.artists, album = song.album, thumbnail = song.thumbnail)), automatic = true)
             }
         }
     }
