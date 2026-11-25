@@ -71,6 +71,8 @@ class Discovery(private val sources: Sources) {
         val lastWeeks: Set<String> = emptySet(),
         /** Albums they've played something from: their other tracks are the best deep cuts there are. */
         val albumsHeard: Set<String> = emptySet(),
+        val affinity: (Song) -> Double = { 1.0 },
+        val feedbackWeight: (Song) -> Double = { 1.0 },
     )
 
     data class Made(val songs: List<Song>, val seeds: List<String>)
@@ -91,6 +93,7 @@ class Discovery(private val sources: Sources) {
             known = emptyList(), played = emptySet(),
             refused = { s, _ -> l.heard.has(s) || l.refused(s) },
             artistDoubt = l.artistDoubt, servedDaysAgo = l.servedDaysAgo,
+            affinity = l.affinity, feedbackWeight = l.feedbackWeight,
         )
         val recipe = MixMaker.Recipe("new_to_you", NEW_SIZE, freshShare = 1.0, seeds = seeds.size, perArtist = 2)
         // A wider draw than the mix needs, for [arrange] to spread its artists.
@@ -103,7 +106,7 @@ class Discovery(private val sources: Sources) {
     /** A week's seeds: favorites drawn by how much they're loved, an artist each; a starred artist's top song if there are too few. */
     private suspend fun seedSongs(l: Listener, seed: Long): List<Song> {
         val can = l.favorites.filter { !it.song.isLocal && !it.song.isEpisode && !it.song.isLive && !it.song.isUpload }
-        val drawn = Variety.sample(can, SEEDS * 6, seed) { it.weight }.map { it.song }
+        val drawn = Variety.sample(can, SEEDS * 6, seed) { it.weight * l.affinity(it.song) * l.feedbackWeight(it.song) }.map { it.song }
         val out = Variety.roundRobin(drawn) { it.primaryArtist }.distinctBy { it.primaryArtist.lowercase() }.take(SEEDS).toMutableList()
         if (out.size < SEEDS) for (a in l.artists) {
             if (out.size >= SEEDS) break
@@ -144,7 +147,7 @@ class Discovery(private val sources: Sources) {
         val known = found.filter { (s, _, _) -> !l.heard.has(s) && !l.refused(s) }.distinctBy { (s, _, _) -> LocalRadio.sameSong(s) }
         fun weigh(t: Triple<Song, LovedArtist, Boolean>): Double {
             val served = l.servedDaysAgo(t.first.id)?.let { d -> if (d <= 1) 0.25 else if (d <= 3) 0.6 else 1.0 } ?: 1.0
-            return (if (t.third) 1.5 else 1.0) * served
+            return (if (t.third) 1.5 else 1.0) * served * l.affinity(t.first) * l.feedbackWeight(t.first)
         }
         val fresh = known.filter { (s, _, _) -> LocalRadio.sameSong(s) !in l.lastWeeks }
         val pool = (if (fresh.size >= DEEP_SIZE) fresh else known)
