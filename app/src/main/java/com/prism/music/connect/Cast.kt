@@ -383,6 +383,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         var connectLease: ConnectDeviceClient.Lease? = null
         var connectResult: JsonObject? = null
         var current: Loaded? = null
+        var mediaToken: String = ""
         var preparingSong: String? = null
         var preparingPosition = 0L
         var next: Loaded? = null
@@ -545,6 +546,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 }
             }
             server.newSession()
+            s.mediaToken = server.token
             session = s
             casting = true
             liveLocal = false
@@ -860,10 +862,14 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             format = pcmFormat(s, refusedPcm)
             body = pcmBody(s, CastDecoder.forSong(c.playbackDataSourceFactory(), song.id), durationMs, format)
         }
-        val key = keyFor(song, format)
-        val url = server.publish(key, body, s.host)
+        // A fresh URL for each Station load prevents cached frames from an earlier play of the same song.
+        val baseKey = keyFor(song, format)
+        val key = if (s.renderer.kind == RendererKind.YANDEX_STATION) {
+            baseKey.substringBeforeLast('.') + "_" + java.util.UUID.randomUUID().toString().take(12) + "." + baseKey.substringAfterLast('.')
+        } else baseKey
+        val url = server.publishForSession(s.mediaToken, key, body, s.host)
         // Glagol does not consume DIDL or its artwork URL. Avoid a blocking artwork download on every skip.
-        val art = if (s.renderer.kind == RendererKind.YANDEX_STATION) null else runCatching { artFor(song) }.getOrNull()?.let { server.publish("art_" + key.substringBeforeLast('.') + ".jpg", it, s.host) }
+        val art = if (s.renderer.kind == RendererKind.YANDEX_STATION) null else runCatching { artFor(song) }.getOrNull()?.let { server.publishForSession(s.mediaToken, "art_" + key.substringBeforeLast('.') + ".jpg", it, s.host) }
         val length = ((body as? PcmBody)?.let { it.frames * 1000 / it.rate }) ?: durationMs
         val artist = song.artistText.takeUnless { song.artists.isEmpty() }.orEmpty()
         val meta = Didl.song(
