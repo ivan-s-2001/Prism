@@ -110,7 +110,8 @@ internal class StationRendererLink(
         target = part.offsetMs
         confirmedPausePosition = null
         // A cancelled send may already have reached the receiver; keep ownership until confirmed stop.
-        val reply = socket.request(auth, GlagolProtocol.playStream(part.url, media.title, media.artist), timeoutMs = 600L)
+        val reply = socket.request(auth, GlagolProtocol.playStream(part.url, media.title, media.artist), timeoutMs = 600L,
+            confirmed = { state?.let { it.at >= at && it.matches(part.url) && it.playing == true } == true })
         if (reply != null && !reply.equals("SUCCESS", ignoreCase = true)) throw IOException("Station rejected audio_play")
         Log.i("PrismStation", "audio_play offset=${part.offsetMs} duration=${part.durationMs} reply=${if (reply == null) "pending" else "success"}")
     }
