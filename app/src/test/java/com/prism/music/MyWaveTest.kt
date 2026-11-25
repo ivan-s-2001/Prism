@@ -107,6 +107,41 @@ class MyWaveTest {
         assertEquals(MyWave.Depth.ANY, MyWave.style("prism:my-wave:FAMILIAR:CALM").depth)
     }
 
+    @Test fun activityAndExplicitMoodUseOnlyKnownAudioEnergy() {
+        val calm = song("calm", "A")
+        val loud = song("loud", "B")
+        val signals = com.prism.music.data.foryou.RadioSignals(energy = { if (it == calm) 0.0 else 1.0 })
+        val workout = MyWave.Style(activity = MyWave.Activity.TRAIN, diversity = 80)
+        assertEquals(loud, MyWave.start(listOf(calm, loud), emptyList(), emptyList(), { false }, { true },
+            1L, 1, workout, signals).single())
+        assertEquals(calm, MyWave.start(listOf(calm, loud), emptyList(), emptyList(), { false }, { true },
+            1L, 1, workout.copy(mood = MyWave.Mood.CALM), signals).single())
+        assertEquals(workout, MyWave.style(workout.origin))
+        assertEquals(MyWave.Activity.ANY, MyWave.style("prism:my-wave:BALANCED:ANY:HITS").activity)
+    }
+
+    @Test fun implicitFeedbackIsShrunkAndExplorationIsBounded() {
+        val unknown = MyWave.Evidence()
+        val positive = MyWave.Evidence(accepted = 12.0, skipped = 1.0)
+        val negative = MyWave.Evidence(accepted = 1.0, skipped = 12.0)
+        assertEquals(1.0, unknown.weight(0.0), 1e-9)
+        assertTrue(unknown.weight(1.0) > 1.0)
+        assertTrue(unknown.weight(1.0) <= 1.12 + 1e-9)
+        assertTrue(positive.weight(0.0) > 1.0)
+        assertTrue(negative.weight(1.0) < 1.0)
+        assertTrue(MyWave.Evidence(accepted = 1.0).weight(0.0) < positive.weight(0.0))
+    }
+
+    @Test fun varietyDoesNotOverrideExclusions() {
+        val repeated = (1..8).map { song("a$it", "A") }
+        val others = (1..6).map { song("b$it", "Artist $it") }
+        val blocked = others.first()
+        val result = MyWave.start(repeated + others, emptyList(), emptyList(), { false }, { it != blocked },
+            4L, 6, MyWave.Style(diversity = 100))
+        assertFalse(blocked in result)
+        assertTrue(result.count { it.primaryArtist == "A" } <= 2)
+    }
+
     @Test fun diversifiesArtistsWhenPossible() {
         val songs = listOf(song("a1", "A"), song("a2", "A"), song("b", "B"), song("c", "C"))
         val result = MyWave.start(songs, emptyList(), emptyList(), { false }, { true }, 13L, 4)
