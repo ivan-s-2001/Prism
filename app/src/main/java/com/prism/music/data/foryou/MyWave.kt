@@ -53,11 +53,24 @@ internal object MyWave {
         }
     }
 
+    /** Explicit likes have two time scales: current taste and durable preferences.
+     * Unknown/future timestamps are not treated as new likes. Old likes never lose all influence.
+     */
+    fun likeWeight(likedAt: Long, now: Long): Double {
+        if (likedAt <= 0L || likedAt > now) return 0.20
+        val days = (now - likedAt).toDouble() / 86_400_000.0
+        return 0.20 + 0.55 * Math.pow(0.5, days / 14.0) + 0.25 * Math.pow(0.5, days / 90.0)
+    }
+
+    /** Diminishing returns prevent bulk likes from one artist swamping the profile. */
+    fun likeSaturation(weight: Double): Double = 1.0 - kotlin.math.exp(-weight.coerceAtLeast(0.0) / 2.0)
+
     /** Bounded, local signals: absent history is neutral, not a dislike. */
     class Profile(
         val taste: (Song) -> Double? = { null },
         val context: (Song) -> Double? = { null },
         val transition: (Song, Song) -> Double? = { _, _ -> null },
+        val likedAffinity: (Song) -> Double = { 0.0 },
     )
 
     /** Fusion rewards agreement between independent ranked sources without pretending scores are probabilities. */
@@ -118,7 +131,8 @@ internal object MyWave {
                 val context = profile.context(s)?.coerceIn(0.0, 1.0)?.let { 0.8 + 0.4 * it } ?: 1.0
                 val depth = signals.onTopList(s)?.let { if (it) 1.0 - style.depth.bias else 1.0 + style.depth.bias } ?: 1.0
                 val learned = artistEvidence(s.primaryArtist).weight(if (familiar(s) == false) explore else 0.0)
-                s to rank * novelty * energy * depth * rest * feedback * taste * context * learned * (0.93 + 0.14 * random.nextDouble())
+                val likes = 1.0 + 1.35 * profile.likedAffinity(s).coerceIn(0.0, 1.0)
+                s to rank * novelty * energy * depth * rest * feedback * taste * context * learned * likes * (0.93 + 0.14 * random.nextDouble())
             }
             .sortedByDescending { it.second }
             .toMutableList()
