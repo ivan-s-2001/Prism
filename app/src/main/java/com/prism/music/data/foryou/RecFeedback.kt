@@ -107,6 +107,20 @@ class RecFeedback(context: Context) {
         return ((skips - 2 * heard) / 6.0).coerceIn(0.0, 0.8)
     }
 
+    /** Snapshot feedback for ranking one batch. Decay by a 10-day half-life; do not count stale or future events. */
+    internal fun waveEvidence(): (String) -> MyWave.Evidence {
+        val snapshot = state
+        val now = today()
+        fun weight(days: List<Int>): Double = days.sumOf { day ->
+            val age = now - day
+            if (age in 0..30) Math.pow(0.5, age / 10.0) else 0.0
+        }
+        val evidence = (snapshot.artistHeard.keys + snapshot.artistSkips.keys).associateWith { artist ->
+            MyWave.Evidence(weight(snapshot.artistHeard[artist].orEmpty()), weight(snapshot.artistSkips[artist].orEmpty()))
+        }
+        return { artist -> evidence[artist.lowercase()] ?: MyWave.Evidence() }
+    }
+
     /** Everything forgotten (Settings → Recommendations → start over). */
     fun clear() = change { State() }
 
