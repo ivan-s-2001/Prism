@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.prism.music.data.model.Song
 import com.prism.music.data.prefs.MiniPlayerStyle
 import com.prism.music.data.prefs.MiniProgress
@@ -60,7 +61,7 @@ fun MiniHome(c: ThemeColors, song: Song?) {
                 Column {
                     Box(Modifier.width(28.dp).height(3.dp).clip(CircleShape).background(light))
                     Spacer(Modifier.height(10.dp))
-                    Text("42h 10m", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraLight, color = scheme.onBackground)
+                    Text(tr(R.string.dh_dm).format(42, 10), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraLight, color = scheme.onBackground)
                     Text(tr(R.string.your_year_so_far), style = MaterialTheme.typography.bodySmall, color = c.ink2)
                 }
             }
@@ -161,7 +162,8 @@ private fun TabBarPreview(c: ThemeColors) {
                 val words = !minimal && s.navLabels == NavLabels.WORDS
                 if (!words) Icon(if (on && tab == NavTab.MY_WAVE) PrismIcons.StreamFilled else tab.icon(), null, Modifier.size(22.dp), tint = if (on) scheme.onBackground else c.ink3)
                 val showLabel = !minimal && (s.navLabels == NavLabels.ALWAYS || words || (s.navLabels == NavLabels.SELECTED && on))
-                if (showLabel) Text(s.tabNames[tab] ?: tab.label, style = MaterialTheme.typography.labelSmall, color = if (on) scheme.onBackground else c.ink3, maxLines = 1)
+                if (showLabel) Text(s.tabNames[tab] ?: tab.label, style = MaterialTheme.typography.labelSmall, color = if (on) scheme.onBackground else c.ink3, maxLines = 1, softWrap = false,
+                    overflow = TextOverflow.Ellipsis, autoSize = com.prism.music.ui.components.FitAutoSize(minFontSize = 8.sp, maxFontSize = MaterialTheme.typography.labelSmall.fontSize), modifier = Modifier.padding(horizontal = 3.dp))
                 if (!docked && on) Box(Modifier.padding(top = 3.dp).width(14.dp).height(2.dp).clip(CircleShape).background(light))
             }
         }

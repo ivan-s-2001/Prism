@@ -163,4 +163,5 @@
     <string name="prism_yandex_stop_unconfirmed">Prism Connect: остановка Станции не подтверждена. Устройство пока занято</string>
     <string name="prism_yandex_seek_failed">Не удалось перемотать трек на Станции</string>
     <string name="prism_yandex_live_device">%1$s · Эфир</string>
+    <string name="prism_replay_whole_hours">%1$,d ч</string>
 </resources>

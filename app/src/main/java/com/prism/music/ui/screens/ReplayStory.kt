@@ -651,8 +651,8 @@ internal fun StoryTypeSample(own: Boolean, modifier: Modifier = Modifier) {
             verticalArrangement = Arrangement.Center,
         ) {
             Text(tr(R.string.you_listened_for), style = kicker(9.sp), maxLines = 1)
-            Text("1,204", style = display(40.sp), maxLines = 1)
-            Text(tr(R.string.of_music).uppercase(), style = display(16.sp, ArtistTypography.extended), maxLines = 1)
+            Text(java.text.NumberFormat.getIntegerInstance().format(1204), style = display(40.sp), maxLines = 1)
+            FitText(tr(R.string.of_music).uppercase(), style = display(16.sp, ArtistTypography.extended), modifier = Modifier.fillMaxWidth())
         }
     }
 }

@@ -163,4 +163,5 @@
     <string name="prism_yandex_stop_unconfirmed">Prism Connect: Station stop not confirmed; device remains reserved</string>
     <string name="prism_yandex_seek_failed">Could not seek on Yandex Station</string>
     <string name="prism_yandex_live_device">%1$s · Live</string>
+    <string name="prism_replay_whole_hours">%1$,d h</string>
 </resources>

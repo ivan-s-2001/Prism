@@ -64,6 +64,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.prism.music.data.db.ArtistPlays
 import com.prism.music.data.db.MonthTotal
 import com.prism.music.data.db.SongPlays
@@ -577,16 +578,18 @@ private fun HeroCard(d: ReplayData, period: Period, notYet: Boolean, loading: Bo
             )
             Spacer(Modifier.height(4.dp))
             Column(Modifier.toggleListenUnit()) {
-                Text(total.text(anim.value.toLong()), color = Color.White, style = MaterialTheme.typography.displayLarge, maxLines = 1)
+                Text(total.text(anim.value.toLong()), color = Color.White, style = MaterialTheme.typography.displayLarge,
+                    maxLines = 1, softWrap = false, modifier = Modifier.fillMaxWidth(),
+                    autoSize = com.prism.music.ui.components.FitAutoSize(minFontSize = 22.sp, maxFontSize = MaterialTheme.typography.displayLarge.fontSize))
                 Text(tr(R.string.listened_2, total.unit).trim(),color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.titleMedium)
             }
             Spacer(Modifier.height(18.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 // In the listener's own number format ("1,358", "1.358"), as the rest of Prism writes counts.
                 val n = java.text.NumberFormat.getIntegerInstance()
-                Stat(n.format(d.plays), trp(R.plurals.plays_word, d.plays))
-                Stat(n.format(d.songCount), trp(R.plurals.songs_word, d.songCount))
-                Stat(n.format(d.activeDays), trp(R.plurals.days_word, d.activeDays))
+                Stat(n.format(d.plays), trp(R.plurals.plays_word, d.plays), Modifier.weight(1f))
+                Stat(n.format(d.songCount), trp(R.plurals.songs_word, d.songCount), Modifier.weight(1f))
+                Stat(n.format(d.activeDays), trp(R.plurals.days_word, d.activeDays), Modifier.weight(1f))
             }
             if (top != null) {
                 Spacer(Modifier.height(18.dp))
@@ -615,7 +618,8 @@ private fun HeroCard(d: ReplayData, period: Period, notYet: Boolean, loading: Bo
                 if (loading) androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp), color = Color.Black, strokeWidth = 2.dp)
                 else Icon(PrismIcons.Play, null, Modifier.size(20.dp), tint = Color.Black)
                 Spacer(Modifier.width(8.dp))
-                Text(if (period.isYear) tr(R.string.watch_your_rewind) else tr(R.string.watch_your_replay), color = Color.Black, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)
+                Text(if (period.isYear) tr(R.string.watch_your_rewind) else tr(R.string.watch_your_replay), color = Color.Black,
+                    style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f, fill = false), maxLines = 2)
             }
         }
     }
@@ -640,7 +644,7 @@ fun listenTime(ms: Long, hours: Boolean): String {
 
 /** "8h 20m", or "8h" on the hour. */
 fun hoursAndMinutes(totalMinutes: Long): String =
-    if (totalMinutes % 60 == 0L) "%,dh".format(totalMinutes / 60) else tr(R.string.dh_dm).format(totalMinutes / 60, totalMinutes % 60)
+    if (totalMinutes % 60 == 0L) tr(R.string.prism_replay_whole_hours, totalMinutes / 60) else tr(R.string.dh_dm).format(totalMinutes / 60, totalMinutes % 60)
 
 @Composable
 @ReadOnlyComposable
@@ -698,10 +702,12 @@ private fun GenreLabels(name: String, time: String, nameInk: Color, timeInk: Col
 }
 
 @Composable
-private fun Stat(value: String, label: String) {
-    Column {
-        Text(value, color = Color.White, style = MaterialTheme.typography.headlineSmall)
-        Text(label, color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelMedium)
+private fun Stat(value: String, label: String, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(value, color = Color.White, style = MaterialTheme.typography.headlineSmall,
+            maxLines = 1, softWrap = false, modifier = Modifier.fillMaxWidth(),
+            autoSize = com.prism.music.ui.components.FitAutoSize(minFontSize = 14.sp, maxFontSize = MaterialTheme.typography.headlineSmall.fontSize))
+        Text(label, color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelMedium, maxLines = 2)
     }
 }
 

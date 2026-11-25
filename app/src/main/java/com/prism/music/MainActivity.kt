@@ -96,6 +96,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.lerp
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -1117,8 +1118,11 @@ private fun NavRail(tabs: List<Tab>, route: String?, settings: AppSettings, onSe
                     Icon(if (selected) tab.selectedIcon else tab.icon, tab.label, tint = fg, modifier = Modifier.size(24.dp).then(if (selected) Modifier.tabTint(settings.shapes.tabTint) else Modifier))
                     if (showLabel) Text(
                         tab.label, color = fg, style = MaterialTheme.typography.labelSmall,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1,
-                        modifier = Modifier.padding(top = 2.dp),
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1, softWrap = false,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        autoSize = com.prism.music.ui.components.FitAutoSize(minFontSize = 8.sp, maxFontSize = MaterialTheme.typography.labelSmall.fontSize),
+                        modifier = Modifier.fillMaxWidth().padding(top = 2.dp, start = 4.dp, end = 4.dp),
                     )
                 }
             }
