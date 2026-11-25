@@ -1835,28 +1835,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         if (player.currentMediaItem?.toSong()?.isEpisode == true) return
         if (src.kind != QueueKind.SINGLE && !radio && !wave && player.repeatMode != Player.REPEAT_MODE_OFF) return
         if (player.mediaItemCount - player.currentMediaItemIndex > 3 || c.queue.autoplayLoading) return
-        // A radio that ran dry may have moved on to another song's radio (No repeats this session).
-        val waveSeed = if (wave) (0..player.currentMediaItemIndex.coerceAtLeast(0)).reversed().firstNotNullOfOrNull { i ->
-            player.getMediaItemAt(i).toSong()?.takeIf { !it.isLocal && !it.isLive && !it.isEpisode && !c.library.isDisliked(it.id) && !c.exclusions.blocks(it) && !c.recFeedback.turnedDown(it.id, known = false) }?.id
-        } else null
-        val previousSeed = c.queue.reseededFor(src) ?: src.seedId
-        val seed = waveSeed ?: previousSeed ?: player.getMediaItemAt(player.mediaItemCount - 1).mediaId.takeIf { it.isNotBlank() } ?: return
-        val continuation = c.queue.autoplayContinuation.takeIf { previousSeed == seed }
-        val behavior = c.settings.current.behavior
-        val noRepeats = wave || behavior.autoplayNoRepeats
-        val waveStyle = com.prism.music.data.foryou.MyWave.style(src.originId)
-        val tune = if (wave) waveStyle.tune else behavior.radioTune
-        // Where the songs come from (Settings → Playback & sound → Autoplay from): your own music (Prism's radio, made on
-        // the phone from your plays, likes, downloads and files), YouTube Music's radio, or both. A song's radio (Quick
-        // picks, "Radio") is YouTube's; with no connection, or after a file on the phone, only your own music can follow.
         val offline = !c.network.isOnline()
-        val mode = c.settings.current.autoplaySource
-        val seedLocal = seed.startsWith(Song.LOCAL_PREFIX)
-        // Tuned towards the familiar, a song's radio takes in your own music too.
-        val useYours = wave || offline || seedLocal || radio || mode != com.prism.music.data.prefs.AutoplaySource.YOUTUBE || tune.newness < 0f
-        val useYouTube = !offline && !seedLocal && (radio || mode != com.prism.music.data.prefs.AutoplaySource.YOURS)
-        val seedEnd = if (wave) (player.currentMediaItemIndex + 1).coerceIn(1, player.mediaItemCount) else player.mediaItemCount
-        val seeds = (maxOf(0, seedEnd - 3) until seedEnd).map { player.getMediaItemAt(it).mediaId }.filter { it.isNotBlank() }
+        val waveStyle = com.prism.music.data.foryou.MyWave.style(src.originId)
         c.queue.autoplayLoading = true
         autoplayFor = src
         val job = scope.launch {
@@ -1885,78 +1865,34 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 }
                 return@launch
             }
-            val existing = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
-            val session = c.sessionHeard
-            // With no repeats on, a wider draw: most of Prism's best picks for a song may well have played by now.
-            suspend fun ownRadio(): List<com.prism.music.data.foryou.LocalRadio.Pick> = runCatching {
-                withContext(Dispatchers.IO) { c.yourMusic.radio(seeds, existing, if (noRepeats) 60 else 15, offlineOnly = offline) }
-            }.onFailure { android.util.Log.w("PrismRadio", "Prism radio failed", it) }.getOrNull().orEmpty()
-                .let { picks -> if (noRepeats) picks.filter { !session.has(it.song) }.take(15) else picks }
-            val ownPicks = if (!useYours) emptyList() else ownRadio()
-            // "Your music": YouTube only fills in when your own music has too little to follow with.
-            val wantYouTube = useYouTube && (radio || mode != com.prism.music.data.prefs.AutoplaySource.YOURS || ownPicks.size < 5)
-            suspend fun askRadio(from: String, token: String?) = runCatching {
-                withContext(Dispatchers.IO) { c.radio(from, "RDAMVM$from", continuation = token) }
-            }.getOrNull()
-            val r = if (!wantYouTube) null else askRadio(seed, continuation)
-            val radioCandidates = r?.songs.orEmpty()
-            // #461: beside YouTube's radio, only your songs close to the seed (or by artists on that radio).
-            val mine = com.prism.music.data.foryou.LocalRadio.besideYouTube(
-                ownPicks, onlyYours = !useYouTube || (!radio && mode == com.prism.music.data.prefs.AutoplaySource.YOURS), radio = radioCandidates,
-            ).map { it.song }
-            // Dropped if the queue was replaced, or Autoplay was switched off, while loading. (With no repeats on, having
-            // nothing from either isn't the end yet: [RadioTopUp.next] looks further.)
-            if ((!noRepeats && r == null && mine.isEmpty()) || c.queue.source.value !== src || (!c.settings.current.autoplay && !radio)) return@launch
-            val heardLately = withContext(Dispatchers.IO) {
-                runCatching { c.db.plays().eventsSince(System.currentTimeMillis() - RADIO_REST_MS).map { it.songId }.toSet() }.getOrDefault(emptySet())
+            val all = (0 until player.mediaItemCount).mapNotNull { player.getMediaItemAt(it).toSong() }
+            val generatedStart = c.queue.autoplayStart.value.takeIf { it >= 0 } ?: all.size
+            val manual = c.queue.userQueued.value
+            val anchor = all.firstOrNull { it.id == src.seedId }
+            val originals = all.take(generatedStart).filter { it.id !in manual && !it.isEpisode && !it.isLive }
+            val anchors = (if (radio && anchor != null) listOf(anchor) else originals.takeLast(3))
+                .ifEmpty { listOfNotNull(all.lastOrNull()) }
+            val occupied = if (offline) all.drop(player.currentMediaItemIndex.coerceAtLeast(0)) else all
+            val additions = try {
+                c.yourMusic.contextBatch(anchors, occupied, (all.size - generatedStart).coerceAtLeast(0), explicitContext = radio)
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) {
+                android.util.Log.w("PrismRadio", "Context Stream batch failed", e)
+                emptyList()
             }
-            val fb = c.recFeedback
-            val queuedRecordings = (0 until player.mediaItemCount).mapNotNull { player.getMediaItemAt(it).toSong() }
-                .mapTo(hashSetOf(), com.prism.music.data.foryou.LocalRadio::sameSong)
-            val rules = com.prism.music.data.foryou.RadioTopUp.Rules(
-                existing, heardLately, turnedDown = { fb.turnedDown(it.id, known = it.id in c.library.likedIds.value) },
-                allowed = {
-                    c.yourMusic.recommendationAllowed(it, offlineOnly = offline) &&
-                        // Preserve the separate duration setting for ordinary autoplay.
-                        (radio || com.prism.music.data.AutoplayLength.fits(it, behavior.autoplayMaxMinutes))
-                },
-                queuedRecordings = queuedRecordings,
-            )
-            val first = r?.let { com.prism.music.data.foryou.RadioTopUp.Page(radioCandidates, it.continuation) }
-            val signals = if (tune.neutral && !wave) com.prism.music.data.foryou.RadioSignals()
-                else withContext(Dispatchers.IO) { c.discover.radioSignals(mine + radioCandidates, if (wave) tune.copy(newness = 0.5f) else tune) }
-            val askPage: suspend (String, String?) -> com.prism.music.data.foryou.RadioTopUp.Page? = { from, token ->
-                askRadio(from, token)?.let { com.prism.music.data.foryou.RadioTopUp.Page(it.songs, it.continuation) }
-            }
-            val answer = com.prism.music.data.foryou.RadioTopUp.next(
-                first, seed, continuation, mine, radio && !wave, rules, tune, signals, seed.hashCode().toLong() + player.mediaItemCount,
-                noRepeats = if (!noRepeats) null else com.prism.music.data.foryou.RadioTopUp.NoRepeats(
-                    heard = session::has,
-                    otherSeeds = com.prism.music.data.foryou.RadioTopUp.otherSeeds(session.oldestFirst(), player.currentMediaItem?.toSong()),
-                    ask = askPage.takeIf { wantYouTube },
-                    ownRadio = { ownRadio().map { it.song } },
-                    // The queue's songs behind the one playing, and the session's; what's still to come would only repeat sooner.
-                    again = {
-                        val ahead = (player.currentMediaItemIndex until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
-                        ((0 until player.currentMediaItemIndex).mapNotNull { player.getMediaItemAt(it).toSong() } + session.oldestFirst())
-                            .filter { it.id !in ahead && (!offline || c.availableOffline(it.id)) && !it.isLive && !it.isEpisode }
-                    },
-                    heardAt = session::heardAt,
-                ),
-            )
-            // Replaced or switched off while it looked further. (Its asks swallow a cancellation, so that's checked too.)
             if (!isActive || c.queue.source.value !== src || (!c.settings.current.autoplay && !radio)) return@launch
-            c.queue.autoplayContinuation = answer.continuation
-            if (answer.seed != previousSeed) c.queue.reseed(src, answer.seed)
-            android.util.Log.i("PrismRadio", "autoplay after ${answer.seed}: ${mine.size} of yours, ${r?.songs?.size ?: 0} from YouTube, adding ${answer.add.size} ($mode${if (offline) ", offline" else ""}${if (noRepeats) ", no repeats" else ""}${if (answer.cameRound) ", coming round" else ""})")
-            val additions = answer.add
-            if (additions.isNotEmpty()) {
+            val currentKeys = (0 until player.mediaItemCount).mapNotNull { index ->
+                if (offline && index < player.currentMediaItemIndex) null else player.getMediaItemAt(index).toSong()
+            }.mapTo(hashSetOf(), com.prism.music.data.foryou.LocalRadio::sameSong)
+            val accepted = additions.filter {
+                com.prism.music.data.foryou.LocalRadio.sameSong(it) !in currentKeys &&
+                    c.yourMusic.recommendationAllowed(it, offlineOnly = offline)
+            }.distinctBy(com.prism.music.data.foryou.LocalRadio::sameSong)
+            if (accepted.isNotEmpty()) {
                 if (c.queue.autoplayStart.value < 0) c.queue.autoplayStart.value = player.mediaItemCount
-                player.addMediaItems(additions.map { it.toMediaItem() })
-                fb.served(additions.map { it.id })
-                if (answer.cameRound) c.player.reportError(tr(R.string.no_repeats_ran_out))
-                // A Radio button's notice (1.8.8): the radio has really started.
-                else if (c.player.radioNotice.take(src, additions.size)) c.player.reportError(tr(R.string.radio_started))
+                player.addMediaItems(accepted.map { it.toMediaItem() })
+                c.recFeedback.served(accepted.map { it.id })
+                if (c.player.radioNotice.take(src, accepted.size)) c.player.reportError(tr(R.string.radio_started))
             }
         }
         autoplayJob = job
@@ -2571,31 +2507,29 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             for (a in anchors.sortedDescending()) {
                 if (!c.queue.smartShuffle.value || c.queue.source.value !== src) return@launch
                 val song = smartPool.removeFirstOrNull() ?: break
+                if ((0 until player.mediaItemCount).any { player.getMediaItemAt(it).mediaId == song.id }) continue
+                if (!c.yourMusic.recommendationAllowed(song, offlineOnly = !c.network.isOnline())) continue
                 val at = a + 1
                 if (c.queue.autoplayStart.value >= at) c.queue.autoplayStart.value += 1
                 c.queue.smartPicks.value = c.queue.smartPicks.value + song.id
                 player.addMediaItem(at, song.toMediaItem())
+                c.recFeedback.served(listOf(song.id))
             }
         }
     }
 
     /** More recommendations: radios from a few of the queue's own songs, less what's queued, disliked or excluded. */
     private suspend fun fillSmartPool() {
-        val inQueue = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
-        val own = (0 until player.mediaItemCount).map { player.getMediaItemAt(it) }
-            .filter { it.mediaId !in c.queue.smartPicks.value }.mapNotNull { it.toSong() }.filter { !it.isLocal && !it.isEpisode && !it.isLive }
+        val source = c.queue.source.value
+        val all = (0 until player.mediaItemCount).mapNotNull { player.getMediaItemAt(it).toSong() }
+        val picks = c.queue.smartPicks.value
+        val own = all.filter { it.id !in picks && !it.isEpisode && !it.isLive }
         if (own.isEmpty()) return
-        val recent = c.library.recent.value.take(50).map { it.id }.toSet()
-        for (seed in own.shuffled().take(2)) {
-            val r = runCatching { withContext(Dispatchers.IO) { c.radio(seed.id, "RDAMVM${seed.id}") } }.getOrNull() ?: continue
-            r.songs.filter { s ->
-                s.id !in inQueue && s.id !in recent && !s.isVideo && !s.isLive && !c.library.isDisliked(s.id) && !c.exclusions.blocks(s) &&
-                    smartPool.none { it.id == s.id } && !c.recFeedback.turnedDown(s.id, known = false) &&
-                    // One offered in the last day or two (and not taken up) waits its turn.
-                    (c.recFeedback.servedDaysAgo(s.id) ?: 99) > 1
-            }.shuffled().take(6).forEach { smartPool += it }
-        c.recFeedback.served(smartPool.map { it.id })
-        }
+        val current = player.currentMediaItem?.toSong()
+        val anchors = (listOfNotNull(current?.takeIf { it.id !in picks }) + own.shuffled().take(2)).distinctBy { it.id }
+        val batch = c.yourMusic.contextBatch(anchors, all + smartPool.toList(), picks.size, count = 6, smart = true)
+        if (c.queue.source.value !== source || !c.queue.smartShuffle.value) return
+        batch.forEach { smartPool += it }
     }
 
     /** Smart Shuffle off: its picks still to come leave the queue (the one playing stays). */

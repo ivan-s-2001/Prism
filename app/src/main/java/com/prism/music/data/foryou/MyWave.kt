@@ -245,6 +245,7 @@ internal object MyWave {
         previousSong: Song? = null,
         avoid: Set<String> = emptySet(),
         artistEvidence: (String) -> Evidence = { Evidence() },
+        quotaOffset: Int? = null,
     ): List<Song> {
         if (count <= 0) return emptyList()
         val recentKeys = recent.mapTo(hashSetOf(), LocalRadio::sameSong)
@@ -296,14 +297,29 @@ internal object MyWave {
             return from.removeAt(i).first
         }
         while (out.size < count) {
-            val preferKnown = when (style.character) {
+            val preferKnown = if (quotaOffset != null) !discoverySlot(quotaOffset + out.size, style.discoveryPercent)
+            else when (style.character) {
                 Character.FAMILIAR -> out.size % 4 != 3
                 Character.DISCOVERY -> out.size % 5 == 4
                 Character.BALANCED -> out.size % 3 == 1
             }
             val preferred = if (preferKnown) listOf(known, picks, last) else listOf(picks, known, last)
-            val s = preferred.firstNotNullOfOrNull { take(it, true) }
-                ?: preferred.firstNotNullOfOrNull { take(it, false) } ?: break
+            val s = if (quotaOffset != null && style.russianPercent in 1..99) {
+                // Prefer the requested language in the preferred pool, then fall back to the available music.
+                val russian = discoverySlot(quotaOffset + out.size, style.russianPercent)
+                fun takeLanguage(from: MutableList<Pair<Song, Double>>, strict: Boolean): Song? {
+                    val matching = from.filter { russianTitle(it.first) == russian }.toMutableList()
+                    val chosen = take(matching, strict) ?: return null
+                    from.removeAll { LocalRadio.sameSong(it.first) == LocalRadio.sameSong(chosen) }
+                    return chosen
+                }
+                preferred.firstNotNullOfOrNull { takeLanguage(it, true) }
+                    ?: preferred.firstNotNullOfOrNull { take(it, true) }
+                    ?: preferred.firstNotNullOfOrNull { takeLanguage(it, false) }
+                    ?: preferred.firstNotNullOfOrNull { take(it, false) }
+            } else preferred.firstNotNullOfOrNull { take(it, true) }
+                ?: preferred.firstNotNullOfOrNull { take(it, false) }
+            if (s == null) break
             seen += LocalRadio.sameSong(s)
             previous = s.primaryArtist.lowercase()
             artists[previous] = (artists[previous] ?: 0) + 1
