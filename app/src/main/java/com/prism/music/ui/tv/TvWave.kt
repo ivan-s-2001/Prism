@@ -2,6 +2,9 @@ package com.prism.music.ui.tv
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.focusGroup
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -154,7 +157,6 @@ internal fun TvWavePlace(nav: TvNav) {
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(title, Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium)
-                    TvButton(l("Настроить", "Tune"), { toggleTuning(true) }, Modifier.tvItem("tv_wave/tune"), icon = PrismIcons.Equalizer)
                 }
                 Row(Modifier.weight(1f).fillMaxWidth().tvGlass(TvShapes.card).padding(24.dp),
                     horizontalArrangement = Arrangement.spacedBy(if (narrow) 20.dp else 36.dp),
@@ -194,19 +196,34 @@ internal fun TvWavePlace(nav: TvNav) {
                         }
                     }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TvScenarioDisc(l("Настройки", "Tune"), PrismIcons.Equalizer, selected = false,
+                        onClick = { toggleTuning(true) }, modifier = Modifier.tvItem("tv_wave/tune"))
                     val active = WaveScenarios.all.firstOrNull { it.style == style.copy(russianPercent = -1) }
                     val clock = java.util.Calendar.getInstance()
                     val choices = (listOfNotNull(active) + WaveScenarios.forDay(clock.get(java.util.Calendar.HOUR_OF_DAY),
-                        clock.get(java.util.Calendar.DAY_OF_WEEK) in listOf(java.util.Calendar.SATURDAY, java.util.Calendar.SUNDAY))).distinctBy { it.id }.take(2)
-                    choices.forEach { preset ->
-                        TvButton(if (ru) preset.ru else preset.en, { start(preset.style.copy(russianPercent = style.russianPercent)) },
-                            Modifier.tvItem("tv_wave/quick/${preset.id}"), primary = active?.id == preset.id)
+                        clock.get(java.util.Calendar.DAY_OF_WEEK) in listOf(java.util.Calendar.SATURDAY, java.util.Calendar.SUNDAY)) +
+                        WaveScenarios.all).distinctBy { it.id }
+                    Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(vertical = 6.dp, horizontal = 6.dp)
+                        .rememberedFocus().focusGroup(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        choices.forEach { preset ->
+                            TvScenarioDisc(label = if (ru) preset.ru else preset.en,
+                                icon = when (preset.glyph) {
+                                    WaveScenarios.Glyph.SUN -> PrismIcons.Sun
+                                    WaveScenarios.Glyph.MOON -> PrismIcons.Moon
+                                    WaveScenarios.Glyph.CAR -> PrismIcons.Car
+                                    WaveScenarios.Glyph.WORK -> PrismIcons.Headphones
+                                    WaveScenarios.Glyph.ENERGY -> PrismIcons.Flame
+                                    WaveScenarios.Glyph.HEART -> PrismIcons.Heart
+                                    WaveScenarios.Glyph.STAR -> PrismIcons.Star
+                                    WaveScenarios.Glyph.DISCOVER -> PrismIcons.SmartShuffle
+                                    WaveScenarios.Glyph.RADIO -> PrismIcons.Equalizer
+                                }, selected = active?.id == preset.id,
+                                onClick = { start(preset.style.copy(russianPercent = style.russianPercent)) },
+                                modifier = Modifier.tvItem("tv_wave/quick/${preset.id}"))
+                        }
                     }
-                    Text(l("${style.discoveryPercent}% открытий", "${style.discoveryPercent}% discoveries") +
-                        if (style.russianPercent >= 0) l(" · ${style.russianPercent}% рус.", " · ${style.russianPercent}% Russian") else "",
-                        Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
