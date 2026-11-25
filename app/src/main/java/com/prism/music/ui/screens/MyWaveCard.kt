@@ -13,6 +13,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
+import com.prism.music.ui.components.rememberArtPalette
+import com.prism.music.ui.player.rememberFullArtworkBlur
+import com.prism.music.ui.player.FullArtworkBlurBackdrop
+import com.prism.music.ui.player.TransportRow
+import com.prism.music.ui.player.playerTitleStyle
+import com.prism.music.ui.player.playerArtistStyle
 import com.prism.music.ui.components.Artwork
 import com.prism.music.data.model.SongItem
 import androidx.compose.ui.platform.testTag
@@ -183,12 +195,19 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val pending = starting || waiting || (wave && buffering)
     val ui = LocalUi.current
     val scheme = MaterialTheme.colorScheme
-    val accent = scheme.primary
+    val settings = LocalAppSettings.current
     val liked by c.library.likedIds.collectAsState()
     val disliked by c.library.dislikedIds.collectAsState()
     val hasNext by c.player.hasNext.collectAsState()
     val hasPrevious by c.player.hasPrevious.collectAsState()
     val current = song.takeIf { wave }
+    val cover = current?.let { c.covers.art(SongItem(it)) }
+    val palette = rememberArtPalette(cover.takeUnless { settings.streamThemeColors })
+    val rawAccent = if (settings.streamThemeColors) scheme.primary else palette?.vibrant ?: scheme.primary
+    // Lift very dark cover colors so controls remain visible over the dark player backdrop.
+    val visibleAccent = if (rawAccent.luminance() < 0.28f) lerp(rawAccent, Color.White, 0.48f) else rawAccent
+    val accent by animateColorAsState(visibleAccent, tween(if (settings.reduceMotion) 0 else 320), label = "streamAccent")
+    val selectionColor = lerp(scheme.surfaceContainerHigh, accent, 0.24f)
     fun depthName(v: MyWave.Depth) = when (v) {
         MyWave.Depth.ANY -> l("Всё", "All")
         MyWave.Depth.HITS -> l("Хиты", "Hits")
@@ -230,25 +249,20 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
     // One player card, not a decorative hero followed by a second mini player.
     @Composable fun Hero(modifier: Modifier, compact: Boolean) {
+        val blurred = rememberFullArtworkBlur(cover, strength = 0.65f)
         BoxWithConstraints(modifier.clip(ui.shape(24.dp)).background(scheme.surfaceContainerHigh)
-            .padding(12.dp).testTag("home:my_wave")) {
+            .testTag("home:my_wave")) {
+            FullArtworkBlurBackdrop(blurred, Modifier.matchParentSize(), scrim = 1.15f)
+            Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(
+                (if (settings.streamThemeColors) scheme.primary else accent).copy(alpha = if (settings.streamThemeColors) 0.30f else 0.12f),
+                Color.Black.copy(alpha = 0.12f), Color.Black.copy(alpha = 0.45f)))))
             val short = maxHeight < 350.dp
-            @Composable fun Cover(modifier: Modifier) {
-                if (current != null) {
-                    Artwork(c.covers.art(SongItem(current)), modifier.clip(ui.shape(16.dp)).clickable(onClick = onOpenPlayer),
-                        ui.shape(16.dp), size = 512)
-                } else {
-                    Box(modifier.clip(ui.shape(16.dp)).background(scheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
-                        Icon(PrismIcons.Equalizer, null, Modifier.size(44.dp), tint = scheme.primary)
-                    }
-                }
-            }
             @Composable fun Metadata() {
                 Column(Modifier.fillMaxWidth().then(if (current != null) Modifier.clickable(onClick = onOpenPlayer) else Modifier)) {
                     Text(current?.title ?: l("Музыка в твоём ритме", "Music in your rhythm"),
-                        style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        style = playerTitleStyle(MaterialTheme.typography, settings), color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(current?.primaryArtist ?: l("Начни слушать", "Start listening"),
-                        style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
+                        style = playerArtistStyle(MaterialTheme.typography, settings), color = Color.White.copy(alpha = 0.78f),
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
@@ -257,7 +271,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     IconButton(onClick = { current?.let { c.library.toggleLike(it) } }, enabled = current != null) {
                         val on = current?.id in liked
                         Icon(if (on) PrismIcons.HeartFilled else PrismIcons.Heart, l("Нравится", "Like"),
-                            tint = if (on) accent else scheme.onSurface)
+                            tint = if (on) accent else Color.White)
                     }
                     IconButton(onClick = {
                         current?.let {
@@ -267,30 +281,19 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                         }
                     }, enabled = current != null) {
                         Icon(if (current?.id in disliked) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown,
-                            l("Не моё", "Not for me"), tint = if (current?.id in disliked) accent else scheme.onSurface)
+                            l("Не моё", "Not for me"), tint = if (current?.id in disliked) accent else Color.White)
                     }
                     IconButton(onClick = { if (onRetry != null && !wave) onRetry() else start() }, enabled = !starting,
                         modifier = Modifier.testTag("home:my_wave:refresh")) {
-                        Icon(PrismIcons.Refresh, l("Встряхнуть", "Refresh Stream"))
+                        Icon(PrismIcons.Refresh, l("Встряхнуть", "Refresh Stream"), tint = Color.White)
                     }
                 }
             }
             @Composable fun Transport() {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
-                    IconButton(onClick = { c.player.previous() }, enabled = wave && hasPrevious) {
-                        Icon(PrismIcons.Previous, l("Предыдущий трек", "Previous track"), Modifier.size(28.dp))
-                    }
-                    FilledIconButton(onClick = { if (wave) c.player.togglePlay() else start() },
-                        enabled = wave || !starting, modifier = Modifier.size(if (short) 52.dp else 64.dp).testTag("home:my_wave:play"),
-                        colors = IconButtonDefaults.filledIconButtonColors(containerColor = accent, contentColor = scheme.onPrimary)) {
-                        if (pending && !wave) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp, color = scheme.onPrimary)
-                        else Icon(if (wave && playing) PrismIcons.Pause else PrismIcons.Play,
-                            if (wave && playing) l("Пауза", "Pause") else l("Слушать", "Play"), Modifier.size(30.dp))
-                    }
-                    IconButton(onClick = { c.player.next() }, enabled = wave && hasNext) {
-                        Icon(PrismIcons.Next, l("Следующий трек", "Next track"), Modifier.size(28.dp))
-                    }
-                }
+                TransportRow(isPlaying = wave && playing, isLoading = pending && !wave,
+                    previousEnabled = wave && hasPrevious, nextEnabled = wave && hasNext,
+                    compact = true, showModes = false, playAction = { if (wave) c.player.togglePlay() else if (!starting) start() },
+                    playAccent = accent, playTag = "home:my_wave:play")
             }
             @Composable fun Progress() {
                 // Isolate playhead updates here. A drag is committed only for the same song.
@@ -319,51 +322,41 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                         fill = androidx.compose.ui.graphics.SolidColor(accent))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(com.prism.music.ui.player.formatTime(if (seekable) (fraction * duration).toLong() else 0L),
-                            style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
-                        Text(com.prism.music.ui.player.formatTime(duration), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                            style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.72f))
+                        Text(com.prism.music.ui.player.formatTime(duration), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.72f))
                     }
                 }
             }
             val tagline = activeScenario?.let { if (ru) it.ru else it.en } ?: l("Музыка в твоём ритме", "Music in your rhythm")
-            if (maxHeight < 270.dp && maxWidth >= 320.dp) {
-                // Very short window: keep a square cover beside the controls.
-                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Cover(Modifier.size(minOf(maxHeight, maxWidth * 0.33f)))
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-                        Text(tagline, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1)
+            if (maxHeight < 260.dp && maxWidth >= 300.dp) {
+                Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(tagline, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.8f), maxLines = 1)
                         Metadata()
-                        Progress()
-                        Transport()
                         Feedback()
                     }
-                }
-            } else if (short) {
-                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-                    Text(tagline, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1)
-                    Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        BoxWithConstraints(Modifier.weight(0.9f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                            Cover(Modifier.size(minOf(maxWidth, maxHeight)))
-                        }
-                        Box(Modifier.weight(1.1f)) { Metadata() }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                        Transport()
+                        Progress()
                     }
-                    Progress()
-                    Transport()
-                    Feedback()
                 }
             } else {
-                Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(tagline, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1)
-                    BoxWithConstraints(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        Cover(Modifier.size(minOf(maxWidth, maxHeight)))
+                Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(tagline, style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.85f),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Transport()
                     }
                     Metadata()
                     Progress()
-                    Transport()
                     Feedback()
                 }
             }
         }
     }
+
     @Composable fun Controls(compact: Boolean) {
         Column(verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -381,7 +374,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 quickScenarios.take(3).forEach { scenario ->
                     Surface(onClick = { start(scenario.style) }, modifier = Modifier.weight(1f).height(if (compact) 60.dp else 82.dp)
                         .testTag("wave:scenario:${scenario.id}"), shape = ui.shape(16.dp),
-                        color = if (style == scenario.style) scheme.primaryContainer else scheme.surfaceContainerHigh) {
+                        color = if (style == scenario.style) selectionColor else scheme.surfaceContainerHigh) {
                         Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.Center) {
                             if (!compact) {
                                 val glyph = when (scenario.glyph) {
@@ -477,6 +470,17 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 }
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(l("Цвет потока", "Stream colors"), style = MaterialTheme.typography.titleSmall)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = !settings.streamThemeColors,
+                            onClick = { c.settings.setStreamThemeColors(false) },
+                            modifier = Modifier.weight(1f).testTag("stream:color:artwork"),
+                            label = { Text(l("Из обложки", "Artwork")) })
+                        FilterChip(selected = settings.streamThemeColors,
+                            onClick = { c.settings.setStreamThemeColors(true) },
+                            modifier = Modifier.weight(1f).testTag("stream:color:theme"),
+                            label = { Text(l("Тема Prism", "Prism theme")) })
+                    }
                     WaveChoices(l("Занятие", "Activity"), MyWave.Activity.entries, style.activity, ::activityName) { if (it != style.activity) start(style.copy(activity = it)) }
                     Text(l("Характер потока", "Discovery mix"), style = MaterialTheme.typography.titleSmall)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
