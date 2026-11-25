@@ -1902,7 +1902,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 val familiar = answer.add.filter { it.id in known || signals.heard(it) == true }
                 val fresh = answer.add.filter { it !in familiar }
                 com.prism.music.data.foryou.MyWave.start(fresh, familiar, emptyList(), session::has, rules.allowed,
-                    seed = System.nanoTime(), count = answer.add.size, style = waveStyle, signals = signals,
+                    seed = System.nanoTime(), count = com.prism.music.data.foryou.MyWave.HORIZON, style = waveStyle, signals = signals,
                     artistDoubt = fb::artistDoubt,
                     servedRecently = { fb.servedDaysAgo(it.id)?.let { days -> days <= 1 } == true },
                     profile = taste, previousSong = previous, avoid = avoid)
