@@ -6,6 +6,44 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class StationMediaSessionTest {
+    @Test fun headerOnlyProbeIsNotAudioAndRetiredSliceCannotBeFetched() {
+        val server = MediaServer(0)
+        assertTrue(server.start())
+        try {
+            val pcm = com.prism.music.connect.PcmBody(1000, 2000, true) {
+                object : com.prism.music.connect.PcmFrames {
+                    override fun read() = ShortArray(32)
+                    override fun close() {}
+                }
+            }
+            val original = server.publishForSession(server.token, "original.wav", pcm, "127.0.0.1", "127.0.0.1")
+            val slice = server.stationSlice(original, 1000)
+            fun get(url: String, range: String?, status: Int) {
+                val con = java.net.URL(url).openConnection(java.net.Proxy.NO_PROXY) as java.net.HttpURLConnection
+                try {
+                    con.connectTimeout = 2000
+                    con.readTimeout = 2000
+                    range?.let { con.setRequestProperty("Range", it) }
+                    assertEquals(status, con.responseCode)
+                    if (status < 400) con.inputStream.use { it.readBytes() }
+                } finally { con.disconnect() }
+            }
+            get(slice.url, "bytes=0-43", 206)
+            assertEquals(0L, server.deliverySequence(slice.url))
+            get(slice.url, "bytes=44-47", 206)
+            val deadline = System.nanoTime() + 1_000_000_000L
+            while (server.deliverySequence(slice.url) == 0L && System.nanoTime() < deadline) Thread.sleep(5)
+            assertTrue(server.deliverySequence(slice.url) > 0L)
+            server.retireStationSlice(slice.url)
+            get(slice.url, null, 404)
+            assertEquals(0L, server.deliverySequence(slice.url))
+            // Seeking again must still be possible using the reusable original.
+            val second = server.stationSlice(original, 500)
+            assertEquals(500L, second.offsetMs)
+            get(second.url, "bytes=0-43", 206)
+        } finally { server.stop() }
+    }
+
     @Test fun onlyExpectedPeerGetCountsAsDelivery() {
         val server = MediaServer(0)
         assertTrue(server.start())
