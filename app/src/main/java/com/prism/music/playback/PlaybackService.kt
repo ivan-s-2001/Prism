@@ -1831,6 +1831,10 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         val job = scope.launch {
             val existing = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
             val session = c.sessionHeard
+            val waveTaste = if (!wave) null else try { c.yourMusic.waveTaste() }
+                catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (_: Exception) { null }
+            if (!isActive || c.queue.source.value !== src) return@launch
             // With no repeats on, a wider draw: most of Prism's best picks for a song may well have played by now.
             suspend fun ownRadio(): List<com.prism.music.data.foryou.LocalRadio.Pick> = runCatching {
                 withContext(Dispatchers.IO) { c.yourMusic.radio(seeds, existing, if (noRepeats) 60 else 15, offlineOnly = offline) }
@@ -1846,9 +1850,9 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             // An independent, positively selected seed widens recall without following the last track indefinitely.
             // Never compete with Station casting; the primary radio still owns its continuation token.
             val extra = if (wave && r != null && r.songs.isNotEmpty() && !c.castingNow &&
-                (waveStyle.character == com.prism.music.data.foryou.MyWave.Character.DISCOVERY || waveStyle.diversity >= 70)) {
+                (waveTaste?.likedSeeds?.isNotEmpty() == true || waveStyle.character == com.prism.music.data.foryou.MyWave.Character.DISCOVERY || waveStyle.diversity >= 70)) {
                 val currentArtist = player.currentMediaItem?.toSong()?.primaryArtist
-                val alternate = session.oldestFirst().asReversed().firstOrNull {
+                val alternate = (waveTaste?.likedSeeds.orEmpty() + session.oldestFirst().asReversed()).distinctBy { it.id }.firstOrNull {
                     it.id != seed && !it.isLocal && !it.isVideo && !it.isLive && !it.isEpisode &&
                         it.primaryArtist.isNotBlank() && !it.primaryArtist.equals(currentArtist, ignoreCase = true) &&
                         it.id in c.library.likedIds.value && !c.library.isDisliked(it.id) &&
@@ -1915,9 +1919,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             android.util.Log.i("PrismRadio", "autoplay after ${answer.seed}: ${mine.size} of yours, ${r?.songs?.size ?: 0} from YouTube, adding ${answer.add.size} ($mode${if (offline) ", offline" else ""}${if (noRepeats) ", no repeats" else ""}${if (answer.cameRound) ", coming round" else ""})")
             val additions = if (!wave) answer.add else if (answer.cameRound) answer.add.filter { rules.allowed(it) && !rules.turnedDown(it) } else {
                 val known = c.library.likedIds.value
-                val taste = try { c.yourMusic.waveTaste().profile }
-                    catch (e: kotlinx.coroutines.CancellationException) { throw e }
-                    catch (_: Exception) { com.prism.music.data.foryou.MyWave.Profile() }
+                val taste = waveTaste?.profile ?: com.prism.music.data.foryou.MyWave.Profile()
                 val previous = player.getMediaItemAt(player.mediaItemCount - 1).toSong()
                 val avoid = (0 until player.mediaItemCount).mapNotNull { player.getMediaItemAt(it).toSong() }
                     .mapTo(hashSetOf(), com.prism.music.data.foryou.LocalRadio::sameSong)
