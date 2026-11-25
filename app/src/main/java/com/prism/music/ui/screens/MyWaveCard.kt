@@ -2,12 +2,11 @@ package com.prism.music.ui.screens
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -15,11 +14,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import com.prism.music.ui.components.Artwork
 import com.prism.music.data.model.SongItem
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
@@ -85,7 +82,7 @@ internal fun MyWaveScreen(bottomPadding: Dp) {
         finally { loading = false }
     }
     BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding()) {
-        val heroHeight = (maxHeight - bottomPadding - 104.dp).coerceIn(320.dp, 540.dp)
+        val heroHeight = (maxHeight - bottomPadding - 224.dp).coerceIn(220.dp, 440.dp)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = bottomPadding + 16.dp)) {
             MyWaveCard(recommendations, favorites, recent, online, heroHeight, loading)
             if (failed && recommendations.isEmpty() && !source.isMyWave && online) {
@@ -97,6 +94,7 @@ internal fun MyWaveScreen(bottomPadding: Dp) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, recent: List<Song>, online: Boolean,
     heroHeight: Dp = 420.dp, loading: Boolean = false) {
@@ -200,131 +198,170 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val ui = LocalUi.current
     val scheme = MaterialTheme.colorScheme
     val accent = scheme.primary
-    val deep = Color(0xFF15151D)
-    val subtitle = when {
-        starting || waiting -> l("Подбираем музыку", "Finding your music")
-        wave -> song?.let { "${it.title} · ${it.primaryArtist}" }.orEmpty()
-        !online -> l("Твоя музыка без интернета", "Your music offline")
-        else -> l("Музыка под тебя", "Music made for you")
+    val liked by c.library.likedIds.collectAsState()
+    val disliked by c.library.dislikedIds.collectAsState()
+    val hasNext by c.player.hasNext.collectAsState()
+    val current = song.takeIf { wave }
+    fun depthName(v: MyWave.Depth) = when (v) {
+        MyWave.Depth.ANY -> l("Всё", "All")
+        MyWave.Depth.HITS -> l("Хиты", "Hits")
+        MyWave.Depth.DEEP -> l("Редкое", "Deep cuts")
     }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-    Box(
-        Modifier.fillMaxWidth().padding(top = 8.dp)
-            .height(heroHeight).clip(ui.shape(32.dp))
-            .background(Brush.linearGradient(listOf(deep, accent.copy(alpha = 0.40f), deep)))
-            .testTag("home:my_wave")
-    ) {
-        // Use real album art from the active track, otherwise a recommendation, behind a high-contrast veil.
-        val art = if (wave) song else recommendations.firstOrNull() ?: favorites.firstOrNull()
-        if (art != null) {
-            Artwork(c.covers.art(SongItem(art)), Modifier.fillMaxSize(), RoundedCornerShape(0.dp), size = 400)
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(deep.copy(alpha = 0.30f), deep.copy(alpha = 0.86f), deep))))
+    val activeFilters = listOfNotNull(
+        activityName(style.activity).takeIf { style.activity != MyWave.Activity.ANY },
+        characterName(style.character).takeIf { style.character != MyWave.Character.BALANCED },
+        moodName(style.mood).takeIf { style.mood != MyWave.Mood.ANY },
+        depthName(style.depth).takeIf { style.depth != MyWave.Depth.ANY },
+        l("Разнообразие", "Variety").takeIf { style.diversity != 50 },
+    )
+    val status = when {
+        waiting -> l("Загружаем рекомендации", "Loading recommendations")
+        starting && wave -> l("Обновляем подбор", "Updating your mix")
+        starting -> l("Подбираем музыку", "Finding your music")
+        wave && buffering -> l("Загрузка", "Buffering")
+        wave && playing -> l("Играет", "Playing")
+        wave -> l("На паузе", "Paused")
+        !online -> l("Офлайн", "Offline")
+        else -> l("Персональный поток", "Personal radio")
+    }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.headlineMedium)
+                Text(status, color = scheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+            }
+            IconButton(onClick = { settingsOpen = true }, enabled = !starting,
+                modifier = Modifier.testTag("home:my_wave:settings")) {
+                Icon(PrismIcons.Equalizer, l("Настроить волну", "Tune Wave"))
+            }
         }
-        Canvas(Modifier.fillMaxSize()) {
-            val w = size.width; val h = size.height
-            for (i in 0..10) {
-                val path = Path()
-                for (x in 0..100) {
-                    val t = x / 100f
-                    val y = h * (0.47f + i * 0.027f) + sin((t * 2.5 * PI) + i * 0.18).toFloat() * h * (0.13f + i * 0.006f)
-                    if (x == 0) path.moveTo(0f, y) else path.lineTo(t * w, y)
+
+        // One clear playback target. No full-screen album-art scrim, duplicate title or decorative status text.
+        Box(Modifier.fillMaxWidth().height(heroHeight).clip(ui.shape(32.dp))
+            .background(Brush.radialGradient(listOf(accent.copy(alpha = 0.24f), scheme.surfaceContainerHigh, scheme.surface)))
+            .testTag("home:my_wave"), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.fillMaxSize()) {
+                val radius = minOf(size.width, size.height) * 0.36f
+                for (n in 0..5) {
+                    val r = radius * (0.63f + n * 0.13f)
+                    val path = Path()
+                    for (j in 0..144) {
+                        val angle = j / 144.0 * 2.0 * PI
+                        val variation = 1.0 + 0.045 * sin(angle * 3 + n * 0.7) + 0.025 * sin(angle * 5 - n * 0.4)
+                        val x = center.x + (kotlin.math.cos(angle) * r * variation).toFloat()
+                        val y = center.y + (sin(angle) * r * variation).toFloat()
+                        if (j == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+                    path.close()
+                    drawPath(path, accent.copy(alpha = if (wave && playing) 0.46f - n * 0.045f else 0.28f - n * 0.025f),
+                        style = Stroke(1.5.dp.toPx()))
                 }
-                drawPath(path, Brush.horizontalGradient(listOf(accent.copy(alpha = 0.12f),
-                    accent.copy(alpha = 0.48f), Color.White.copy(alpha = 0.12f))), style = Stroke(1.4.dp.toPx()))
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                val playLabel = if (wave && playing) l("Пауза", "Pause") else if (wave) l("Продолжить", "Resume") else l("Слушать", "Play")
+                FilledIconButton(
+                    onClick = { if (wave) c.player.togglePlay() else start() },
+                    enabled = wave || (!starting && !waiting),
+                    modifier = Modifier.size(88.dp).testTag("home:my_wave:play"),
+                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = accent, contentColor = scheme.onPrimary)
+                ) {
+                    if (pending && !wave) CircularProgressIndicator(Modifier.size(26.dp), strokeWidth = 2.dp, color = scheme.onPrimary)
+                    else Icon(if (wave && playing) PrismIcons.Pause else PrismIcons.Play, playLabel, Modifier.size(36.dp))
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(playLabel, style = MaterialTheme.typography.labelLarge, color = scheme.onSurface)
             }
         }
-        Column(Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(title, color = Color.White, style = MaterialTheme.typography.headlineLarge)
-            Spacer(Modifier.height(4.dp))
-            Text(subtitle, color = Color.White.copy(alpha = 0.76f), style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(18.dp))
-            Box(Modifier.size(80.dp).clip(CircleShape).background(Color.White)
-                .clickable(enabled = !starting && !waiting) { if (wave) c.player.togglePlay() else start() }
-                .testTag("home:my_wave:play"), contentAlignment = Alignment.Center) {
-                if (pending) CircularProgressIndicator(Modifier.size(25.dp), strokeWidth = 2.dp, color = Color(0xFF22254F))
-                else Icon(if (wave && playing) PrismIcons.Pause else PrismIcons.Play,
-                    if (wave && playing) l("Пауза", "Pause") else l("Слушать", "Play"),
-                    tint = Color(0xFF22254F), modifier = Modifier.size(30.dp))
+
+        // Track feedback and skip belong next to the current recording, not in another settings screen.
+        if (current != null) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Artwork(c.covers.art(SongItem(current)), Modifier.size(54.dp), ui.shape(12.dp), size = 160)
+                Column(Modifier.weight(1f)) {
+                    Text(current.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(current.primaryArtist, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                IconButton(onClick = { c.library.toggleLike(current) }) {
+                    val on = current.id in liked
+                    Icon(if (on) PrismIcons.HeartFilled else PrismIcons.Heart,
+                        if (on) l("Убрать лайк", "Remove like") else l("Нравится", "Like"),
+                        tint = if (on) accent else scheme.onSurface)
+                }
+                IconButton(onClick = { c.player.next() }, enabled = hasNext) {
+                    Icon(PrismIcons.Next, l("Следующий трек", "Next track"))
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = {
+                    val on = current.id in disliked
+                    c.library.setDisliked(current, !on)
+                    if (!on && c.player.hasNext.value) c.player.next()
+                }, modifier = Modifier.weight(1f)) {
+                    Icon(if (current.id in disliked) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(l("Не моё", "Not for me"), maxLines = 1)
+                }
+                OutlinedButton(onClick = { start() }, enabled = !starting, modifier = Modifier.weight(1f).testTag("home:my_wave:refresh")) {
+                    Icon(PrismIcons.Refresh, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(l("Встряхнуть", "Refresh mix"), maxLines = 1)
+                }
             }
         }
-        if (wave) Box(Modifier.align(Alignment.TopStart).padding(12.dp).size(42.dp).clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.12f)).clickable(enabled = !starting) { start() }.testTag("home:my_wave:refresh"),
-            contentAlignment = Alignment.Center) {
-            Icon(PrismIcons.Refresh, l("Новая волна", "New Wave"), tint = Color.White, modifier = Modifier.size(21.dp))
+
+        // Fast access to all current filters; no hidden selection state.
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(l("Настройка волны", "Tune your Wave"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            TextButton(onClick = { settingsOpen = true }, enabled = !starting) { Text(l("Изменить", "Edit")) }
         }
-        Box(Modifier.align(Alignment.TopEnd).padding(12.dp).size(42.dp).clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.14f)).clickable(enabled = !starting) { settingsOpen = true }
-            .testTag("home:my_wave:settings"), contentAlignment = Alignment.Center) {
-            Icon(PrismIcons.Equalizer, l("Настроить волну", "Tune Wave"), tint = Color.White, modifier = Modifier.size(22.dp))
-        }
-        Row(Modifier.align(Alignment.BottomCenter).padding(horizontal = 18.dp, vertical = 13.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (wave) {
-                Text(listOfNotNull(characterName(style.character), moodName(style.mood).takeIf { style.mood != MyWave.Mood.ANY }, activityName(style.activity).takeIf { style.activity != MyWave.Activity.ANY }).joinToString(" · "), color = Color.White.copy(alpha = 0.8f),
-                    style = MaterialTheme.typography.labelMedium, maxLines = 1)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (activeFilters.isEmpty()) {
+                AssistChip(onClick = { settingsOpen = true }, label = { Text(l("Всё, что люблю", "Made for me")) }, enabled = !starting)
             } else {
-                Text(l("Сейчас", "For now"), color = Color.White.copy(alpha = 0.65f), style = MaterialTheme.typography.labelSmall)
-                Text(moment.first, Modifier.clip(RoundedCornerShape(24.dp)).background(Color.White.copy(alpha = 0.16f))
-                    .clickable(enabled = !starting) { style = moment.second; start(moment.second) }.padding(horizontal = 13.dp, vertical = 8.dp),
-                    color = Color.White, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                activeFilters.forEach { label ->
+                    FilterChip(selected = true, onClick = { settingsOpen = true }, label = { Text(label) }, enabled = !starting)
+                }
+                AssistChip(onClick = { start(MyWave.Style()) }, enabled = !starting && !waiting, label = { Text(l("Сбросить", "Reset")) })
+            }
+        }
+
+        Text(l("Под настроение дня", "For your day"), style = MaterialTheme.typography.titleMedium)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            val presets = listOf(moment, l("В дороге", "On the road") to MyWave.Style(activity = MyWave.Activity.ROAD),
+                l("Тренировка", "Workout") to MyWave.Style(activity = MyWave.Activity.TRAIN),
+                l("Отдохнуть", "Unwind") to MyWave.Style(mood = MyWave.Mood.CALM))
+            presets.distinctBy { it.second }.forEach { (label, preset) ->
+                Surface(modifier = Modifier.width(132.dp).clip(ui.shape(18.dp))
+                    .clickable(enabled = !starting && !waiting) { start(preset) },
+                    shape = ui.shape(18.dp),
+                    color = if (wave && style == preset) scheme.primaryContainer else scheme.surfaceContainerHigh) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Icon(PrismIcons.Radio, null, Modifier.size(23.dp), tint = if (wave && style == preset) scheme.onPrimaryContainer else accent)
+                        Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                }
             }
         }
     }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(l("Для себя", "For you") to MyWave.Style(), l("В дороге", "On the road") to MyWave.Style(activity = MyWave.Activity.ROAD), l("Отдохнуть", "Unwind") to MyWave.Style(mood = MyWave.Mood.CALM)).forEach { (label, preset) ->
-            Surface(modifier = Modifier.weight(1f).clip(ui.shape(18.dp)).clickable(enabled = !starting && !waiting) { style = preset; start(preset) },
-                shape = ui.shape(18.dp), color = if (wave && style == preset) scheme.primaryContainer else scheme.surfaceContainerHigh) {
-                Text(label, Modifier.padding(horizontal = 6.dp, vertical = 16.dp), style = MaterialTheme.typography.labelMedium,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
-    }
-    }
+
     if (settingsOpen) {
         var draft by remember { mutableStateOf(style) }
-        AlertDialog(onDismissRequest = { settingsOpen = false },
-            title = { Text(l("Настроить волну", "Tune your Wave")) },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(l("Для занятия", "Activity"), style = MaterialTheme.typography.titleSmall)
-                    MyWave.Activity.entries.chunked(2).forEach { options ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            options.forEach { value ->
-                                FilterChip(modifier = Modifier.weight(1f), selected = draft.activity == value,
-                                    onClick = { draft = draft.copy(activity = value) },
-                                    label = { Text(activityName(value), maxLines = 1, overflow = TextOverflow.Ellipsis) })
-                            }
-                        }
-                    }
-                    Text(l("Характер музыки", "Music discovery"), style = MaterialTheme.typography.titleSmall)
-                    MyWave.Character.entries.forEach { value ->
-                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { draft = draft.copy(character = value) },
-                            verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = draft.character == value, onClick = { draft = draft.copy(character = value) })
-                            Text(characterName(value))
-                        }
-                    }
-                    Text(l("Настроение", "Mood"), style = MaterialTheme.typography.titleSmall)
-                    MyWave.Mood.entries.forEach { value ->
-                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { draft = draft.copy(mood = value) },
-                            verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = draft.mood == value, onClick = { draft = draft.copy(mood = value) })
-                            Text(moodName(value))
-                        }
-                    }
-                    Text(l("Популярность", "Popularity"), style = MaterialTheme.typography.titleSmall)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        MyWave.Depth.entries.forEach { value ->
-                            val label = when (value) {
-                                MyWave.Depth.ANY -> l("Всё", "All")
-                                MyWave.Depth.HITS -> l("Хиты", "Hits")
-                                MyWave.Depth.DEEP -> l("Редкое", "Deep cuts")
-                            }
-                            FilterChip(selected = draft.depth == value, onClick = { draft = draft.copy(depth = value) },
-                                label = { Text(label, maxLines = 1) })
-                        }
-                    }
+        ModalBottomSheet(onDismissRequest = { settingsOpen = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = scheme.surfaceContainerHigh) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 640.dp).padding(horizontal = 20.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(l("Настроить волну", "Tune your Wave"), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { draft = MyWave.Style() }) { Text(l("Сбросить", "Reset")) }
+                }
+                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    WaveChoices(l("Занятие", "Activity"), MyWave.Activity.entries, draft.activity, ::activityName) { draft = draft.copy(activity = it) }
+                    WaveChoices(l("Характер музыки", "Discovery"), MyWave.Character.entries, draft.character, ::characterName) { draft = draft.copy(character = it) }
+                    WaveChoices(l("Настроение", "Mood"), MyWave.Mood.entries, draft.mood, ::moodName) { draft = draft.copy(mood = it) }
+                    WaveChoices(l("Популярность", "Popularity"), MyWave.Depth.entries, draft.depth, ::depthName) { draft = draft.copy(depth = it) }
                     Text(l("Разнообразие", "Variety"), style = MaterialTheme.typography.titleSmall)
                     Slider(value = draft.diversity.toFloat(), onValueChange = { draft = draft.copy(diversity = it.toInt()) },
                         valueRange = 0f..100f, steps = 9)
@@ -332,15 +369,37 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                         Text(l("Похожее", "Similar"), style = MaterialTheme.typography.labelSmall)
                         Text(l("Разное", "Varied"), style = MaterialTheme.typography.labelSmall)
                     }
-                    if (draft.mood != MyWave.Mood.ANY || draft.activity != MyWave.Activity.ANY) Text(
-                        l("Занятие и настроение приближённо учитывают измеренные темп и громкость. Явное настроение важнее занятия.",
-                            "Activity and mood use measured tempo and loudness when available. Explicit mood takes priority."),
-                        style = MaterialTheme.typography.bodySmall)
-                    if (draft.depth != MyWave.Depth.ANY) Text(l("Популярность оценивается по топ-трекам исполнителя, если они доступны.",
-                        "Popularity uses an artist’s top songs when available."), style = MaterialTheme.typography.bodySmall)
+                    if (draft.mood != MyWave.Mood.ANY || draft.activity != MyWave.Activity.ANY)
+                        Text(l("Темп и громкость учитываются, если измерены.", "Uses measured tempo and loudness when available."),
+                            color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    if (draft.depth != MyWave.Depth.ANY)
+                        Text(l("По топ-трекам исполнителей, если доступны.", "Based on artist top songs when available."),
+                            color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
-            },
-            confirmButton = { TextButton(onClick = { settingsOpen = false; style = draft; start(draft) }) { Text(if (wave) l("Применить", "Apply") else l("Включить", "Play")) } },
-            dismissButton = { TextButton(onClick = { draft = MyWave.Style() }) { Text(l("Сбросить", "Reset")) } })
+                Button(onClick = { settingsOpen = false; start(draft) }, enabled = !starting && !waiting,
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 12.dp).heightIn(min = 52.dp)) {
+                    Text(if (wave) l("Применить к волне", "Apply to Wave") else l("Слушать", "Play"))
+                }
+                if (wave) Text(l("Текущая песня продолжит играть", "The current track keeps playing"),
+                    Modifier.align(Alignment.CenterHorizontally).padding(bottom = 12.dp), color = scheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun <T> WaveChoices(label: String, values: List<T>, selected: T, name: (T) -> String, onSelect: (T) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(label, style = MaterialTheme.typography.titleSmall)
+        values.chunked(if (values.size > 3) 2 else 3).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                row.forEach { value ->
+                    FilterChip(selected = value == selected, onClick = { onSelect(value) },
+                        label = { Text(name(value), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp))
+                }
+            }
+        }
     }
 }
