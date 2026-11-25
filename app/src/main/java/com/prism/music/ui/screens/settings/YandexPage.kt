@@ -12,12 +12,18 @@ import com.prism.music.ui.screens.StationAccountRow
 import com.prism.music.ui.screens.YandexTransferRow
 import com.prism.music.ui.screens.ConnectAccountControls
 import com.prism.music.ui.screens.SettingEntry
+import com.prism.music.data.prefs.AppSettings
 
 internal val yandexIndex: List<SettingEntry>
     get() = listOf(
         SettingEntry(SettingsPageId.YANDEX, "Яндекс ID", "Яндекс ID", "Yandex login account"),
         SettingEntry(SettingsPageId.YANDEX, "Яндекс Музыка", "Перенести музыку", "Yandex Music transfer import обновить библиотеку"),
     )
+
+internal val yandexLookKeys: List<String> = emptyList()
+internal val yandexOldGroups: Map<String, String> = emptyMap()
+internal fun yandexValue(s: AppSettings, dark: Boolean): String =
+    if (java.util.Locale.getDefault().language == "ru") "ID, музыка, Станции" else "ID, music, Stations"
 
 @Composable
 internal fun YandexPage(bottomPadding: Dp, find: String?, showBack: Boolean, onSearch: (() -> Unit)?) {
