@@ -729,6 +729,14 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         job.start()
     }
 
+    /** Dispose an uninstalled renderer before leaving its connection attempt. */
+    private suspend fun closeUninstalledRenderer(link: RendererLink) {
+        withContext(NonCancellable + Dispatchers.IO) {
+            try { withTimeoutOrNull(4_000L) { link.close() } }
+            catch (e: Exception) { Log.w(TAG, "Renderer cleanup failed", e) }
+        }
+    }
+
     /** Sends what's playing to [r] from now on. */
     fun connect(r: Renderer) {
         if (liveJob != null) return
@@ -770,25 +778,25 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             val reachable = host != null && runCatching { withTimeoutOrNull(wait) { ctl.transport() } }
                 .onFailure { Log.w(TAG, "couldn't reach ${r.name}", it) }.getOrNull() != null
             if (generation != connectGeneration || state.value != CastState.Connecting(r)) {
-                c.scope.launch(NonCancellable) { runCatching { ctl.close() } }
+                closeUninstalledRenderer(ctl)
                 return@launch
             }
             if (!reachable || !withContext(Dispatchers.IO) { server.start() }) {
-                c.scope.launch(NonCancellable) { runCatching { ctl.close() } }
+                closeUninstalledRenderer(ctl)
                 if (generation == connectGeneration && state.value == CastState.Connecting(r)) {
                     _state.value = CastState.Idle
                     _events.tryEmit(tr(R.string.couldn_t_reach_make_sure_it, r.name))
                 }
                 return@launch
             }
-            if (generation != connectGeneration || state.value != CastState.Connecting(r)) { c.scope.launch(NonCancellable) { runCatching { ctl.close() } }; return@launch }
+            if (generation != connectGeneration || state.value != CastState.Connecting(r)) { closeUninstalledRenderer(ctl); return@launch }
             val sink = ctl.sinkMimes()
-            val s = Session(r, ctl, host!!, sink)
+            val s = Session(r, ctl, host, sink)
             // Cast devices get each song as it comes (no "next" to line up), so it isn't got ready twice.
             s.nextSupported = r.kind != RendererKind.GOOGLE_CAST && r.kind != RendererKind.YANDEX_STATION
             s.volume = runCatching { ctl.volume() }.getOrNull()
             if (generation != connectGeneration || state.value != CastState.Connecting(r)) {
-                c.scope.launch(NonCancellable) { runCatching { ctl.close() } }
+                closeUninstalledRenderer(ctl)
                 return@launch
             }
             if (r.kind == RendererKind.YANDEX_STATION) {
@@ -802,10 +810,10 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                         }
                     }
                 } catch (e: CancellationException) {
-                    c.scope.launch(NonCancellable) { runCatching { ctl.close() } }
+                    closeUninstalledRenderer(ctl)
                     throw e
                 } catch (_: Exception) {
-                    c.scope.launch(NonCancellable) { runCatching { ctl.close() } }
+                    closeUninstalledRenderer(ctl)
                     if (generation == connectGeneration) {
                         _state.value = CastState.Idle
                         _events.tryEmit("Prism Connect: another device is active or the server is unavailable")

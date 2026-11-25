@@ -54,11 +54,7 @@ internal fun TvWavePlace(nav: TvNav) {
     val ru = java.util.Locale.getDefault().language == "ru"
     fun l(a: String, b: String) = if (ru) a else b
     val title = l("Поток", "Stream")
-    fun restored(): MyWave.Style = when {
-        source.isMyWave -> MyWave.style(source.originId)
-        MyWave.isOrigin(appSettings.streamStyleOrigin) -> MyWave.style(appSettings.streamStyleOrigin)
-        else -> MyWave.Style(russianPercent = appSettings.streamRussianPercent)
-    }
+    fun restored() = MyWave.restore(source.originId, appSettings.streamStyleOrigin, appSettings.streamRussianPercent)
     var style by remember(source.originId) { mutableStateOf(restored()) }
     var editor by remember { mutableStateOf(WaveSettingsDraft(style, appSettings.streamThemeColors, savedPresets, chosenPresetId)) }
     var baseline by remember { mutableStateOf(editor) }
@@ -104,12 +100,13 @@ internal fun TvWavePlace(nav: TvNav) {
         starting = true
         job = scope.launch {
             try {
-                var picks = c.yourMusic.waveBatch(base, selected, 0, previous, emptyList(), count = 2, fast = true)
-                if (picks.isEmpty()) {
+                val candidates = c.yourMusic.startWave(base, selected, previous) {
                     if (base.isEmpty()) base = loadBase()
-                    picks = c.yourMusic.waveBatch(base, selected, 0, previous, emptyList(), count = 2)
+                    base
                 }
                 if (version != request || c.queue.source.value !== old) return@launch
+                val current = c.player.currentSong.value.takeIf { old.isMyWave }
+                val picks = MyWave.initialPicks(candidates, current, offline = !c.network.isOnline())
                 if (picks.isEmpty()) c.player.reportError(if (!c.network.isOnline()) l("Нет подходящих скачанных треков", "No matching downloaded tracks") else l("Недостаточно подходящих треков", "Not enough matching tracks"))
                 else {
                     style = selected
@@ -118,7 +115,10 @@ internal fun TvWavePlace(nav: TvNav) {
                     c.settings.setStreamStyle(selected)
                 }
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { c.player.reportError(l("Не удалось обновить поток", "Could not update Stream")) }
+            catch (_: Exception) {
+                if (version == request && c.queue.source.value === old)
+                    c.player.reportError(l("Не удалось обновить поток", "Could not update Stream"))
+            }
             finally { if (version == request) starting = false }
         }
     }

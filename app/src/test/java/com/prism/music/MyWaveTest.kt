@@ -309,4 +309,21 @@ class MyWaveTest {
             MyWave.Profile(), 8, 0, 42L)
         assertEquals(listOf(russian), result)
     }
+
+    @Test fun restorePrefersQueueThenSavedStyleThenLegacyLanguage() {
+        val queued = MyWave.Style(diversity = 90)
+        val saved = MyWave.Style(russianPercent = 40)
+        assertEquals(queued, MyWave.restore(queued.origin, saved.origin, 0))
+        assertEquals(saved, MyWave.restore("another-playlist", saved.origin, 0))
+        assertEquals(MyWave.Style(russianPercent = 25), MyWave.restore(null, null, 25))
+    }
+
+    @Test fun initialPicksAvoidCurrentRecordingExceptSingleOfflineTrack() {
+        val current = song("current", "A", "Title")
+        val alias = song("other", "A", "Title (Remastered)")
+        val next = song("next", "B")
+        assertEquals(listOf(next), MyWave.initialPicks(listOf(alias, next), current, false))
+        assertTrue(MyWave.initialPicks(listOf(current), current, false).isEmpty())
+        assertEquals(listOf(current), MyWave.initialPicks(listOf(current), current, true))
+    }
 }

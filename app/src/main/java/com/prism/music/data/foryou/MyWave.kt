@@ -30,6 +30,20 @@ internal object MyWave {
             energy = if (mood == Mood.ANY) activity.energy else mood.energy, depth = depth.bias)
     }
     fun isOrigin(origin: String?) = origin == ORIGIN || origin?.startsWith("$ORIGIN:") == true
+
+    /** Queue settings take priority over the saved defaults; older installs saved only language. */
+    fun restore(queueOrigin: String?, savedOrigin: String?, legacyLanguage: Int): Style = when {
+        isOrigin(queueOrigin) -> style(queueOrigin)
+        isOrigin(savedOrigin) -> style(savedOrigin)
+        else -> Style(russianPercent = legacyLanguage.coerceIn(-1, 100))
+    }
+
+    /** Do not immediately restart the same recording unless it is the only offline option. */
+    fun initialPicks(picks: List<Song>, current: Song?, offline: Boolean): List<Song> {
+        val key = current?.let(LocalRadio::sameSong)
+        val different = picks.filter { LocalRadio.sameSong(it) != key }
+        return if (different.isEmpty() && offline) picks else different
+    }
     fun style(origin: String?): Style {
         val parts = origin?.removePrefix("$ORIGIN:")?.split(':').orEmpty()
         val character = Character.entries.firstOrNull { it.name == parts.getOrNull(0) } ?: Character.BALANCED
@@ -208,11 +222,6 @@ internal object MyWave {
         return result
     }
 
-    /**
-     * The personalized picks already include listening affinity and discoveries.
-     * Mix in favorites, prefer songs not recently heard, and vary each new session.
-     * Never relax exclusions, explicit-content restrictions, or offline availability.
-     */
     /** Shared personalized score; absent signals remain neutral. */
     fun affinity(profile: Profile, song: Song): Double {
         val taste = profile.taste(song)?.coerceIn(0.0, 1.0)?.let { 0.65 + 0.7 * it } ?: 1.0

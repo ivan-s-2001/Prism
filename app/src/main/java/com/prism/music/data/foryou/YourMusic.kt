@@ -268,6 +268,15 @@ class YourMusic(private val c: AppContainer) {
         cachedWaveRelated()
     }
 
+    /** The same bounded startup sequence is used on phone and TV. */
+    internal suspend fun startWave(base: List<Song>, style: MyWave.Style, previous: Song?,
+        fallbackBase: suspend () -> List<Song> = { base },
+    ): List<Song> {
+        val quick = waveBatch(base, style, 0, previous, emptyList(), count = 2, fast = true)
+        if (quick.isNotEmpty()) return quick
+        return waveBatch(fallbackBase(), style, 0, previous, emptyList(), count = 2)
+    }
+
     /** Shared start/refill path. New means absent from the available local and imported history, not a claim about
      * every service the listener has ever used. A failed history read cannot turn known songs into discoveries.
      */
@@ -325,14 +334,14 @@ class YourMusic(private val c: AppContainer) {
         val cached = if (style.discoveryPercent > 0) cachedWaveRelated() else emptyList()
         if (fast) {
             val ready = select(cached)
-            if (ready.isNotEmpty() || offline || style.discoveryPercent == 0) return@withContext ready
+            if (ready.isNotEmpty() || style.discoveryPercent == 0) return@withContext ready
             // Only on a cache miss: a short first lookup, not three full radios.
             val quick = kotlinx.coroutines.withTimeoutOrNull(900L) {
                 waveRelated(seeds, offset, avoid, known, maxRequests = 1, timeoutMs = 850L)
             }
             return@withContext select(quick ?: cachedWaveRelated())
         }
-        val related = if (style.discoveryPercent > 0 && !offline) waveRelated(seeds, offset, avoid, known) else cached
+        val related = if (style.discoveryPercent > 0) waveRelated(seeds, offset, avoid, known) else cached
         select(related)
     }
 

@@ -19,8 +19,6 @@ import com.prism.music.ui.components.pageTitleStyle
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,7 +59,6 @@ import com.prism.music.data.ExplicitFilter
 import com.prism.music.data.foryou.MyWave
 import com.prism.music.data.foryou.WaveSettingsDraft
 import com.prism.music.data.foryou.WaveScenarios
-import com.prism.music.data.foryou.LocalRadio
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -146,11 +143,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     var starting by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
     val settings = LocalAppSettings.current
-    fun restoredStyle(origin: String?): MyWave.Style = when {
-        MyWave.isOrigin(origin) -> MyWave.style(origin)
-        MyWave.isOrigin(settings.streamStyleOrigin) -> MyWave.style(settings.streamStyleOrigin)
-        else -> MyWave.Style(russianPercent = settings.streamRussianPercent)
-    }
+    fun restoredStyle(origin: String?) =
+        MyWave.restore(origin, settings.streamStyleOrigin, settings.streamRussianPercent)
     var style by remember(source.originId) { mutableStateOf(restoredStyle(source.originId)) }
     val scenarioOrder = remember {
         val calendar = java.util.Calendar.getInstance()
@@ -188,11 +182,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
     var selectionJob by remember { mutableStateOf<Job?>(null) }
     var requestVersion by remember { mutableIntStateOf(0) }
-    fun characterName(v: MyWave.Character) = when (v) {
-        MyWave.Character.BALANCED -> l("Всё", "All")
-        MyWave.Character.FAMILIAR -> l("Любимое", "Familiar")
-        MyWave.Character.DISCOVERY -> l("Незнакомое", "Discover")
-    }
     fun moodName(v: MyWave.Mood) = when (v) {
         MyWave.Mood.ANY -> l("Любое", "Any")
         MyWave.Mood.CALM -> l("Спокойное", "Calm")
@@ -214,24 +203,16 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         style = selected
         starting = true
         val previous = c.queue.source.value
-        val seed = System.nanoTime()
         val current = c.player.currentSong.value.takeIf { previous.isMyWave }
         selectionJob = scope.launch {
             try {
                 val began = android.os.SystemClock.elapsedRealtime()
-                val quick = c.yourMusic.waveBatch(recommendations, selected, offset = 0,
-                    previous = current, existing = emptyList(), count = 2, fast = true)
-                // A cold/empty cache may need network access. Never wait for a full queue when one song is ready.
-                val songs = quick.ifEmpty {
-                    c.yourMusic.waveBatch(recommendations, selected, offset = 0,
-                        previous = current, existing = emptyList(), count = 2)
-                }
+                val songs = c.yourMusic.startWave(recommendations, selected, current)
                 android.util.Log.i("PrismWave", "first selection: ${android.os.SystemClock.elapsedRealtime() - began}ms; tracks=${songs.size}")
                 // Latest selection wins; a slow response cannot restore an older set of filters.
                 if (!isActive || version != requestVersion || c.queue.source.value !== previous) return@launch
                 val now = c.player.currentSong.value.takeIf { previous.isMyWave }
-                val nextSongs = songs.filter { candidate -> now == null || LocalRadio.sameSong(candidate) != LocalRadio.sameSong(now) }
-                    .ifEmpty { if (!c.network.isOnline()) songs else emptyList() }
+                val nextSongs = MyWave.initialPicks(songs, now, offline = !c.network.isOnline())
                 if (nextSongs.isEmpty()) {
                     style = restoredStyle(previous.originId)
                     c.player.reportError(if (!c.network.isOnline()) l("Нет подходящих скачанных треков", "No matching downloaded tracks") else l("Недостаточно подходящих треков для выбранной пропорции. Измени процент или проверь подключение.", "Not enough tracks for the selected mix. Change the percentage or check your connection."))
@@ -253,8 +234,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         }
     }
 
-    val waiting = false // A feed refresh must not disable play; start resolves a cache miss itself.
-    val pending = starting || waiting || (wave && buffering)
+    // Feed refresh never blocks starting playback; only actual playback work does.
+    val pending = starting || (wave && buffering)
     val ui = LocalUi.current
     val scheme = MaterialTheme.colorScheme
     val liked by c.library.likedIds.collectAsState()
@@ -300,7 +281,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         l("Разнообразие", "Variety").takeIf { style.diversity != 50 },
     )
     val status = when {
-        waiting -> l("Загружаем рекомендации", "Loading recommendations")
         !online && wave && playing -> l("Офлайн · скачанная музыка", "Offline · downloaded music")
         starting && wave -> l("Обновляем подбор", "Updating your mix")
         starting -> l("Подбираем музыку", "Finding your music")
@@ -556,26 +536,24 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     WaveChoices(l("Занятие", "Activity"), MyWave.Activity.entries, draftStyle.activity, ::activityName) { value -> change { it.tune(it.style.copy(activity = value)) } }
                     WaveScale(
                         title = l("Характер потока", "Discovery mix"),
-                        value = discovery, onValueChange = { percent -> change { it.discovery(percent.toInt()) } },
+                        value = discovery, onValueChange = { percent -> change { it.discovery(percent) } },
                         left = l("Лайки", "Liked songs"), right = l("Открытия", "Discoveries"),
                         choices = listOf(0 to l("Лайки", "Liked"), 50 to l("Баланс", "Balance"),
                             70 to l("Для меня", "For me"), 100 to l("Новое", "New")),
                         selectedChoice = discovery.toInt(), step = 5, tag = "wave:discovery-percent",
-                        onCommit = { percent -> change { it.discovery(percent) } },
                         detail = l("Открытия — записи вне известной Prism истории. Офлайн пропорция зависит от скачанной музыки.",
                             "Discoveries are recordings outside Prism's known history. Offline proportions depend on downloads.")
                     )
                     HorizontalDivider(color = scheme.outlineVariant)
                     WaveScale(
                         title = l("Язык музыки", "Music language"),
-                        value = russian, onValueChange = { percent -> change { it.tune(it.style.copy(russianPercent = percent.toInt())) } },
+                        value = russian, onValueChange = { percent -> change { it.tune(it.style.copy(russianPercent = percent)) } },
                         left = l("Иностранная", "Foreign"), right = l("Русская", "Russian"),
                         automaticLabel = l("Авто", "Auto").takeIf { draftStyle.russianPercent < 0 },
                         choices = listOf(-1 to l("Авто", "Auto"), 0 to l("Иностранная", "Foreign"),
                             50 to l("Баланс", "Balance"), 100 to l("Русская", "Russian")),
                         selectedChoice = if (draftStyle.russianPercent < 0) -1 else russian.toInt(),
                         step = 5, tag = "wave:language-percent",
-                        onCommit = { percent -> change { it.tune(it.style.copy(russianPercent = percent)) } },
                         detail = l("Приблизительное соотношение по языку названий. При нехватке треков баланс может отличаться.",
                             "Approximate title-language balance. The actual mix may vary when matching tracks are scarce.")
                     )
@@ -584,13 +562,12 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     WaveChoices(l("Популярность", "Popularity"), MyWave.Depth.entries, draftStyle.depth, ::depthName) { value -> change { it.tune(it.style.copy(depth = value)) } }
                     WaveScale(
                         title = l("Разнообразие", "Variety"),
-                        value = diversity, onValueChange = { percent -> change { it.tune(it.style.copy(diversity = percent.toInt())) } },
+                        value = diversity, onValueChange = { percent -> change { it.tune(it.style.copy(diversity = percent)) } },
                         left = l("Меньше", "Less"), right = l("Больше", "More"),
                         ratio = false,
                         choices = listOf(0 to l("Низкое", "Low"), 50 to l("Среднее", "Medium"),
                             70 to l("Высокое", "High"), 100 to l("Максимум", "Maximum")),
                         selectedChoice = diversity.toInt(), step = 10, tag = "wave:diversity-percent",
-                        onCommit = { percent -> change { it.tune(it.style.copy(diversity = percent)) } },
                         detail = l("Уровень разнообразия исполнителей и записей.", "Variety of artists and recordings.")
                     )
                     if (draftStyle.mood != MyWave.Mood.ANY || draftStyle.activity != MyWave.Activity.ANY)
@@ -622,10 +599,10 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
  * same left-to-right order as the slider; variety is a level, not a track quota. */
 @Composable
 private fun WaveScale(
-    title: String, value: Float, onValueChange: (Float) -> Unit,
+    title: String, value: Float, onValueChange: (Int) -> Unit,
     left: String, right: String, ratio: Boolean = true, automaticLabel: String? = null,
     choices: List<Pair<Int, String>>, selectedChoice: Int, step: Int, tag: String,
-    onCommit: (Int) -> Unit, detail: String,
+    detail: String,
 ) {
     val scheme = MaterialTheme.colorScheme
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -651,7 +628,7 @@ private fun WaveScale(
             }
         }
         Slider(value = value, onValueChange = { next ->
-            onValueChange((kotlin.math.round(next / step).toInt() * step).coerceIn(0, 100).toFloat())
+            onValueChange((kotlin.math.round(next / step).toInt() * step).coerceIn(0, 100))
         }, valueRange = 0f..100f, steps = 100 / step - 1,
             colors = if (ratio) SliderDefaults.colors(
                 activeTrackColor = scheme.onSurfaceVariant.copy(alpha = 0.28f),
@@ -666,9 +643,7 @@ private fun WaveScale(
             choices.forEach { (percent, label) ->
                 PrismChip(selected = selectedChoice == percent, label = label,
                     modifier = Modifier.height(44.dp),
-                    onClick = {
-                        onCommit(percent)
-                    })
+                    onClick = { onValueChange(percent) })
             }
         }
         Text(detail, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
