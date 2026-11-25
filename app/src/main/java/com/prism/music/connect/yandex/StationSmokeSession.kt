@@ -135,14 +135,6 @@ internal class StationSmokeSession(
         val stream = StationLiveHls(phoneAddress, station.address, StationAudioTap::read)
         liveHls = stream
         try {
-            val ready = kotlinx.coroutines.withTimeoutOrNull(8000L) {
-                while (!stream.ready) {
-                    stream.failure?.let { error("AAC encoder: $it") }
-                    delay(100)
-                }
-                true
-            } == true
-            check(ready) { "AAC playlist not ready: ${stream.summary()}" }
             // Read advertised features before choosing a directive. Missing feature data
             // is not evidence of legacy firmware; prefer modern audio_play in that case.
             ping()
@@ -155,6 +147,15 @@ internal class StationSmokeSession(
             liveStoppedBoundary = true
             delay(150)
             send(GlagolProtocol.volume(0.20))
+            // Encoder fills the playlist while the socket negotiates and the old source stops.
+            val ready = kotlinx.coroutines.withTimeoutOrNull(8000L) {
+                while (!stream.ready) {
+                    stream.failure?.let { error("AAC encoder: $it") }
+                    delay(100)
+                }
+                true
+            } == true
+            check(ready) { "AAC playlist not ready: ${stream.summary()}" }
             liveRequestedAt = android.os.SystemClock.elapsedRealtime()
             liveTitle = "Prism Live " + java.util.UUID.randomUUID().toString().take(6)
             val directive = if (liveModern) "audio_play/HLS" else "radio_play"
