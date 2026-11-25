@@ -82,6 +82,16 @@ class StationDiagnosticsActivity : ComponentActivity() {
             })
         }
         button("Sign in with Yandex device code") { showLogin() }
+        button("Open normal Prism player") {
+            if (operation?.isActive == true) return@button
+            val launch = packageManager.getLaunchIntentForPackage(packageName)
+            if (launch != null) {
+                session?.close()
+                session = null
+                scan?.cancel()
+                startActivity(launch)
+            } else report("Cannot open main Prism activity.")
+        }
         button("Scan local network") { startScan() }
         chooser = Spinner(this)
         adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, mutableListOf<String>())
@@ -198,6 +208,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
         session?.close()
         session = null
         accessToken = null
+        StationConnectAccount.clear()
         loginJob = lifecycleScope.launch {
             report("Requesting Yandex device code...")
             try {
@@ -216,6 +227,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
                 dialog.show()
                 try {
                     accessToken = auth.awaitToken(grant)
+                    StationConnectAccount.authorize(requireNotNull(accessToken))
                     report("Yandex OAuth authorized. Scan and connect your Station.")
                 } finally {
                     dialog.dismiss()
