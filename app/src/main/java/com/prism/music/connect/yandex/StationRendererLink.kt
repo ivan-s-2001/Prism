@@ -57,8 +57,7 @@ internal class StationRendererLink(
     private fun command(name: String) = buildJsonObject { put("command", name) }
 
     override suspend fun load(url: String, didl: String, media: CastMedia) {
-        // MP3 is verified; WAV is an explicit compatibility experiment with the
-        // existing Prism PCM pipeline. Never advertise WAV as verified.
+        // Current audio_play supports file streams; physical playback on this phone is still unverified.
         require(media.mime in setOf("audio/mpeg", "audio/wav", "audio/x-wav"))
         if (requested) send(GlagolProtocol.stop())
         requested = false
@@ -72,7 +71,7 @@ internal class StationRendererLink(
 
     override suspend fun play() {
         val (url, media) = loaded ?: throw IOException("No track")
-        if (requested && !paused) return
+        if (requested && !paused && state?.title == media.title && state?.playing == true) return
         if (state?.type == "bluetooth" && state?.playing == true) {
             throw IOException("Station is playing Bluetooth")
         }
@@ -119,7 +118,7 @@ internal class StationRendererLink(
         }
         val s = state ?: throw IOException("No Station state")
         val media = loaded?.second
-        val matching = s.type == "radio" && media != null && s.title == media.title
+        val matching = s.type != "bluetooth" && media != null && s.title == media.title
         val mode = when {
             !requested -> "STOPPED"
             matching && s.playing == true -> "PLAYING"
@@ -134,7 +133,7 @@ internal class StationRendererLink(
     override suspend fun position(): PositionInfo {
         val s = state
         val track = loaded
-        if (requested && track != null && s?.type == "radio" && s.title == track.second.title) {
+        if (requested && track != null && s != null && s.type != "bluetooth" && s.title == track.second.title) {
             return PositionInfo(track.first, s.position, s.duration ?: track.second.durationMs)
         }
         return PositionInfo(null, null, null)
