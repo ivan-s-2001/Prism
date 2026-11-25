@@ -91,23 +91,16 @@ internal fun MyWaveScreen(bottomPadding: Dp) {
         catch (_: Exception) { failed = value.isEmpty() }
         finally { loading = false }
     }
-    BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding()) {
-        val heroHeight = (maxHeight - bottomPadding - 224.dp).coerceIn(220.dp, 440.dp)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = bottomPadding + 16.dp)) {
-            MyWaveCard(recommendations, favorites, recent, online, heroHeight, loading)
-            if (failed && recommendations.isEmpty() && !source.isMyWave && online) {
-                TextButton(onClick = { retry++ }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                    Text(if (java.util.Locale.getDefault().language == "ru") "Обновить рекомендации" else "Retry recommendations")
-                }
-            }
-        }
+    Box(Modifier.fillMaxSize().statusBarsPadding().padding(bottom = bottomPadding)) {
+        MyWaveCard(recommendations, favorites, recent, online, loading = loading,
+            onRetry = if (failed && recommendations.isEmpty() && !source.isMyWave && online) ({ retry++ }) else null)
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, recent: List<Song>, online: Boolean,
-    heroHeight: Dp = 420.dp, loading: Boolean = false) {
+    heroHeight: Dp = 420.dp, loading: Boolean = false, onRetry: (() -> Unit)? = null) {
     val c = LocalContainer.current
     val scope = rememberCoroutineScope()
     val source by c.queue.source.collectAsState()
@@ -115,11 +108,13 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val playing by c.player.isPlaying.collectAsState()
     val buffering by c.player.buffering.collectAsState()
     val wave = source.isMyWave && song != null
-    val title = if (java.util.Locale.getDefault().language == "ru") "Моя волна" else "My Wave"
+    val title = if (java.util.Locale.getDefault().language == "ru") "Поток" else "Stream"
     val ru = java.util.Locale.getDefault().language == "ru"
     fun l(a: String, b: String) = if (ru) a else b
     var starting by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
+    var scenariosOpen by remember { mutableStateOf(false) }
+    var group by remember { mutableStateOf(WaveScenarios.Group.DAY) }
     var style by remember(source.originId) { mutableStateOf(MyWave.style(source.originId)) }
     val calendar = java.util.Calendar.getInstance()
     val dayScenarios = WaveScenarios.forDay(calendar.get(java.util.Calendar.HOUR_OF_DAY),
@@ -181,7 +176,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             catch (_: Exception) {
                 if (version == requestVersion && c.queue.source.value === previous) {
                     style = MyWave.style(previous.originId)
-                    c.player.reportError(l("Не удалось обновить волну", "Could not update Wave"))
+                    c.player.reportError(l("Не удалось обновить поток", "Could not update Stream"))
                 }
             } finally {
                 if (version == requestVersion) starting = false
@@ -197,6 +192,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val liked by c.library.likedIds.collectAsState()
     val disliked by c.library.dislikedIds.collectAsState()
     val hasNext by c.player.hasNext.collectAsState()
+    val hasPrevious by c.player.hasPrevious.collectAsState()
     val current = song.takeIf { wave }
     fun depthName(v: MyWave.Depth) = when (v) {
         MyWave.Depth.ANY -> l("Всё", "All")
@@ -218,114 +214,185 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         wave && playing -> l("Играет", "Playing")
         wave -> l("На паузе", "Paused")
         !online -> l("Офлайн", "Offline")
-        else -> l("Персональный поток", "Personal radio")
+        else -> l("Персональный поток", "Personal stream")
     }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    val activeScenario = WaveScenarios.all.firstOrNull { it.style == style }
+    val quickScenarios = when (group) {
+        WaveScenarios.Group.DAY -> dayScenarios
+        WaveScenarios.Group.ACTIVITY -> WaveScenarios.all.filter { it.group == group }
+        WaveScenarios.Group.DISCOVERY -> WaveScenarios.all.filter { it.group == group }
+    }
+    @Composable fun Header() {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.headlineMedium)
-                Text(status, color = scheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+                Text(title, style = MaterialTheme.typography.headlineMedium, maxLines = 1)
+                Text(status, color = scheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium, maxLines = 1)
             }
-            IconButton(onClick = { settingsOpen = true }, enabled = !starting,
-                modifier = Modifier.testTag("home:my_wave:settings")) {
-                Icon(PrismIcons.Equalizer, l("Настроить волну", "Tune Wave"))
+            IconButton(onClick = { settingsOpen = true }, modifier = Modifier.testTag("home:my_wave:settings")) {
+                Icon(PrismIcons.Equalizer, l("Настроить поток", "Tune Stream"))
             }
         }
-
-        // One clear playback target. No full-screen album-art scrim, duplicate title or decorative status text.
-        Box(Modifier.fillMaxWidth().height(heroHeight).clip(ui.shape(32.dp))
-            .background(Brush.radialGradient(listOf(accent.copy(alpha = 0.24f), scheme.surfaceContainerHigh, scheme.surface)))
+    }
+    @Composable fun Hero(modifier: Modifier, compact: Boolean) {
+        Box(modifier.clip(ui.shape(28.dp))
+            .background(Brush.verticalGradient(listOf(scheme.surfaceContainerHigh, accent.copy(alpha = 0.17f), scheme.surface)))
             .testTag("home:my_wave"), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxSize()) {
-                val radius = minOf(size.width, size.height) * 0.36f
-                for (n in 0..5) {
-                    val r = radius * (0.63f + n * 0.13f)
+                val width = size.width
+                val height = size.height
+                drawCircle(Brush.radialGradient(listOf(accent.copy(alpha = if (playing && wave) 0.36f else 0.22f),
+                    accent.copy(alpha = 0.04f), androidx.compose.ui.graphics.Color.Transparent),
+                    center = center, radius = maxOf(width, height) * 0.6f), radius = maxOf(width, height) * 0.6f)
+                for (n in 0..7) {
                     val path = Path()
-                    for (j in 0..144) {
-                        val angle = j / 144.0 * 2.0 * PI
-                        val variation = 1.0 + 0.045 * sin(angle * 3 + n * 0.7) + 0.025 * sin(angle * 5 - n * 0.4)
-                        val x = center.x + (kotlin.math.cos(angle) * r * variation).toFloat()
-                        val y = center.y + (sin(angle) * r * variation).toFloat()
-                        if (j == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    val offset = n * height * 0.042f
+                    for (j in 0..100) {
+                        val t = j / 100f
+                        val envelope = sin(t * PI).toFloat()
+                        val y = height * 0.33f + offset +
+                            (sin(t * 2.0 * PI + n * 0.35) * 0.12 * height * envelope).toFloat()
+                        if (j == 0) path.moveTo(t * width, y) else path.lineTo(t * width, y)
                     }
-                    path.close()
-                    drawPath(path, accent.copy(alpha = if (wave && playing) 0.46f - n * 0.045f else 0.28f - n * 0.025f),
-                        style = Stroke(1.5.dp.toPx()))
+                    drawPath(path, accent.copy(alpha = (if (playing && wave) 0.32f else 0.19f) - n * 0.016f),
+                        style = Stroke((if (n % 2 == 0) 2.dp else 1.dp).toPx()))
                 }
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                val playLabel = if (wave && playing) l("Пауза", "Pause") else if (wave) l("Продолжить", "Resume") else l("Слушать", "Play")
-                FilledIconButton(
-                    onClick = { if (wave) c.player.togglePlay() else start() },
-                    enabled = wave || (!starting && !waiting),
-                    modifier = Modifier.size(88.dp).testTag("home:my_wave:play"),
-                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = accent, contentColor = scheme.onPrimary)
-                ) {
-                    if (pending && !wave) CircularProgressIndicator(Modifier.size(26.dp), strokeWidth = 2.dp, color = scheme.onPrimary)
-                    else Icon(if (wave && playing) PrismIcons.Pause else PrismIcons.Play, playLabel, Modifier.size(36.dp))
+            Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 10.dp)) {
+                Text(activeScenario?.let { if (ru) it.ru else it.en } ?: l("Музыка в твоём ритме", "Music in your rhythm"),
+                    color = scheme.onSurface, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    IconButton(onClick = { c.player.previous() }, enabled = wave && hasPrevious) {
+                        Icon(PrismIcons.Previous, l("Предыдущий трек", "Previous track"))
+                    }
+                    FilledIconButton(onClick = { if (wave) c.player.togglePlay() else start() },
+                        enabled = wave || !starting, modifier = Modifier.size(if (compact) 58.dp else 76.dp).testTag("home:my_wave:play"),
+                        colors = IconButtonDefaults.filledIconButtonColors(containerColor = accent, contentColor = scheme.onPrimary)) {
+                        if (pending && !wave) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp, color = scheme.onPrimary)
+                        else Icon(if (wave && playing) PrismIcons.Pause else PrismIcons.Play,
+                            if (wave && playing) l("Пауза", "Pause") else l("Слушать", "Play"), Modifier.size(32.dp))
+                    }
+                    IconButton(onClick = { c.player.next() }, enabled = wave && hasNext) {
+                        Icon(PrismIcons.Next, l("Следующий трек", "Next track"))
+                    }
                 }
-                Spacer(Modifier.height(10.dp))
-                Text(playLabel, style = MaterialTheme.typography.labelLarge, color = scheme.onSurface)
             }
         }
-
-        // Track feedback and skip belong next to the current recording, not in another settings screen.
-        if (current != null) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Artwork(c.covers.art(SongItem(current)), Modifier.size(54.dp), ui.shape(12.dp), size = 160)
+    }
+    @Composable fun Track() {
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (current != null) {
+                Artwork(c.covers.art(SongItem(current)), Modifier.size(44.dp), ui.shape(10.dp), size = 160)
                 Column(Modifier.weight(1f)) {
-                    Text(current.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(current.primaryArtist, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
+                    Text(current.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(current.primaryArtist, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 IconButton(onClick = { c.library.toggleLike(current) }) {
                     val on = current.id in liked
-                    Icon(if (on) PrismIcons.HeartFilled else PrismIcons.Heart,
-                        if (on) l("Убрать лайк", "Remove like") else l("Нравится", "Like"),
-                        tint = if (on) accent else scheme.onSurface)
+                    Icon(if (on) PrismIcons.HeartFilled else PrismIcons.Heart, l("Нравится", "Like"), tint = if (on) accent else scheme.onSurface)
                 }
-                IconButton(onClick = { c.player.next() }, enabled = hasNext) {
-                    Icon(PrismIcons.Next, l("Следующий трек", "Next track"))
-                }
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = {
+                IconButton(onClick = {
                     val on = current.id in disliked
                     c.library.setDisliked(current, !on)
                     if (!on && c.player.hasNext.value) c.player.next()
-                }, modifier = Modifier.weight(1f)) {
-                    Icon(if (current.id in disliked) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(l("Не моё", "Not for me"), maxLines = 1)
-                }
-                OutlinedButton(onClick = { start() }, enabled = !starting, modifier = Modifier.weight(1f).testTag("home:my_wave:refresh")) {
-                    Icon(PrismIcons.Refresh, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(l("Встряхнуть", "Refresh mix"), maxLines = 1)
-                }
-            }
-        }
-
-        // Fast access to all current filters; no hidden selection state.
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(l("Настройка волны", "Tune your Wave"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            TextButton(onClick = { settingsOpen = true }, enabled = !starting) { Text(l("Изменить", "Edit")) }
-        }
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (activeFilters.isEmpty()) {
-                AssistChip(onClick = { settingsOpen = true }, label = { Text(l("Всё, что люблю", "Made for me")) }, enabled = !starting)
+                }) { Icon(if (current.id in disliked) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown, l("Не моё", "Not for me")) }
             } else {
-                activeFilters.forEach { label ->
-                    FilterChip(selected = true, onClick = { settingsOpen = true }, label = { Text(label) }, enabled = !starting)
-                }
-                AssistChip(onClick = { start(MyWave.Style()) }, enabled = !starting && !waiting, label = { Text(l("Сбросить", "Reset")) })
+                Text(l("Персональные рекомендации", "Personal recommendations"), style = MaterialTheme.typography.bodyMedium,
+                    color = scheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            IconButton(onClick = { if (onRetry != null && !wave) onRetry() else start() },
+                enabled = !starting, modifier = Modifier.testTag("home:my_wave:refresh")) {
+                Icon(PrismIcons.Refresh, l("Обновить поток", "Refresh Stream"))
             }
         }
-
-        WaveScenarioRow(l("Под настроение дня", "For your day"), dayScenarios, style, ru, !waiting, ::start)
-        WaveScenarioRow(l("Для любого момента", "For every moment"), WaveScenarios.all.filter { it.group == WaveScenarios.Group.ACTIVITY }, style, ru, !waiting, ::start)
-        WaveScenarioRow(l("По музыкальному вкусу", "Your taste and discoveries"), WaveScenarios.all.filter { it.group == WaveScenarios.Group.DISCOVERY }, style, ru, !waiting, ::start)
+    }
+    @Composable fun Controls(compact: Boolean) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(l("Сценарии", "Scenarios"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                TextButton(onClick = { scenariosOpen = true }) { Text(l("Все", "All")) }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(WaveScenarios.Group.DAY to l("День", "Day"), WaveScenarios.Group.ACTIVITY to l("Дела", "Activity"),
+                    WaveScenarios.Group.DISCOVERY to l("Вкус", "Taste")).forEach { (value, label) ->
+                    FilterChip(selected = group == value, onClick = { group = value }, modifier = Modifier.weight(1f),
+                        label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                quickScenarios.take(3).forEach { scenario ->
+                    Surface(onClick = { start(scenario.style) }, modifier = Modifier.weight(1f).height(if (compact) 60.dp else 82.dp)
+                        .testTag("wave:scenario:${scenario.id}"), shape = ui.shape(16.dp),
+                        color = if (style == scenario.style) scheme.primaryContainer else scheme.surfaceContainerHigh) {
+                        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.Center) {
+                            Text(if (ru) scenario.ru else scenario.en, style = MaterialTheme.typography.labelLarge,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(ui.shape(14.dp)).clickable { settingsOpen = true }
+                .padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(l("Характер потока", "Discovery mix"), style = MaterialTheme.typography.labelLarge)
+                    Text(l("${100 - style.discoveryPercent}% лайки · ${style.discoveryPercent}% новое",
+                        "${100 - style.discoveryPercent}% liked · ${style.discoveryPercent}% new"),
+                        style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1)
+                }
+                Icon(PrismIcons.Equalizer, l("Настройки", "Settings"))
+            }
+        }
+    }
+    // The route already reserves system bars, bottom tabs and the mini player. No scroll container.
+    BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 6.dp)) {
+        val compact = maxHeight < 520.dp
+        val wide = maxWidth >= 600.dp || maxWidth > maxHeight * 1.25f
+        if (wide) {
+            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Header()
+                    Hero(Modifier.weight(1f).fillMaxWidth(), true)
+                    Track()
+                }
+                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
+                    Controls(true)
+                }
+            }
+        } else {
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Header()
+                Hero(Modifier.weight(1f).fillMaxWidth(), compact)
+                Track()
+                Controls(compact)
+            }
+        }
+    }
+    if (scenariosOpen) {
+        ModalBottomSheet(onDismissRequest = { scenariosOpen = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Text(l("Сценарии потока", "Stream scenarios"), style = MaterialTheme.typography.headlineSmall)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(WaveScenarios.Group.DAY to l("День", "Day"), WaveScenarios.Group.ACTIVITY to l("Дела", "Activity"),
+                        WaveScenarios.Group.DISCOVERY to l("Вкус", "Taste")).forEach { (value, label) ->
+                        FilterChip(selected = group == value, onClick = { group = value }, modifier = Modifier.weight(1f), label = { Text(label) })
+                    }
+                }
+                quickScenarios.chunked(2).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        row.forEach { scenario ->
+                            FilterChip(selected = style == scenario.style, onClick = { scenariosOpen = false; start(scenario.style) },
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                label = { Text(if (ru) scenario.ru else scenario.en, maxLines = 2) })
+                        }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+                TextButton(onClick = { scenariosOpen = false }, modifier = Modifier.align(Alignment.End)) { Text(l("Готово", "Done")) }
+            }
+        }
     }
 
     if (settingsOpen) {
@@ -336,13 +403,13 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             containerColor = scheme.surfaceContainerHigh) {
             Column(Modifier.fillMaxWidth().heightIn(max = 640.dp).padding(horizontal = 20.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(l("Настроить волну", "Tune your Wave"), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                    Text(l("Настроить поток", "Tune your Stream"), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
                     TextButton(onClick = { if (style != MyWave.Style()) start(MyWave.Style()) }) { Text(l("Сбросить", "Reset")) }
                 }
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     WaveChoices(l("Занятие", "Activity"), MyWave.Activity.entries, style.activity, ::activityName) { if (it != style.activity) start(style.copy(activity = it)) }
-                    Text(l("Характер волны", "Discovery mix"), style = MaterialTheme.typography.titleSmall)
+                    Text(l("Характер потока", "Discovery mix"), style = MaterialTheme.typography.titleSmall)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column {
                             Text("${100 - discovery.toInt()}%", style = MaterialTheme.typography.headlineSmall)
@@ -393,7 +460,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 }
                 Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (starting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Text(if (starting) l("Обновляем волну", "Updating Wave") else l("Настройки применяются сразу", "Changes play immediately"),
+                    Text(if (starting) l("Обновляем поток", "Updating Stream") else l("Настройки применяются сразу", "Changes play immediately"),
                         Modifier.weight(1f).padding(horizontal = 8.dp), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                     TextButton(onClick = { settingsOpen = false }) { Text(l("Готово", "Done")) }
                 }
@@ -418,36 +485,3 @@ private fun <T> WaveChoices(label: String, values: List<T>, selected: T, name: (
     }
 }
 
-
-@Composable
-private fun WaveScenarioRow(title: String, scenarios: List<WaveScenarios.Scenario>, style: MyWave.Style, ru: Boolean,
-    enabled: Boolean, onSelect: (MyWave.Style) -> Unit) {
-    val ui = LocalUi.current
-    val scheme = MaterialTheme.colorScheme
-    Text(title, style = MaterialTheme.typography.titleMedium)
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        scenarios.forEach { scenario ->
-            val glyph: ImageVector = when (scenario.glyph) {
-                WaveScenarios.Glyph.SUN -> PrismIcons.Sun
-                WaveScenarios.Glyph.MOON -> PrismIcons.Moon
-                WaveScenarios.Glyph.CAR -> PrismIcons.Car
-                WaveScenarios.Glyph.WORK -> PrismIcons.Headphones
-                WaveScenarios.Glyph.ENERGY -> PrismIcons.Flame
-                WaveScenarios.Glyph.HEART -> PrismIcons.Heart
-                WaveScenarios.Glyph.STAR -> PrismIcons.Star
-                WaveScenarios.Glyph.DISCOVER -> PrismIcons.SmartShuffle
-                WaveScenarios.Glyph.RADIO -> PrismIcons.Radio
-            }
-            val selected = style == scenario.style
-            Surface(modifier = Modifier.width(152.dp).height(106.dp).clip(ui.shape(18.dp))
-                .clickable(enabled = enabled) { onSelect(scenario.style) }.testTag("wave:scenario:${scenario.id}"),
-                shape = ui.shape(18.dp), color = if (selected) scheme.primaryContainer else scheme.surfaceContainerHigh) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.SpaceBetween) {
-                    Icon(glyph, null, Modifier.size(25.dp), tint = if (selected) scheme.onPrimaryContainer else scheme.primary)
-                    Text(if (ru) scenario.ru else scenario.en, style = MaterialTheme.typography.labelLarge,
-                        color = if (selected) scheme.onPrimaryContainer else scheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-            }
-        }
-    }
-}
