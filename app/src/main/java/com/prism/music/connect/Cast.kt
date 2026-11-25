@@ -385,6 +385,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
 
     private var session: Session? = null
     private val wire = Mutex()
+    private var cleanupJob: Job? = null
+    private var connectGeneration = 0L
     private var pollJob: Job? = null
     private var loadJob: Job? = null
     private var nextJob: Job? = null
@@ -437,9 +439,13 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         if (r.kind == RendererKind.PRISM_TV) return
         val now = state.value
         if (now is CastState.Casting && now.renderer.id == r.id) return
+        if (now is CastState.Connecting && now.renderer.id == r.id) return
         if (session != null || tv != null) disconnect(null, keepPlaying = true)
+        val generation = ++connectGeneration
         _state.value = CastState.Connecting(r)
         scope.launch {
+            cleanupJob?.join()
+            if (generation != connectGeneration || state.value != CastState.Connecting(r)) return@launch
             val ctl: RendererLink = try {
                 when (r.kind) {
                     RendererKind.YANDEX_STATION -> {
@@ -455,8 +461,10 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                if (state.value == CastState.Connecting(r)) _state.value = CastState.Idle
-                _events.tryEmit(tr(R.string.couldn_t_reach_make_sure_it, r.name))
+                if (generation == connectGeneration && state.value == CastState.Connecting(r)) {
+                    _state.value = CastState.Idle
+                    _events.tryEmit(tr(R.string.couldn_t_reach_make_sure_it, r.name))
+                }
                 return@launch
             }
             val host = withContext(Dispatchers.IO) { r.host?.let { RendererControl.localAddressFor(it) } }
@@ -464,19 +472,29 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             val wait = if (r.kind == RendererKind.GOOGLE_CAST) 25_000L else 8_000L
             val reachable = host != null && runCatching { withTimeoutOrNull(wait) { ctl.transport() } }
                 .onFailure { Log.w(TAG, "couldn't reach ${r.name}", it) }.getOrNull() != null
-            if (!reachable || !withContext(Dispatchers.IO) { server.start() }) {
+            if (generation != connectGeneration || state.value != CastState.Connecting(r)) {
                 c.scope.launch(NonCancellable) { runCatching { ctl.close() } }
-                if (state.value == CastState.Connecting(r)) _state.value = CastState.Idle
-                _events.tryEmit(tr(R.string.couldn_t_reach_make_sure_it, r.name))
                 return@launch
             }
-            if (state.value != CastState.Connecting(r)) { c.scope.launch(NonCancellable) { runCatching { ctl.close() } }; return@launch }
+            if (!reachable || !withContext(Dispatchers.IO) { server.start() }) {
+                c.scope.launch(NonCancellable) { runCatching { ctl.close() } }
+                if (generation == connectGeneration && state.value == CastState.Connecting(r)) {
+                    _state.value = CastState.Idle
+                    _events.tryEmit(tr(R.string.couldn_t_reach_make_sure_it, r.name))
+                }
+                return@launch
+            }
+            if (generation != connectGeneration || state.value != CastState.Connecting(r)) { c.scope.launch(NonCancellable) { runCatching { ctl.close() } }; return@launch }
             val sink = ctl.sinkMimes()
             server.newSession()
             val s = Session(r, ctl, host!!, sink)
             // Cast devices get each song as it comes (no "next" to line up), so it isn't got ready twice.
             s.nextSupported = r.kind != RendererKind.GOOGLE_CAST && r.kind != RendererKind.YANDEX_STATION
             s.volume = runCatching { ctl.volume() }.getOrNull()
+            if (generation != connectGeneration || state.value != CastState.Connecting(r)) {
+                c.scope.launch(NonCancellable) { runCatching { ctl.close() } }
+                return@launch
+            }
             session = s
             casting = true
             liveLocal = false
@@ -593,6 +611,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
      * playing when it's stopped from the phone ([message] null), as when this phone is picked.
      */
     fun disconnect(message: String? = null, keepPlaying: Boolean = false) {
+        connectGeneration++
         tv?.let { t -> endTv(t, message, keepPlaying || message == null); return }
         // Still connecting to a Prism TV: its pairing code isn't asked for any more, and the connection's let go.
         if ((state.value as? CastState.Connecting)?.renderer?.kind == RendererKind.PRISM_TV) {
@@ -613,9 +632,11 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         com.prism.music.playback.AudioDiagnostics.log("cast", "stopped casting${message?.let { ": $it" } ?: ""}${s.lastFailure?.let { " (last error: $it)" } ?: ""}")
         pollJob?.cancel(); loadJob?.cancel(); nextJob?.cancel(); seekJob?.cancel(); volumeJob?.cancel(); singJob?.cancel()
         loadGen++
-        c.scope.launch(NonCancellable) {
-            runCatching { withTimeoutOrNull(4_000) { s.ctl.stop() } }
-            runCatching { withTimeoutOrNull(4_000) { s.ctl.close() } }
+        cleanupJob = scope.launch {
+            onWire {
+                runCatching { withTimeoutOrNull(15_000) { s.ctl.stop() } }
+                runCatching { withTimeoutOrNull(4_000) { s.ctl.close() } }
+            }
         }
         val p = player
         if (p != null && !keepPlaying && p.playWhenReady) p.pause()
@@ -794,9 +815,13 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             if (gen != loadGen || session !== s) return@launch
             val sent = runCatching {
                 onWire {
-                    if (gen != loadGen) return@onWire false
+                    if (gen != loadGen || session !== s) return@onWire false
                     s.ctl.load(loaded.url, loaded.meta, loaded.media)
-                    if (play) s.ctl.play()
+                    if (gen != loadGen || session !== s) return@onWire false
+                    if (s.wantPlaying) {
+                        s.ctl.play()
+                        if (gen == loadGen && session === s && !s.wantPlaying) s.ctl.pause()
+                    }
                     true
                 }
             }
@@ -814,7 +839,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             Log.i(TAG, "sent ${song.id} as ${loaded.format} (${loaded.durationMs} ms), play=$play")
             com.prism.music.playback.AudioDiagnostics.log("cast", "sent ${song.id} as ${loaded.format}, play=$play")
             // Paused when it was sent: it starts (and goes to the phone's place) when play is pressed.
-            if (!play) publish(s, loading = false)
+            if (!s.wantPlaying) publish(s, loading = false)
         }
     }
 
@@ -1074,9 +1099,11 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             if (playWhenReady && song != null && !song.isLive) load(s, song, p.currentPosition, true)
             return
         }
+        val generation = loadGen
         scope.launch {
             runCatching {
                 onWire {
+                    if (session !== s || generation != loadGen || s.wantPlaying != playWhenReady) return@onWire
                     if (playWhenReady) {
                         s.ctl.play()
                         // Sent while paused: once it's going, it goes to where the phone is.
