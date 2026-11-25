@@ -57,6 +57,11 @@ internal fun MyWaveScreen(bottomPadding: Dp) {
     var retry by remember { mutableIntStateOf(0) }
     var loading by remember(account, online, retry) { mutableStateOf(online) }
     var failed by remember(account, online, retry) { mutableStateOf(false) }
+    LaunchedEffect(account, online, retry, favorites) {
+        if (!source.isMyWave) try { c.yourMusic.warmWave() }
+        catch (e: CancellationException) { throw e }
+        catch (_: Exception) { /* Start can still use the existing feed. */ }
+    }
     val recommendations by produceState(emptyList<Song>(), account, online, retry) {
         value = emptyList()
         try {
@@ -151,8 +156,15 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         val current = c.player.currentSong.value.takeIf { previous.isMyWave }
         selectionJob = scope.launch {
             try {
-                val songs = c.yourMusic.waveBatch(recommendations, selected, offset = 0,
-                    previous = current, existing = emptyList())
+                val began = android.os.SystemClock.elapsedRealtime()
+                val quick = c.yourMusic.waveBatch(recommendations, selected, offset = 0,
+                    previous = current, existing = emptyList(), count = 2, fast = true)
+                // A cold/empty cache may need network access. Never wait for a full queue when one song is ready.
+                val songs = quick.ifEmpty {
+                    c.yourMusic.waveBatch(recommendations, selected, offset = 0,
+                        previous = current, existing = emptyList(), count = 2)
+                }
+                android.util.Log.i("PrismWave", "first selection: ${android.os.SystemClock.elapsedRealtime() - began}ms; tracks=${songs.size}")
                 // Latest selection wins; a slow response cannot restore an older set of filters.
                 if (!isActive || version != requestVersion || c.queue.source.value !== previous) return@launch
                 val now = c.player.currentSong.value.takeIf { previous.isMyWave }
@@ -177,7 +189,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         }
     }
 
-    val waiting = loading && recommendations.isEmpty() && favorites.isEmpty() && recent.isEmpty() && !wave
+    val waiting = false // A feed refresh must not disable play; start resolves a cache miss itself.
     val pending = starting || waiting || (wave && buffering)
     val ui = LocalUi.current
     val scheme = MaterialTheme.colorScheme
