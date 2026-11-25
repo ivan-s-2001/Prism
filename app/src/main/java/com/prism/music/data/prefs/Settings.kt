@@ -2193,6 +2193,7 @@ class SettingsRepository(
         val navLabels = stringPreferencesKey("nav_labels")
         val navHideOnScroll = booleanPreferencesKey("nav_hide_on_scroll")
         val navTabs = stringPreferencesKey("nav_tabs")
+        val waveTabMigrated = booleanPreferencesKey("wave_tab_migrated")
         val tabNames = stringPreferencesKey("tab_names")
         val navBarSize = stringPreferencesKey("nav_bar_size")
         val navBarFill = stringPreferencesKey("nav_bar_fill")
@@ -3210,6 +3211,17 @@ class SettingsRepository(
                 w.done?.completeExceptionally(WriterGone())
             }
         }
+        // Existing installations get the new Wave tab once, without removing or reordering their own tabs.
+        if (raw[K.waveTabMigrated] != true) edit { p ->
+            if (p[K.waveTabMigrated] != true) {
+                val tabs = p[K.navTabs]?.split(",")?.mapNotNull { name -> NavTab.entries.firstOrNull { it.name == name } }?.distinct()
+                if (tabs != null && tabs.isNotEmpty() && NavTab.MY_WAVE !in tabs && tabs.size < NavTab.MAX) {
+                    val at = tabs.indexOf(NavTab.HOME).let { if (it < 0) 0 else it + 1 }
+                    p[K.navTabs] = tabs.toMutableList().apply { add(at, NavTab.MY_WAVE) }.joinToString(",") { it.name }
+                }
+                p[K.waveTabMigrated] = true
+            }
+        }
         // #378: photos saved under a translated word get their right name back, for everything that reads them
         // (Looks, Performance mode, backups). Only writes when there's one to put right.
         val fix = com.prism.music.data.looks.Backgrounds::photoKeyFixed
@@ -3592,7 +3604,7 @@ class SettingsRepository(
     fun setNavStyle(v: NavBarStyle) = edit { it[K.navStyle] = v.name }
     fun setNavLabels(v: NavLabels) = edit { it[K.navLabels] = v.name }
     fun setNavHideOnScroll(v: Boolean) = edit { it[K.navHideOnScroll] = v }
-    fun setNavTabs(v: List<NavTab>) = edit { it[K.navTabs] = v.joinToString(",") { t -> t.name } }
+    fun setNavTabs(v: List<NavTab>) = edit { it[K.navTabs] = v.joinToString(",") { t -> t.name }; it[K.waveTabMigrated] = true }
     /** A tab's own name; blank gives it back its own. */
     fun setTabName(tab: NavTab, name: String) = edit {
         val names = (it[K.tabNames]?.let(::parseTabNames) ?: emptyMap()).toMutableMap()
