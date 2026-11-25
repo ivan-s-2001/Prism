@@ -15,12 +15,14 @@ internal class StationRendererLink(
     station: YandexStation,
     private val identity: OwnedStationIdentity,
     private val tokens: StationTokenSource,
+    private val delivery: (String) -> Long = { 0L },
 ) : RendererLink {
     @Volatile private var state: StationPlaybackState? = null
     private val stopControl = StationStopControl()
+    private val evidence = StationStreamEvidence()
     private val socket = GlagolSocket(station, identity.certificatePem) { text ->
         stopControl.onState(text)
-        StationPlaybackState.parse(text, SystemClock.elapsedRealtime())?.let { state = it }
+        StationPlaybackState.parse(text, SystemClock.elapsedRealtime())?.let { state = evidence.observe(it, delivery) }
     }
     private var loaded: Pair<String, CastMedia>? = null
     private var requested = false
@@ -30,21 +32,24 @@ internal class StationRendererLink(
     private var token: String? = null
     private var tokenAt = 0L
 
-    private suspend fun send(payload: JsonObject) {
+    private suspend fun currentToken(): String {
         val now = SystemClock.elapsedRealtime()
-        val current = token?.takeIf { now - tokenAt < 25_000 } ?: tokens.tokenFor(identity).also {
+        return token?.takeIf { now - tokenAt < 25_000 } ?: tokens.tokenFor(identity).also {
             token = it
             tokenAt = now
         }
-        socket.send(current, payload)
     }
+
+    private suspend fun send(payload: JsonObject) = socket.send(currentToken(), payload)
 
     private fun command(name: String) = buildJsonObject { put("command", name) }
 
     override suspend fun load(url: String, didl: String, media: CastMedia) {
         // Current audio_play supports file streams; physical playback on this phone is still unverified.
         require(media.mime in setOf("audio/mpeg", "audio/wav", "audio/x-wav"))
-        if (requested && !paused) send(GlagolProtocol.stop())
+        // Anonymous stream reports require a confirmed stopped boundary before replacing playback.
+        if (requested && !paused) stopControl.stop(socket, currentToken(), allowTextFallback = false)
+        evidence.clear()
         requested = false
         paused = false
         resumePosition = null
@@ -58,6 +63,7 @@ internal class StationRendererLink(
     override suspend fun play() {
         val (url, media) = loaded ?: throw IOException("No track")
         if (requested && !paused && state?.matches(url) == true && state?.playing == true) return
+        if (requested && !paused) stopControl.stop(socket, currentToken(), allowTextFallback = false)
         if (state?.type == "bluetooth" && state?.playing == true) {
             throw IOException("Station is playing Bluetooth")
         }
@@ -68,7 +74,9 @@ internal class StationRendererLink(
         requested = true
         paused = false
         sentAt = SystemClock.elapsedRealtime()
-        send(GlagolProtocol.playStream(url, media.title, media.artist))
+        evidence.begin(url, delivery(url), sentAt)
+        val reply = socket.request(currentToken(), GlagolProtocol.playStream(url, media.title, media.artist))
+        if (reply != null && !reply.equals("SUCCESS", ignoreCase = true)) throw IOException("Station rejected audio_play")
         if (resume != null && resume > 0) {
             val deadline = SystemClock.elapsedRealtime() + 5000
             while (SystemClock.elapsedRealtime() < deadline) {
@@ -88,15 +96,16 @@ internal class StationRendererLink(
         if (!requested || paused) return
         val current = state
         resumePosition = current?.takeIf { it.matches(loaded?.first) }?.position
-        stopControl.stop(socket, tokens.tokenFor(identity), allowTextFallback = false)
+        stopControl.stop(socket, currentToken(), allowTextFallback = false)
         paused = true
         sentAt = SystemClock.elapsedRealtime()
     }
 
     override suspend fun stop() {
         try {
-            if (requested && !paused) stopControl.stop(socket, tokens.tokenFor(identity))
+            if (requested && !paused) stopControl.stop(socket, currentToken())
         } finally {
+            evidence.clear()
             requested = false
             paused = false
             resumePosition = null
@@ -190,5 +199,5 @@ internal class StationRendererLink(
     override suspend fun volume(): Int? = observed()?.volume
     override suspend fun setVolume(v: Int) = send(GlagolProtocol.volume(v.coerceIn(0, 100) / 100.0))
     override suspend fun sinkMimes(): Set<String> = setOf("audio/mpeg", "audio/wav")
-    override suspend fun close() { socket.close(); token = null }
+    override suspend fun close() { evidence.clear(); socket.close(); token = null }
 }
