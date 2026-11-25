@@ -171,6 +171,8 @@ class MyWaveTest {
         val scenarios = com.prism.music.data.foryou.WaveScenarios
         assertEquals(20, scenarios.all.size)
         assertEquals(20, scenarios.all.map { it.id }.distinct().size)
+        assertEquals(20, scenarios.all.map { it.glyph }.distinct().size)
+        assertEquals(20, scenarios.all.map { it.glyph.drawing }.distinct().size)
         assertEquals(20, scenarios.all.map { it.style }.distinct().size)
         assertEquals("wake", scenarios.forDay(7, false).first().id)
         assertEquals("day", scenarios.forDay(15, false).first().id)

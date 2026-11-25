@@ -108,7 +108,7 @@ internal fun TvWavePlace(nav: TvNav) {
                     Text(l("Настроить поток", "Tune Stream"), style = MaterialTheme.typography.headlineMedium)
                     @Composable fun Ratio(label: String, percent: Int, change: (Int) -> Unit, tag: String) {
                         Text(label, style = MaterialTheme.typography.titleSmall, color = scheme.onSurfaceVariant)
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             TvButton("−5", { change((percent - 5).coerceIn(0, 100)) }, Modifier.tvItem("tv_wave/$tag/down", entry = tag == "discovery"))
                             Text("$percent%", Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall)
                             TvButton("+5", { change((percent + 5).coerceIn(0, 100)) }, Modifier.tvItem("tv_wave/$tag/up"))
@@ -134,7 +134,7 @@ internal fun TvWavePlace(nav: TvNav) {
                 var page by remember(group) { mutableIntStateOf(0) }
                 val options = WaveScenarios.all.filter { it.group == group }
                 val pages = options.chunked(4)
-                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically)) {
+                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)) {
                     Text(l("Сценарии", "Scenarios"), style = MaterialTheme.typography.headlineSmall)
                     TvButton(when(group) {
                         WaveScenarios.Group.DAY -> l("Время дня", "Time of day")
@@ -146,7 +146,7 @@ internal fun TvWavePlace(nav: TvNav) {
                         TvButton(if (ru) preset.ru else preset.en,
                             { draft = preset.style.copy(russianPercent = draft.russianPercent) },
                             Modifier.fillMaxWidth().tvItem("tv_wave/preset/${preset.id}"),
-                            primary = draft.copy(russianPercent = -1) == preset.style)
+                            primary = draft.copy(russianPercent = -1) == preset.style, icon = PrismIcons.waveScenario(preset.glyph))
                     }
                     if (pages.size > 1) TvButton(l("Ещё", "More"), { page = (page + 1) % pages.size },
                         Modifier.tvItem("tv_wave/more"))
@@ -209,17 +209,7 @@ internal fun TvWavePlace(nav: TvNav) {
                         horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         choices.forEach { preset ->
                             TvScenarioDisc(label = if (ru) preset.ru else preset.en,
-                                icon = when (preset.glyph) {
-                                    WaveScenarios.Glyph.SUN -> PrismIcons.Sun
-                                    WaveScenarios.Glyph.MOON -> PrismIcons.Moon
-                                    WaveScenarios.Glyph.CAR -> PrismIcons.Car
-                                    WaveScenarios.Glyph.WORK -> PrismIcons.Headphones
-                                    WaveScenarios.Glyph.ENERGY -> PrismIcons.Flame
-                                    WaveScenarios.Glyph.HEART -> PrismIcons.Heart
-                                    WaveScenarios.Glyph.STAR -> PrismIcons.Star
-                                    WaveScenarios.Glyph.DISCOVER -> PrismIcons.SmartShuffle
-                                    WaveScenarios.Glyph.RADIO -> PrismIcons.Equalizer
-                                }, selected = active?.id == preset.id,
+                                icon = PrismIcons.waveScenario(preset.glyph), selected = active?.id == preset.id,
                                 onClick = { start(preset.style.copy(russianPercent = style.russianPercent)) },
                                 modifier = Modifier.tvItem("tv_wave/quick/${preset.id}"))
                         }

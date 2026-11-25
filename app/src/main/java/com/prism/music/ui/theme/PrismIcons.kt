@@ -1,6 +1,7 @@
 package com.prism.music.ui.theme
 
 import com.prism.music.R
+import com.prism.music.data.foryou.WaveScenarios
 import com.prism.music.tr
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathFillType
@@ -225,6 +226,10 @@ object PrismIcons {
 
     /** [name] drawn in fill style [style] and [pack], for Settings' example cards (the app's own icons are built once, at start). */
     fun preview(name: String, style: IconFill, pack: IconPack = IconStyle.pack): ImageVector = drawn(name, style = style, pack = pack)
+
+    /** Each Stream scenario is drawn from the same SVG pipeline and follows IconStyle. */
+    private val waveScenarios by lazy { WaveScenarios.Glyph.entries.associateWith { drawn(it.drawing) } }
+    internal fun waveScenario(glyph: WaveScenarios.Glyph): ImageVector = waveScenarios.getValue(glyph)
 
     val Home = drawn("Home").or { Cupertino.Home }
     val HomeFilled = drawn("Home", filled = true).or { Cupertino.HomeFilled }

@@ -434,17 +434,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 items(choices, key = { it.id }) { scenario ->
                     PrismScenarioDisc(
                         label = if (ru) scenario.ru else scenario.en,
-                        icon = when (scenario.glyph) {
-                            WaveScenarios.Glyph.SUN -> PrismIcons.Sun
-                            WaveScenarios.Glyph.MOON -> PrismIcons.Moon
-                            WaveScenarios.Glyph.CAR -> PrismIcons.Car
-                            WaveScenarios.Glyph.WORK -> PrismIcons.Headphones
-                            WaveScenarios.Glyph.ENERGY -> PrismIcons.Flame
-                            WaveScenarios.Glyph.HEART -> PrismIcons.Heart
-                            WaveScenarios.Glyph.STAR -> PrismIcons.Star
-                            WaveScenarios.Glyph.DISCOVER -> PrismIcons.SmartShuffle
-                            WaveScenarios.Glyph.RADIO -> PrismIcons.Equalizer
-                        },
+                        icon = PrismIcons.waveScenario(scenario.glyph),
                         selected = style.copy(russianPercent = -1) == scenario.style,
                         onClick = { start(scenario.style.copy(russianPercent = style.russianPercent)) },
                         modifier = Modifier.testTag("wave:scenario:${scenario.id}"))
@@ -474,16 +464,16 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     TextButton(onClick = { if (style != MyWave.Style()) start(MyWave.Style()) }) { Text(l("Сбросить", "Reset")) }
                 }
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     Text(l("Оформление плеера", "Player card backdrop"), style = MaterialTheme.typography.titleSmall)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         PrismChip(selected = !settings.streamThemeColors,
                             onClick = { c.settings.setStreamThemeColors(false) },
-                            modifier = Modifier.weight(1f).testTag("stream:color:artwork"),
+                            modifier = Modifier.weight(1f).height(44.dp).testTag("stream:color:artwork"),
                             label = l("Обложка трека", "Track artwork"))
                         PrismChip(selected = settings.streamThemeColors,
                             onClick = { c.settings.setStreamThemeColors(true) },
-                            modifier = Modifier.weight(1f).testTag("stream:color:theme"),
+                            modifier = Modifier.weight(1f).height(44.dp).testTag("stream:color:theme"),
                             label = l("Тема Prism", "Prism theme"))
                     }
                     WaveChoices(l("Занятие", "Activity"), MyWave.Activity.entries, style.activity, ::activityName) { if (it != style.activity) start(style.copy(activity = it)) }
@@ -509,11 +499,11 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     Slider(value = discovery, onValueChange = { discovery = it },
                         onValueChangeFinished = { selectPercent((kotlin.math.round(discovery / 5f).toInt() * 5).coerceIn(0, 100)) },
                         valueRange = 0f..100f, steps = 19, modifier = Modifier.testTag("wave:discovery-percent"))
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         listOf(0 to l("Лайки", "Liked"), 50 to l("Баланс", "Balance"),
                             70 to l("Для меня", "For me"), 100 to l("Новое", "New")).forEach { (percent, label) ->
                             PrismChip(selected = discovery.toInt() == percent, onClick = { discovery = percent.toFloat(); selectPercent(percent) },
-                                label = label)
+                                label = label, modifier = Modifier.height(44.dp))
                         }
                     }
                     Text(l("Открытия — похожие записи, которых нет в известной Prism истории. Лайки не заменяют их при нехватке.",
@@ -525,7 +515,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                             modifier = Modifier.weight(1f))
                         PrismChip(selected = style.russianPercent < 0,
                             onClick = { if (style.russianPercent >= 0) start(style.copy(russianPercent = -1)) },
-                            label = l("Авто", "Auto"))
+                            label = l("Авто", "Auto"), modifier = Modifier.height(44.dp))
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column {
@@ -577,13 +567,13 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
 
 @Composable
 private fun <T> WaveChoices(label: String, values: List<T>, selected: T, name: (T) -> String, onSelect: (T) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(label, style = MaterialTheme.typography.titleSmall)
         values.chunked(if (values.size > 3) 2 else 3).forEach { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 row.forEach { value ->
                     PrismChip(selected = value == selected, onClick = { onSelect(value) },
-                        label = name(value), modifier = Modifier.weight(1f))
+                        label = name(value), modifier = Modifier.weight(1f).height(44.dp))
                 }
             }
         }
