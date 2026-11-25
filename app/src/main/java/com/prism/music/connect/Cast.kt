@@ -20,6 +20,7 @@ import com.prism.music.BuildConfig
 import com.prism.music.connect.yandex.ConnectDeviceClient
 import kotlinx.serialization.json.*
 import com.prism.music.connect.yandex.StationClock
+import com.prism.music.connect.yandex.StationEndGate
 import com.prism.music.connect.yandex.StationNames
 import com.prism.music.connect.yandex.StationConnectAccount
 import com.prism.music.connect.yandex.StationDiscoveryEvent
@@ -92,6 +93,27 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
     val state: StateFlow<CastState> = _state.asStateFlow()
     private val _stationClock = MutableStateFlow<StationClock?>(null)
     internal val stationClock = _stationClock.asStateFlow()
+
+    private fun publishStationClock(value: StationClock?) {
+        if (_stationClock.value == value) return
+        _stationClock.value = value
+        c.player.onStationClockChanged(value)
+    }
+
+    internal fun stationWantsPlaying(): Boolean? = session?.takeIf {
+        it.renderer.kind == RendererKind.YANDEX_STATION && !liveLocal
+    }?.wantPlaying
+
+    internal fun requestStationPlaying(playing: Boolean): Boolean {
+        val s = session ?: return false
+        val p = player ?: return false
+        if (stationWantsPlaying() == null) return false
+        // At the phone's local end it is intentionally paused; don't let it advance by calling play().
+        if (s.stationPhoneHeld || p.playWhenReady == playing) {
+            onPlayWhenReadyChanged(playing, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
+        } else p.playWhenReady = playing
+        return true
+    }
     private val _renderers = MutableStateFlow<List<Renderer>>(emptyList())
     /** Renderers on this network (while something is looking: [startDiscovery]). */
     val renderers: StateFlow<List<Renderer>> = _renderers.asStateFlow()
@@ -387,6 +409,10 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         var connectResult: JsonObject? = null
         var current: Loaded? = null
         var mediaToken: String = ""
+        val stationEnd = StationEndGate()
+        var stationPhoneHeld = false
+        var stationAdvancing = false
+        var stationIndex = C.INDEX_UNSET
         var stationPrepared: Loaded? = null
         var stationPrefetchId: String? = null
         var preparingSong: String? = null
@@ -487,7 +513,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                         StationConnectAccount.initialize(app)
                         val api = StationConnectAccount.api() ?: error("Sign in to Yandex in Settings")
                         val identity = api.verify(device)
-                        StationRendererLink(device, identity, api)
+                        StationRendererLink(device, identity, api, server::deliverySequence)
                     }
                     RendererKind.GOOGLE_CAST -> GoogleCastLink(r)
                     else -> RendererControl(c.http, r)
@@ -684,8 +710,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             return
         }
         session = null
-        _stationClock.value = null
         casting = false
+        publishStationClock(null)
         letGoOfNetwork()
         com.prism.music.playback.AudioDiagnostics.log("cast", "stopped casting${message?.let { ": $it" } ?: ""}${s.lastFailure?.let { " (last error: $it)" } ?: ""}")
         pollJob?.cancel(); loadJob?.cancel(); nextJob?.cancel(); seekJob?.cancel(); volumeJob?.cancel(); singJob?.cancel()
@@ -808,6 +834,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         val p = player ?: return
         // A song a Prism TV can't play (a file on the phone) plays here meanwhile.
         val remote = (session != null && !liveLocal) || tv?.local == false
+        val holdAtEnd = stationWantsPlaying() != null || c.player.sleepEndOfSong.value
+        if (p.pauseAtEndOfMediaItems != holdAtEnd) p.pauseAtEndOfMediaItems = holdAtEnd
         if (remote) {
             if (p.volume != 0f) p.volume = 0f
             muted = true
@@ -826,7 +854,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
     private fun goLocalForLive(s: Session) {
         if (session !== s) return
         liveLocal = true
-        _stationClock.value = null
+        publishStationClock(null)
         s.current = null
         s.preparingSong = null
         s.stationPrepared = null
@@ -877,7 +905,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         val key = if (s.renderer.kind == RendererKind.YANDEX_STATION) {
             baseKey.substringBeforeLast('.') + "_" + java.util.UUID.randomUUID().toString().take(12) + "." + baseKey.substringAfterLast('.')
         } else baseKey
-        val url = server.publishForSession(s.mediaToken, key, body, s.host)
+        val url = server.publishForSession(s.mediaToken, key, body, s.host,
+            observedPeer = if (s.renderer.kind == RendererKind.YANDEX_STATION) s.renderer.host else null)
         // Glagol does not consume DIDL or its artwork URL. Avoid a blocking artwork download on every skip.
         val art = if (s.renderer.kind == RendererKind.YANDEX_STATION) null else runCatching { artFor(song) }.getOrNull()?.let { server.publishForSession(s.mediaToken, "art_" + key.substringBeforeLast('.') + ".jpg", it, s.host) }
         val length = ((body as? PcmBody)?.let { it.frames * 1000 / it.rate }) ?: durationMs
@@ -932,7 +961,10 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         s.preparingSong = song.id
         s.preparingPosition = startMs
         if (s.renderer.kind == RendererKind.YANDEX_STATION) {
-            _stationClock.value = StationClock(song.id, durationMs = (song.durationSec * 1000L).takeIf { it > 0 })
+            s.stationEnd.reset()
+            s.stationPhoneHeld = false
+            s.stationIndex = player?.currentMediaItemIndex ?: C.INDEX_UNSET
+            publishStationClock(StationClock(song.id, durationMs = (song.durationSec * 1000L).takeIf { it > 0 }))
         }
         seekJob?.cancel()
         s.lastCommandAt = SystemClock.elapsedRealtime()
@@ -1076,7 +1108,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                     runCatching { onPoll(s, ti, pi, rtt) }.onFailure { Log.w(TAG, "following ${s.renderer.name} failed", it) }
                 }.onFailure { e ->
                     if (e is CancellationException) throw e
-                    if (station != null) _stationClock.value = _stationClock.value?.copy(playing = null, loading = s.wantPlaying)
+                    if (station != null) publishStationClock(_stationClock.value?.copy(playing = null, loading = s.wantPlaying))
                     s.lastFailure = "${e.javaClass.simpleName}: ${e.message?.take(80)}"
                     val lost = s.misses.failed(blocked = netBlocked)
                     com.prism.music.playback.AudioDiagnostics.log("cast", "no answer (${s.misses.count}/$MAX_FAILURES${if (netBlocked) ", network held back: not counted" else ""}) after ${rtt * 2} ms: ${s.lastFailure}")
@@ -1117,12 +1149,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         val cur = s.current ?: return
         val key = keyOf(pi.trackUri)
         if (s.renderer.kind == RendererKind.YANDEX_STATION) {
-            val old = _stationClock.value ?: StationClock(cur.song.id)
-            _stationClock.value = if (key == cur.key) {
-                old.withObservation(cur.song.id, pi.relMs, pi.durationMs ?: cur.durationMs,
-                    when { ti.playing -> true; ti.paused || ti.stopped -> false; else -> null },
-                    ti.transitioning || (!cur.started && !ti.playing && s.wantPlaying))
-            } else old.copy(playing = null, loading = s.wantPlaying)
+            onStationPoll(s, p, cur, ti, pi, key, now)
+            return
         }
         // The renderer moved on to the lined-up song by itself (gapless): the phone goes along if it hasn't yet.
         val next = s.next
@@ -1209,6 +1237,85 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         s.waiting?.let { w -> if (now >= w.at) { s.waiting = null; load(s, w.song, 0, p.playWhenReady) } }
     }
 
+    /** The phone supplies the queue. Only a receiver report can complete an item. */
+    private fun onStationPoll(s: Session, p: ExoPlayer, cur: Loaded, ti: TransportInfo, pi: PositionInfo, key: String?, now: Long) {
+        val ctl = s.ctl as StationRendererLink
+        val observed = ctl.observed()
+        val old = _stationClock.value ?: StationClock(cur.song.id)
+        val matching = key == cur.key
+        val pendingSeek = seekJob?.isActive == true
+        val onSong = p.currentMediaItem?.mediaId == cur.song.id
+
+        if (matching && ti.playing) {
+            s.foreign = 0
+            if (!cur.started) {
+                cur.started = true
+                publish(s, loading = false)
+                if (cur.startMs > 0) seekRenderer(s, cur.startMs)
+                armNext(s)
+            }
+            publishStationClock(old.withObservation(cur.song.id, pi.relMs, pi.durationMs ?: cur.durationMs,
+                true, pendingSeek || seekJob?.isActive == true))
+        } else if (matching && (ti.paused || ti.stopped) && cur.started) {
+            publishStationClock(old.withObservation(cur.song.id, pi.relMs, pi.durationMs ?: cur.durationMs, false, false))
+        } else {
+            // Keep the last confirmed position when the report cannot identify this stream.
+            publishStationClock(old.copy(playing = null, loading = s.wantPlaying))
+        }
+
+        val ended = observed?.let {
+            s.stationEnd.observe(it, cur.url, cur.durationMs,
+                allowAdvance = cur.started && s.wantPlaying && !pendingSeek && seekJob?.isActive != true &&
+                    now - s.lastSeekAt > 2000)
+        } == true
+        if (ended && onSong && !s.stationAdvancing) {
+            val index = p.nextMediaItemIndex
+            val next = if (index in 0 until p.mediaItemCount) p.getMediaItemAt(index).toSong() else null
+            if (next == null || c.player.sleepEndOfSong.value) {
+                s.wantPlaying = false
+                if (c.player.sleepEndOfSong.value) c.player.setSleepEndOfSong(false)
+                p.pause()
+                publishStationClock(old.copy(playing = false, loading = false))
+                publish(s, loading = false)
+                return
+            }
+            s.stationAdvancing = true
+            try {
+                p.seekTo(index, 0L)
+                p.play()
+                if (next.isLive) goLocalForLive(s) else load(s, next, 0L, true)
+            } finally { s.stationAdvancing = false }
+            return
+        }
+        if (matching && ti.playing) return
+
+        if (!cur.started && s.wantPlaying) {
+            if (now - cur.loadedAt > START_TIMEOUT_MS) refuse(s, cur)
+            else if (!cur.playRetried && now - cur.loadedAt > PLAY_AGAIN_MS) {
+                cur.playRetried = true
+                val generation = loadGen
+                scope.launch {
+                    runCatching { onWire {
+                        if (session === s && generation == loadGen && s.wantPlaying) s.ctl.play()
+                    } }
+                }
+            }
+            return
+        }
+        if (observed?.playing == true && !observed.matches(cur.url) && now - cur.loadedAt > 8000) {
+            if (++s.foreign >= 4) disconnect(tr(R.string.is_playing_something_else_now, s.renderer.name), keepPlaying = false)
+            return
+        }
+        // A fresh stop mid-track is a pause/interruption, never an automatic next.
+        if (cur.started && observed?.playing == false && now - s.lastCommandAt > GRACE_MS &&
+            now - s.lastSeekAt > 2000 && !pendingSeek) {
+            s.wantPlaying = false
+            if (p.playWhenReady) p.pause()
+            publishStationClock((_stationClock.value ?: old).copy(playing = false, loading = false))
+            publish(s, loading = false)
+        }
+    }
+
     /**
      * Keeps the phone's playhead with the renderer's. Renderers mostly report whole seconds, so a reading is only
      * trusted the moment it changes (the second has just ticked over); between readings it's run on by the clock.
@@ -1235,6 +1342,10 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
     }
 
     private fun seekRenderer(s: Session, ms: Long) {
+        if (s.renderer.kind == RendererKind.YANDEX_STATION) {
+            s.stationEnd.reset()
+            publishStationClock(_stationClock.value?.copy(loading = true))
+        }
         s.lastSeekAt = SystemClock.elapsedRealtime()
         s.lastCommandAt = s.lastSeekAt
         resetAnchor(s)
@@ -1269,6 +1380,24 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         val s = session ?: return
         val p = player ?: return
         val song = mediaItem?.toSong() ?: return
+        if (s.stationAdvancing) return
+        val station = s.renderer.kind == RendererKind.YANDEX_STATION && !liveLocal
+        val automatic = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT
+        if (station && automatic) {
+            // Defensive fallback: if Media3 advances despite pauseAtEnd, restore the receiver's item.
+            val current = s.current?.song?.id ?: s.preparingSong
+            if (current != null) {
+                val previous = s.stationIndex.takeIf { it in 0 until p.mediaItemCount && p.getMediaItemAt(it).mediaId == current }
+                    ?: (0 until p.mediaItemCount).firstOrNull { p.getMediaItemAt(it).mediaId == current }
+                if (previous != null) {
+                    s.stationAdvancing = true
+                    s.stationPhoneHeld = true
+                    try { p.pause(); p.seekTo(previous, _stationClock.value?.positionMs ?: 0L) }
+                    finally { s.stationAdvancing = false }
+                } else disconnect(keepPlaying = false)
+            }
+            return
+        }
         if (song.isLive) { goLocalForLive(s); return }
         if (liveLocal) {
             liveLocal = false
@@ -1278,7 +1407,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         }
         val cur = s.current
         // Already there (the renderer moved on first, or the same song was swapped for its other form).
-        if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT && s.preparingSong == null && cur?.song?.id == song.id) { s.waiting = null; return }
+        if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT && s.preparingSong == null && cur?.song?.id == song.id &&
+            (!station || s.stationIndex == p.currentMediaItemIndex)) { s.waiting = null; return }
         val natural = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT
         if (natural && cur?.started == true && s.preparingSong == null) {
             // The phone reached the end first: the renderer finishes its song (or moves on to the lined-up one by itself).
@@ -1295,7 +1425,17 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         tv?.let { it.onPlayWhenReadyChanged(); return }
         val s = session ?: return
         val p = player ?: return
+        if (s.stationAdvancing) return
+        val station = s.renderer.kind == RendererKind.YANDEX_STATION && !liveLocal
+        if (station && !playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) {
+            s.stationPhoneHeld = true
+            return // The local decoder cannot end or pause the receiver's item.
+        }
         if (liveLocal || playWhenReady == s.wantPlaying) return
+        if (station) {
+            s.stationEnd.reset()
+            publishStationClock(_stationClock.value?.copy(loading = true))
+        }
         s.wantPlaying = playWhenReady
         s.lastCommandAt = SystemClock.elapsedRealtime()
         resetAnchor(s)
@@ -1327,7 +1467,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             return
         }
         val s = session ?: return
-        if (reason != Player.DISCONTINUITY_REASON_SEEK || oldPosition.mediaItemIndex != newPosition.mediaItemIndex) return
+        if (s.stationAdvancing || reason != Player.DISCONTINUITY_REASON_SEEK || oldPosition.mediaItemIndex != newPosition.mediaItemIndex) return
         val target = s.followTarget
         s.followTarget = null
         // The phone following the renderer: nothing to send back.
