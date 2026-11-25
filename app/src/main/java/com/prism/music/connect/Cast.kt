@@ -1269,7 +1269,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                     now - s.lastSeekAt > 2000)
         } == true
         if (ended && onSong && !s.stationAdvancing) {
-            val index = p.nextMediaItemIndex
+            val index = if (p.repeatMode == Player.REPEAT_MODE_ONE) p.currentMediaItemIndex else p.nextMediaItemIndex
             val next = if (index in 0 until p.mediaItemCount) p.getMediaItemAt(index).toSong() else null
             if (next == null || c.player.sleepEndOfSong.value) {
                 s.wantPlaying = false
@@ -1385,7 +1385,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         val automatic = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT
         if (station && automatic) {
             // Defensive fallback: if Media3 advances despite pauseAtEnd, restore the receiver's item.
-            val current = s.current?.song?.id ?: s.preparingSong
+            val current = s.preparingSong ?: s.current?.song?.id
             if (current != null) {
                 val previous = s.stationIndex.takeIf { it in 0 until p.mediaItemCount && p.getMediaItemAt(it).mediaId == current }
                     ?: (0 until p.mediaItemCount).firstOrNull { p.getMediaItemAt(it).mediaId == current }
@@ -1418,7 +1418,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             if (left == 0L && !lined) { s.waiting = null; load(s, song, 0, p.playWhenReady) }
             return
         }
-        load(s, song, if (natural) 0 else p.currentPosition, p.playWhenReady)
+        load(s, song, if (natural) 0 else p.currentPosition, if (station && s.stationPhoneHeld) s.wantPlaying else p.playWhenReady)
     }
 
     override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
