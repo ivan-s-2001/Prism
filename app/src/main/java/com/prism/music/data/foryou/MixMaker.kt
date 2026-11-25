@@ -49,6 +49,8 @@ class MixMaker(private val sources: Sources) {
         val artistDoubt: (String) -> Double = { 0.0 },
         /** Days since a song was last offered, for new songs not to be offered again straight away. */
         val servedDaysAgo: (String) -> Int? = { null },
+        val affinity: (Song) -> Double = { 1.0 },
+        val feedbackWeight: (Song) -> Double = { 1.0 },
     )
 
     data class Recipe(
@@ -73,7 +75,7 @@ class MixMaker(private val sources: Sources) {
         val wantFamiliar = (recipe.size * (1 - recipe.freshShare)).toInt() + recipe.size / 10
         // Sharpness 1.5: favourites still come up more often than songs heard once, just not every time.
         val familiar = Variety.sample(candidates, wantFamiliar, seed, sharpness = 1.5) {
-            it.score * Variety.rest(it.playsLately, it.hoursSinceLast, it.servedDaysAgo)
+            it.score * taste.affinity(it.song) * taste.feedbackWeight(it.song) * Variety.rest(it.playsLately, it.hoursSinceLast, it.servedDaysAgo)
         }.map { it.song }
         // Seeds: today's picks, taken in turn across artists, so new songs come from around the whole mix.
         val seeds = Variety.roundRobin(familiar.ifEmpty { candidates.map { it.song } }) { it.primaryArtist }.take(recipe.seeds)
@@ -128,7 +130,7 @@ class MixMaker(private val sources: Sources) {
             val near = if (artist in mixArtists) 1.15 else 1.0
             // Offered a day or two ago and not taken up: something else first.
             val served = taste.servedDaysAgo(s.id)?.let { d -> if (d <= 1) 0.25 else if (d <= 3) 0.6 else 1.0 } ?: 1.0
-            w * near * served * (1.0 - taste.artistDoubt(s.primaryArtist))
+            w * near * served * (1.0 - taste.artistDoubt(s.primaryArtist)) * taste.affinity(s) * taste.feedbackWeight(s)
         }
     }
 
