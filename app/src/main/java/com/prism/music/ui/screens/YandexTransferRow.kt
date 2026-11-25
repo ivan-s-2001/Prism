@@ -51,10 +51,11 @@ internal fun YandexTransferRow(ink: Color) {
         if (p == null) {
             Text(l("Перенос медиатеки", "Library transfer"), style = MaterialTheme.typography.titleMedium)
         } else if (p.lastRead > 0) {
-            val complete = p.total > 0 && p.matched == p.total && p.pending == 0
+            val complete = p.total > 0 && p.matched == p.total && p.pending == 0 && p.placementComplete && p.missingMetadata == 0
             Text(when {
                 p.pending > 0 -> l("Сопоставление треков", "Matching tracks")
-                complete -> l("✓ Сопоставление завершено", "✓ Matching complete")
+                complete -> l("✓ Медиатека перенесена", "✓ Library transferred")
+                p.total > 0 && p.matched == p.total && !p.placementComplete -> l("Добавление в медиатеку", "Adding to library")
                 p.matched == 0 && p.total > 0 -> l("Нет подтверждённых совпадений", "No confirmed matches")
                 else -> l("Последний перенос на этом устройстве", "Last transfer on this device")
             }, style = MaterialTheme.typography.titleMedium)
@@ -65,6 +66,7 @@ internal fun YandexTransferRow(ink: Color) {
             Text(l("Любимые добавлены: ${p.likesPlaced} · Плейлисты: ${p.playlistsPlaced}", "Likes added: ${p.likesPlaced} · Playlists: ${p.playlistsPlaced}"), style = MaterialTheme.typography.bodySmall)
             if (p.pending > 0) Text(l("Ожидают поиска: ${p.pending}. Поиск продолжится в фоне при наличии сети.", "Pending: ${p.pending}. Matching continues in the background with network access."), style = MaterialTheme.typography.bodySmall)
             if (p.review + p.missing + p.skipped > 0) Text(l("На проверку: ${p.review} · Не найдено: ${p.missing} · Пропущено: ${p.skipped}", "Review: ${p.review} · Not found: ${p.missing} · Skipped: ${p.skipped}"), style = MaterialTheme.typography.bodySmall)
+            if (p.missingMetadata > 0) Text(l("Нет метаданных: ${p.missingMetadata}", "Missing source metadata: ${p.missingMetadata}"), style = MaterialTheme.typography.bodySmall)
             Text(l("Последнее чтение: ", "Last read: ") + java.text.DateFormat.getDateTimeInstance().format(java.util.Date(p.lastRead)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (p.review > 0) {
                 TextButton(onClick = { nav.go("bring") }) { Text(l("Проверить совпадения", "Review matches")) }
@@ -124,7 +126,7 @@ internal fun YandexTransferRow(ink: Color) {
                             preview = api.read(liked, playlists) { progress = it }
                         } else {
                             progress = l("Добавляем в очередь импорта…", "Queuing import…")
-                            val news = c.imports.bringYandexLibrary(selected.library)
+                            val news = c.imports.bringYandexLibrary(selected.library, selected.missing)
                             done = true
                             message = l("Поставлено на сопоставление. Новых любимых: ${news.liked}, плейлистов: ${news.playlists}, новых треков в ранее перенесённых плейлистах: ${news.playlistSongs}. Неоднозначные совпадения можно проверить в разделе импорта.",
                                 "Matching queued. New likes: ${news.liked}, playlists: ${news.playlists}, additions to imported playlists: ${news.playlistSongs}. Review uncertain matches in Imports.")
