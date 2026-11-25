@@ -384,6 +384,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         var connectResult: JsonObject? = null
         var current: Loaded? = null
         var mediaToken: String = ""
+        var stationPrepared: Loaded? = null
+        var stationPrefetchId: String? = null
         var preparingSong: String? = null
         var preparingPosition = 0L
         var next: Loaded? = null
@@ -822,6 +824,9 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         liveLocal = true
         s.current = null
         s.preparingSong = null
+        s.stationPrepared = null
+        s.stationPrefetchId = null
+        nextJob?.cancel()
         s.next = null
         s.waiting = null
         loadGen++
@@ -913,6 +918,9 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
     private fun load(s: Session, song: Song, startMs: Long, play: Boolean) {
         if (session !== s) return
         val gen = ++loadGen
+        val prefetched = s.stationPrepared?.takeIf { it.song.id == song.id && server.has(it.key) }
+        s.stationPrepared = null
+        s.stationPrefetchId = null
         s.waiting = null
         s.next = null
         s.wantPlaying = play
@@ -927,7 +935,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         loadJob = scope.launch {
             val prepareStarted = SystemClock.elapsedRealtime()
             val loaded = try {
-                withContext(Dispatchers.IO) { prepare(s, song) }
+                prefetched ?: withContext(Dispatchers.IO) { prepare(s, song) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -995,13 +1003,36 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
 
     /** Lines up the song after this one on renderers that take SetNextAVTransportURI, so songs run into each other. */
     private fun armNext(s: Session) {
-        if (!s.nextSupported || session !== s) return
+        if (session !== s) return
+        val station = s.renderer.kind == RendererKind.YANDEX_STATION
+        if (!station && !s.nextSupported) return
         val p = player ?: return
         val cur = s.current ?: return
         val idx = p.nextMediaItemIndex
         val song = if (idx == C.INDEX_UNSET) null else p.getMediaItemAt(idx).toSong()
         if (song == null || song.isLive || song.id == cur.song.id) {
+            if (station) { nextJob?.cancel(); s.stationPrepared = null; s.stationPrefetchId = null }
             // Nothing to line up (a renderer's earlier "next" can't be taken back, so a move onto it is set right when seen).
+            return
+        }
+        if (station) {
+            if (s.stationPrepared?.song?.id == song.id && server.has(s.stationPrepared!!.key)) return
+            if (s.stationPrefetchId == song.id && nextJob?.isActive == true) return
+            nextJob?.cancel()
+            s.stationPrepared = null
+            s.stationPrefetchId = song.id
+            val generation = loadGen
+            nextJob = scope.launch {
+                delay(250)
+                try {
+                    val next = withContext(Dispatchers.IO) { prepare(s, song) }
+                    if (session === s && generation == loadGen && s.stationPrefetchId == song.id) {
+                        s.stationPrepared = next
+                        Log.i(TAG, "Station next stream prepared")
+                    }
+                } catch (e: CancellationException) { throw e }
+                catch (_: Exception) { /* Normal load will retry preparation if needed. */ }
+            }
             return
         }
         if (s.next?.song?.id == song.id) return
@@ -1024,7 +1055,12 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         pollJob = scope.launch {
             while (isActive && session === s) {
                 val t0 = SystemClock.elapsedRealtime()
-                val r = runCatching { onWire { s.ctl.transport() to s.ctl.position() } }
+                val station = s.ctl as? StationRendererLink
+                val r = if (station != null) {
+                    // Do not queue background polling in front of interactive controls.
+                    if (!wire.tryLock()) { delay(180); continue }
+                    try { runCatching { station.pollState() } } finally { wire.unlock() }
+                } else runCatching { onWire { s.ctl.transport() to s.ctl.position() } }
                 val rtt = (SystemClock.elapsedRealtime() - t0) / 2
                 if (session !== s) break
                 r.onSuccess { (ti, pi) ->
@@ -1045,7 +1081,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                     if (v != null && v != s.volume && session === s) { s.volume = v; publish(s); hooks?.remoteChanged() }
                 }
                 if (!liveLocal) applyLocalMode()
-                delay(POLL_MS)
+                delay(if (station != null) 250L else POLL_MS)
             }
         }
     }
@@ -1188,7 +1224,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         seekJob?.cancel()
         val generation = loadGen
         seekJob = scope.launch {
-            delay(120)
+            delay(if (s.renderer.kind == RendererKind.YANDEX_STATION) 60L else 120L)
             try {
                 onWire { if (session === s && generation == loadGen) s.ctl.seek(ms) }
             } catch (e: CancellationException) { throw e }
