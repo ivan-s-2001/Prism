@@ -99,6 +99,17 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
             reader.fadingIn = true
         }
         if (available < length) {
+            // A short decoder scheduling gap should not trigger a 350–650 ms
+            // rebuffer. Conceal at most 5 ms by stretching the remaining PCM;
+            // longer gaps still take the normal bounded recovery path.
+            val missing = length - available
+            if (length == RATE * 4 / 50 && missing <= RATE * 4 / 200 &&
+                available >= 8 && available % 4L == 0L) {
+                val input = readAt(available.toInt(), reader.cursor) { reader.cursor = it }
+                reader.underrunBytes += missing
+                reader.adjustedFrames -= missing / 4
+                return smooth(reader, interpolate(input, length), true)
+            }
             reader.recoveries++
             reader.targetBytes = (reader.targetBytes + RATE * 4 / 10).coerceAtMost(RATE * 4 * 650 / 1000)
             reader.recovering = true
@@ -121,6 +132,10 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
         }
         val input = readAt(length + adjust * 4, reader.cursor) { reader.cursor = it }
         reader.adjustedFrames += adjust.toLong()
+        return smooth(reader, interpolate(input, length), true)
+    }
+
+    private fun interpolate(input: ByteArray, length: Int): ByteArray {
         val inFrames = input.size / 4
         val outFrames = length / 4
         val out = ByteArray(length)
@@ -140,7 +155,7 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
                 out[index + 1] = (value shr 8).toByte()
             }
         }
-        return smooth(reader, out, true)
+        return out
     }
 
     // Fade only discontinuities (short ~5ms ramps). Ordinary PCM is untouched.
