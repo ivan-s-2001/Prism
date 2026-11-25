@@ -558,7 +558,11 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             delay(60)
             try { withContext(Dispatchers.IO) { active.volume(level / 100.0) } }
             catch (e: CancellationException) { throw e }
-            catch (e: Exception) { Log.w("PrismLive", "Volume command failed: ${member.renderer.name}: ${e.message}") }
+            catch (e: Exception) {
+                Log.w("PrismLive", "Volume command failed: ${member.renderer.name}: ${e.message}")
+                active.reportedVolume?.let { member.level = it }
+                publishLive()
+            }
         }
     }
 
@@ -617,16 +621,17 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                     true
                 } == true
                 val directConfirmed = try {
-                    withContext(Dispatchers.IO) { active.playMusicLive(address, direct = true, source = input::read, initialVolume = member.level) }
+                    withContext(Dispatchers.IO) { active.playMusicLive(address, direct = true, source = input::read) }
                     awaitStream(9000L)
                 } catch (e: CancellationException) { throw e }
                 catch (e: Exception) { Log.w("PrismLive", "Direct PCM start failed: ${e.message}"); false }
                 if (!directConfirmed) {
                     Log.w("PrismLive", "${r.name}: PCM not confirmed; HLS fallback")
-                    withContext(Dispatchers.IO) { active.playMusicLive(address, direct = false, source = input::read, initialVolume = member.level) }
+                    withContext(Dispatchers.IO) { active.playMusicLive(address, direct = false, source = input::read) }
                     if (!awaitStream(25000L)) error("HLS receiver not confirmed: ${active.liveStatus()}")
                 }
                 Log.i("PrismLive", "${r.name}: Selected transport=${if (directConfirmed) "PCM" else "HLS"}")
+                active.reportedVolume?.let { member.level = it }
                 member.connected = true
                 publishLive()
                 var failures = 0
