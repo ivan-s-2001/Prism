@@ -73,6 +73,26 @@ internal object GlagolProtocol {
         }
     }
 
+    /** Radio receiver path for an actual HLS playlist, rather than a finite audio track. */
+    fun playRadio(url: String, title: String, artist: String): JsonObject {
+        val uri = URI(url)
+        require(uri.scheme.equals("http", true) && uri.host != null && uri.userInfo == null && uri.fragment == null)
+        val params = buildJsonObject {
+            put("streamUrl", url)
+            put("force_restart_player", true)
+            put("title", title)
+            put("subtitle", artist)
+        }.toString()
+        val message = ByteArrayOutputStream().apply {
+            stringField(1, "radio_play")
+            stringField(2, params)
+        }.toByteArray()
+        return buildJsonObject {
+            put("command", "externalCommandBypass")
+            put("data", Base64.getEncoder().encodeToString(message))
+        }
+    }
+
     private fun ByteArrayOutputStream.stringField(number: Int, value: String) {
         val bytes = value.toByteArray(Charsets.UTF_8)
         varint((number shl 3) or 2)
