@@ -1147,7 +1147,7 @@ enum class LocalSection(val label: String) {
 enum class NavTab(val label: String) {
     HOME(tr(R.string.home)), SEARCH(tr(R.string.search)), LIBRARY(tr(R.string.library)), REPLAY(tr(R.string.replay_2)), SETTINGS(tr(R.string.settings)), LOCAL(tr(R.string.local_files)),
     // 1.7.6: any of these pages as a tab too.
-    DOWNLOADS(tr(R.string.downloads)), LIKED(tr(R.string.liked_songs)), PODCASTS(tr(R.string.podcasts));
+    DOWNLOADS(tr(R.string.downloads)), LIKED(tr(R.string.liked_songs)), PODCASTS(tr(R.string.podcasts)), MY_WAVE(if (java.util.Locale.getDefault().language == "ru") "Волна" else "Wave");
 
     companion object {
         /** The most tabs the bar holds (labels still fit on a phone). */
@@ -1840,7 +1840,7 @@ data class AppSettings(
     val navStyle: NavBarStyle = NavBarStyle.FLOATING,
     val navLabels: NavLabels = NavLabels.ALWAYS,
     val navHideOnScroll: Boolean = true,
-    val navTabs: List<NavTab> = listOf(NavTab.HOME, NavTab.LIBRARY, NavTab.SEARCH, NavTab.REPLAY),
+    val navTabs: List<NavTab> = listOf(NavTab.HOME, NavTab.MY_WAVE, NavTab.LIBRARY, NavTab.SEARCH, NavTab.REPLAY),
     /** Tabs given their own names (1.7.6); the rest keep theirs. */
     val tabNames: Map<NavTab, String> = emptyMap(),
     val navBarSize: NavBarSize = NavBarSize.STANDARD,
