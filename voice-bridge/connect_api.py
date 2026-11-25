@@ -12,12 +12,20 @@ def validate_command(command):
     if not isinstance(command, dict):
         raise Conflict("invalid_command")
     action = command.get("action")
-    if action in ("next", "previous", "pause", "resume") and set(command) == {"action"}:
+    if action in ("next", "previous", "pause", "resume", "disconnect") and set(command) == {"action"}:
         return dict(command)
     if action in ("volume", "volume_delta", "seek_relative") and set(command) == {"action", "value"}:
         value = command["value"]
         lo, hi = {"volume": (0, 100), "volume_delta": (-20, 20), "seek_relative": (-3600, 3600)}[action]
         if type(value) is int and lo <= value <= hi:
+            return dict(command)
+    if action == "select_track" and set(command) == {"action", "index", "track_id"}:
+        index, track_id = command["index"], command["track_id"]
+        if type(index) is int and 0 <= index <= 100000 and isinstance(track_id, str) and 1 <= len(track_id) <= 256:
+            return dict(command)
+    if action == "seek_absolute" and set(command) == {"action", "value", "track_id"}:
+        value, track_id = command["value"], command["track_id"]
+        if type(value) is int and 0 <= value <= 31536000 and isinstance(track_id, str) and 1 <= len(track_id) <= 256:
             return dict(command)
     if action == "search_play" and set(command) == {"action", "query"}:
         query = command["query"]
@@ -76,9 +84,9 @@ class ConnectApi:
                 if path in ("/v2/pull", "/v2/heartbeat"):
                     g = data.get("generation")
                     state = data.get("state")
-                    if not isinstance(state, dict) or set(state) - {"title", "artist", "station", "playing", "position", "duration", "volume", "loading"}:
+                    if not isinstance(state, dict) or set(state) - {"title", "artist", "station", "playing", "position", "duration", "volume", "loading", "queue", "current_index", "queue_count", "track_id", "result"}:
                         raise Conflict("invalid_state")
-                    for field in ("title", "artist", "station"):
+                    for field in ("title", "artist", "station", "track_id"):
                         if field in state and (not isinstance(state[field], str) or len(state[field]) > 256):
                             raise Conflict("invalid_state")
                     for field in ("playing", "loading"):
@@ -87,6 +95,25 @@ class ConnectApi:
                     for field in ("position", "duration", "volume"):
                         if field in state and state[field] is not None and (
                             type(state[field]) is not int or not 0 <= state[field] <= (100 if field == "volume" else 31536000000)):
+                            raise Conflict("invalid_state")
+                    for field in ("current_index", "queue_count"):
+                        if field in state and (type(state[field]) is not int or not 0 <= state[field] <= 100000):
+                            raise Conflict("invalid_state")
+                    if "queue" in state:
+                        queue = state["queue"]
+                        if not isinstance(queue, list) or len(queue) > 40:
+                            raise Conflict("invalid_state")
+                        for item in queue:
+                            if not isinstance(item, dict) or set(item) != {"index", "id", "title", "artist"}:
+                                raise Conflict("invalid_state")
+                            if type(item["index"]) is not int or not 0 <= item["index"] <= 100000:
+                                raise Conflict("invalid_state")
+                            for key in ("id", "title", "artist"):
+                                if not isinstance(item[key], str) or len(item[key]) > 256:
+                                    raise Conflict("invalid_state")
+                    if "result" in state:
+                        result = state["result"]
+                        if not isinstance(result, dict) or set(result) != {"id", "status"} or not isinstance(result["id"], str) or len(result["id"]) > 256 or result["status"] not in ("requested", "not_found", "stale_track", "unavailable", "failed"):
                             raise Conflict("invalid_state")
                     self.sessions.heartbeat(a, did, g, state)
                     return 200, {"command": self.sessions.pull(a, did, g) if path == "/v2/pull" else None}
