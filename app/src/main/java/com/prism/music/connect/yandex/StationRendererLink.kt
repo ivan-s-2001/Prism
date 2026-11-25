@@ -1,37 +1,43 @@
 package com.prism.music.connect.yandex
 
 import android.os.SystemClock
+import android.util.Log
 import com.prism.music.connect.CastMedia
+import com.prism.music.connect.MediaServer
 import com.prism.music.connect.PositionInfo
 import com.prism.music.connect.RendererLink
 import com.prism.music.connect.TransportInfo
 import java.io.IOException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.serialization.json.*
 
-/** Experimental adapter to Prism's existing queue and remote controls. */
+/** Receiver owns observed time; the host changes position by replacing the WAV stream. */
 internal class StationRendererLink(
     station: YandexStation,
     private val identity: OwnedStationIdentity,
     private val tokens: StationTokenSource,
     private val delivery: (String) -> Long = { 0L },
+    private val slice: ((String, Long) -> MediaServer.StationSlice)? = null,
 ) : RendererLink {
+    private data class Attempt(val physical: String, val logical: String, val offset: Long, val duration: Long, val at: Long)
     @Volatile private var state: StationPlaybackState? = null
+    @Volatile private var attempt: Attempt? = null
     private val stopControl = StationStopControl()
     private val evidence = StationStreamEvidence()
     private val socket = GlagolSocket(station, identity.certificatePem) { text ->
         stopControl.onState(text)
-        StationPlaybackState.parse(text, SystemClock.elapsedRealtime())?.let { state = evidence.observe(it, delivery) }
+        StationPlaybackState.parse(text, SystemClock.elapsedRealtime())?.let { raw ->
+            state = evidence.observe(raw, delivery)
+        }
     }
     private var loaded: Pair<String, CastMedia>? = null
     private var requested = false
     private var paused = false
-    private var resumePosition: Long? = null
+    private var target = 0L
     private var confirmedPausePosition: Long? = null
-    private var sentAt = 0L
     private var token: String? = null
     private var tokenAt = 0L
+    private var lastPingAt = 0L
 
     private suspend fun currentToken(): String {
         val now = SystemClock.elapsedRealtime()
@@ -41,67 +47,87 @@ internal class StationRendererLink(
         }
     }
 
-    private suspend fun send(payload: JsonObject) = socket.send(currentToken(), payload)
+    private suspend fun send(payload: kotlinx.serialization.json.JsonObject) = socket.send(currentToken(), payload)
 
-    private fun command(name: String) = buildJsonObject { put("command", name) }
+    private fun absolute(raw: StationPlaybackState?): StationPlaybackState? {
+        val a = attempt ?: return raw
+        if (raw == null || raw.at < a.at || !raw.matches(a.physical)) return raw
+        return raw.copy(id = a.logical, position = raw.position?.let { (a.offset + it).coerceAtMost(a.duration) },
+            duration = a.duration)
+    }
+
+    private suspend fun stopActive() {
+        if (!requested || paused) return
+        val a = attempt
+        val fresh = state?.takeIf { a != null && it.at >= a.at && SystemClock.elapsedRealtime() - it.at <= 1000 }
+        if (fresh?.playing != false) stopControl.stop(socket, currentToken(), allowTextFallback = false)
+        requested = false
+    }
 
     override suspend fun load(url: String, didl: String, media: CastMedia) {
-        // Current audio_play supports file streams; physical playback on this phone is still unverified.
         require(media.mime in setOf("audio/mpeg", "audio/wav", "audio/x-wav"))
-        // Anonymous stream reports require a confirmed stopped boundary before replacing playback.
-        if (requested && !paused && observed()?.takeIf { it.at >= sentAt }?.playing != false) stopControl.stop(socket, currentToken(), allowTextFallback = false)
+        stopActive()
         evidence.clear()
+        attempt = null
         requested = false
         paused = false
-        resumePosition = null
+        target = 0
         confirmedPausePosition = null
         loaded = url to media
+    }
+
+    fun setStartPosition(ms: Long) {
+        check(!requested)
+        target = ms.coerceAtLeast(0)
     }
 
     override suspend fun loadNext(url: String, didl: String, media: CastMedia) {
         throw UnsupportedOperationException("Station has no gapless queue")
     }
 
-    override suspend fun play() {
-        val (url, media) = loaded ?: throw IOException("No track")
-        if (requested && !paused && state?.matches(url) == true && state?.playing == true) return
-        if (requested && !paused) stopControl.stop(socket, currentToken(), allowTextFallback = false)
-        if (state?.type == "bluetooth" && state?.playing == true) {
-            throw IOException("Station is playing Bluetooth")
-        }
-        val resume = if (paused) resumePosition else null
-        // audio_play replaces the previous stream. load() has already stopped our old stream.
-        // A second stop here can arrive while the new source is buffering.
-        // Mark ownership before sending: a cancelled send can still have reached the speaker.
+    private suspend fun startAt(ms: Long) {
+        val (logical, media) = loaded ?: throw IOException("No track")
+        val latest = state
+        if (latest?.type == "bluetooth" && latest.playing == true) throw IOException("Station is playing Bluetooth")
+        // Create the replacement before stopping the old stream: failure leaves old playback intact.
+        val part = slice?.invoke(logical, ms) ?: if (ms == 0L) {
+            MediaServer.StationSlice(logical, 0, media.durationMs)
+        } else throw IOException("Seekable Station stream is unavailable")
+        stopActive()
+        val auth = currentToken()
+        val at = SystemClock.elapsedRealtime()
+        evidence.begin(part.url, delivery(part.url), at)
+        attempt = Attempt(part.url, logical, part.offsetMs, part.durationMs, at)
         requested = true
         paused = false
-        sentAt = SystemClock.elapsedRealtime()
-        evidence.begin(url, delivery(url), sentAt)
-        val reply = socket.request(currentToken(), GlagolProtocol.playStream(url, media.title, media.artist), timeoutMs = 600L)
+        target = part.offsetMs
+        confirmedPausePosition = null
+        // A cancelled send may already have reached the receiver; keep ownership until confirmed stop.
+        val reply = socket.request(auth, GlagolProtocol.playStream(part.url, media.title, media.artist), timeoutMs = 600L)
         if (reply != null && !reply.equals("SUCCESS", ignoreCase = true)) throw IOException("Station rejected audio_play")
-        if (resume != null && resume > 0) {
-            val deadline = SystemClock.elapsedRealtime() + 5000
-            while (SystemClock.elapsedRealtime() < deadline) {
-                val observed = state
-                if (observed?.matches(url) == true && observed.playing == true && observed.at >= sentAt) {
-                    seek(resume)
-                    resumePosition = null
-                    return
-                }
-                delay(100)
-            }
-            throw IOException("Station resume could not be confirmed")
+        Log.i("PrismStation", "audio_play offset=${part.offsetMs} duration=${part.durationMs} reply=${if (reply == null) "pending" else "success"}")
+    }
+
+    override suspend fun play() {
+        val a = attempt
+        if (requested && !paused && a != null) {
+            // No blind restarts when the receiver is already fetching the current URL.
+            val current = state
+            if ((current?.matches(a.physical) == true && current.playing == true && current.at >= a.at) ||
+                delivery(a.physical) > 0L) return
         }
+        startAt(target)
     }
 
     override suspend fun pause() {
         if (!requested || paused) return
-        val current = state
-        confirmedPausePosition = current?.takeIf { it.matches(loaded?.first) }?.position
-        resumePosition = confirmedPausePosition
+        val current = observed()
+        val position = current?.takeIf { it.matches(loaded?.first) }?.position
         stopControl.stop(socket, currentToken(), allowTextFallback = false)
+        confirmedPausePosition = position
+        target = position ?: target
         paused = true
-        sentAt = SystemClock.elapsedRealtime()
+        Log.i("PrismStation", "pause confirmed position=${position ?: -1}")
     }
 
     override suspend fun stop() {
@@ -109,9 +135,10 @@ internal class StationRendererLink(
             if (requested && !paused) stopControl.stop(socket, currentToken())
         } finally {
             evidence.clear()
+            attempt = null
             requested = false
             paused = false
-            resumePosition = null
+            target = 0
             confirmedPausePosition = null
             loaded = null
         }
@@ -119,32 +146,13 @@ internal class StationRendererLink(
 
     override suspend fun seek(ms: Long) {
         require(ms >= 0)
-        if (paused) { resumePosition = ms; return }
-        val (url, media) = loaded ?: throw IOException("No track to seek")
-        val target = ms.coerceAtMost(media.durationMs.takeIf { it > 0 } ?: ms)
-        val before = SystemClock.elapsedRealtime()
-        val payload = buildJsonObject { put("command", "rewind"); put("position", target / 1000.0) }
-        send(payload)
-        send(GlagolProtocol.ping())
-        // No fabricated success: require fresh position from this stream. Cancel on a newer seek.
-        val confirmed = withTimeoutOrNull(1800) {
-            var nextPing = before + 450
-            while (!StationSeekConfirmation.matches(state, url, target, before)) {
-                delay(80)
-                if (SystemClock.elapsedRealtime() >= nextPing) {
-                    send(GlagolProtocol.ping())
-                    nextPing = SystemClock.elapsedRealtime() + 450
-                }
-            }
-            true
-        } == true
-        if (!confirmed) throw IOException("Station did not confirm seek")
+        if (paused || !requested) { target = ms; return }
+        startAt(ms)
     }
 
     override suspend fun transport(): TransportInfo {
-        val now = SystemClock.elapsedRealtime()
         val previous = state
-        if (previous == null || now - previous.at > 2500) {
+        if (previous == null || SystemClock.elapsedRealtime() - previous.at > 2500) {
             send(GlagolProtocol.ping())
             val fresh = withTimeoutOrNull(1800) {
                 while (state == null || state === previous) delay(80)
@@ -152,17 +160,13 @@ internal class StationRendererLink(
             } == true
             if (!fresh) throw IOException("Station state timed out")
         }
-        val s = state ?: throw IOException("No Station state")
-        return transportInfo(s)
+        return transportInfo(state ?: throw IOException("No Station state"))
     }
 
-    private var lastPingAt = 0L
-
-    /** Fast periodic read: never wait for a reply while holding Cast's command mutex. */
     suspend fun pollState(): Pair<TransportInfo, PositionInfo> {
         val now = SystemClock.elapsedRealtime()
         val before = state
-        val interval = if (requested && !paused && before?.matches(loaded?.first) != true) 350L else 750L
+        val interval = if (requested && !paused && before?.matches(attempt?.physical) != true) 350L else 750L
         if ((before == null || now - before.at >= interval) && now - lastPingAt >= interval) {
             lastPingAt = now
             send(GlagolProtocol.ping())
@@ -172,14 +176,15 @@ internal class StationRendererLink(
         return transportInfo(fresh) to positionInfo(fresh)
     }
 
-    private fun transportInfo(s: StationPlaybackState): TransportInfo {
-        val matching = s.matches(loaded?.first)
+    private fun transportInfo(raw: StationPlaybackState): TransportInfo {
+        val a = attempt
+        val matching = a != null && raw.matches(a.physical) && raw.at >= a.at
         val mode = when {
+            paused && raw.playing == false -> "PAUSED_PLAYBACK"
             !requested -> "STOPPED"
-            paused && s.playing == false -> "PAUSED_PLAYBACK"
-            matching && s.playing == true && s.at >= sentAt -> "PLAYING"
-            matching && s.playing == false && s.at >= sentAt -> "PAUSED_PLAYBACK"
-            SystemClock.elapsedRealtime() - sentAt < 5000 -> "TRANSITIONING"
+            matching && raw.playing == true -> "PLAYING"
+            matching && raw.playing == false -> "PAUSED_PLAYBACK"
+            a != null && SystemClock.elapsedRealtime() - a.at < 5000 -> "TRANSITIONING"
             else -> "STOPPED"
         }
         return TransportInfo(mode, "OK")
@@ -187,21 +192,27 @@ internal class StationRendererLink(
 
     override suspend fun position(): PositionInfo = positionInfo(state)
 
-    private fun positionInfo(s: StationPlaybackState?): PositionInfo {
+    private fun positionInfo(raw: StationPlaybackState?): PositionInfo {
         val track = loaded
-        if (paused && track != null && s?.playing == false) {
+        if (paused && track != null && raw?.playing == false) {
             return PositionInfo(track.first, confirmedPausePosition, track.second.durationMs)
         }
-        if (requested && track != null && s != null && s.matches(track.first) && s.at >= sentAt) {
-            return PositionInfo(track.first, s.position, s.duration ?: track.second.durationMs)
+        val s = absolute(raw)
+        val a = attempt
+        if (requested && track != null && a != null && raw?.matches(a.physical) == true && raw.at >= a.at) {
+            return PositionInfo(track.first, s?.position, a.duration)
         }
-        return PositionInfo(s?.id?.takeIf { s.playing == true }, null, null)
+        return PositionInfo(raw?.id?.takeIf { raw.playing == true }, null, null)
     }
 
-    fun observed(): StationPlaybackState? = state?.takeIf { SystemClock.elapsedRealtime() - it.at <= 4000 }
-    fun ownsObservedStream(): Boolean = observed()?.matches(loaded?.first) == true
+    fun observed(): StationPlaybackState? = absolute(state?.takeIf { SystemClock.elapsedRealtime() - it.at <= 4000 })
+    fun ownsObservedStream(): Boolean {
+        val a = attempt ?: return false
+        val raw = state ?: return false
+        return raw.at >= a.at && SystemClock.elapsedRealtime() - raw.at <= 4000 && raw.matches(a.physical)
+    }
     override suspend fun volume(): Int? = observed()?.volume
     override suspend fun setVolume(v: Int) = send(GlagolProtocol.volume(v.coerceIn(0, 100) / 100.0))
-    override suspend fun sinkMimes(): Set<String> = setOf("audio/mpeg", "audio/wav")
+    override suspend fun sinkMimes(): Set<String> = setOf("audio/wav")
     override suspend fun close() { evidence.clear(); socket.close(); token = null }
 }
