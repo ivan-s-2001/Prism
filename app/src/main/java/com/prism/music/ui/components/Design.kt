@@ -258,6 +258,38 @@ fun PrismChip(
     }
 }
 
+/** Circular scenario tile: the same glass and selected spectrum ring as PrismChip,
+ * with a single touch target covering both icon and caption. */
+@Composable
+fun PrismScenarioDisc(
+    label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val quiet = glassFill(1.4f)
+    val lifted = glassFill(2.6f)
+    val bg by animateColorAsState(if (selected) lifted else quiet, tween(180), label = "scenarioGlass")
+    Column(
+        modifier.width(88.dp).clip(RoundedCornerShape(12.dp))
+            .semantics { this.selected = selected }
+            .clickable(onClick = onClick).padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(Modifier.size(56.dp).clip(CircleShape).background(bg)
+            .then(if (selected) Modifier.spectrumRing(CircleShape) else Modifier.border(1.dp, glassEdge(), CircleShape)),
+            contentAlignment = Alignment.Center) {
+            Icon(icon, null, Modifier.size(26.dp), tint = if (selected) scheme.onSurface else scheme.onSurfaceVariant)
+        }
+        Box(Modifier.fillMaxWidth().height(32.dp), contentAlignment = Alignment.TopCenter) {
+            Text(label, style = MaterialTheme.typography.labelMedium,
+                color = if (selected) scheme.onSurface else scheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
 /** A sideways-scrolling row of [PrismChip]s. */
 @Composable
 fun <T> ChipRow(
