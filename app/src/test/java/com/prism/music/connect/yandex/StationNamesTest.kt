@@ -9,7 +9,7 @@ class StationNamesTest {
             "yandexstation" to "Яндекс Станция 1",
             "cucumber" to "Яндекс Станция Миди",
             "yandexmidi" to "Яндекс Станция 2",
-            "yandexmicro" to "Яндекс Станция Lite",
+            "yandexmicro" to "Яндекс Станция Лайт",
             "yandexmini_2" to "Яндекс Станция Мини 2",
             "yandexstation_2" to "Яндекс Станция Макс",
         )
@@ -21,7 +21,8 @@ class StationNamesTest {
     @Test fun technicalNamesAreNotShown() {
         assertEquals("Яндекс Станция Миди", StationNames.display("cucumber", "Yandex IO Receiver-123"))
     }
-    @Test fun accountLabelCanDisambiguateIdenticalModels() {
-        assertEquals("Яндекс Станция Lite · Кухня", StationNames.display("yandexmicro", "Кухня"))
+    @Test fun accountLabelNeverDuplicatesCanonicalName() {
+        assertEquals("Яндекс Станция Лайт", StationNames.display("yandexmicro", "Кухня"))
+        assertEquals("Яндекс Станция Лайт", StationNames.display("yandexmicro", "Яндекс Light"))
     }
 }
