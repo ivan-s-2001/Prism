@@ -2,6 +2,7 @@
     <application>
         <activity android:name=".connect.yandex.StationDiagnosticsActivity"
             android:label="Yandex Station diagnostics"
-            android:exported="true" />
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
     </application>
 </manifest>
