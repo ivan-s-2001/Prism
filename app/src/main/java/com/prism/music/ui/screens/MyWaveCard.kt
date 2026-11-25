@@ -512,7 +512,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = scheme.surfaceContainerHigh) {
             Column(Modifier.fillMaxWidth().heightIn(max = 640.dp).padding(horizontal = 20.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().padding(bottom = 18.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(l("Настроить поток", "Tune your Stream"), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
                     PrismChip(selected = false, onClick = { change { it.reset() } }, label = l("Сбросить", "Reset"), icon = PrismIcons.Refresh, modifier = Modifier.height(44.dp))
                 }
