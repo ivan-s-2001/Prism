@@ -456,7 +456,6 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
     ) {
         LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = bottomPadding + 16.dp)) {
             item { HomeTopBar() }
-            item(key = "my_wave") { MyWaveCard(pickSongs.ifEmpty { youtubePicks }, liked, recent, online) }
             item(key = "update") { UpdateBanner() }
             // 1.8.8 (plan-tour.md D11): neither offer while a new install's First steps is still to come.
             item(key = "performance") { if (!com.prism.music.ui.tour.FirstSteps.offersWait()) PerformanceOffer() }
