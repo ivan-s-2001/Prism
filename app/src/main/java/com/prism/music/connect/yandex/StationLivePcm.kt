@@ -6,33 +6,40 @@ import com.prism.music.connect.HttpResponse
 import com.prism.music.connect.Wav
 import com.prism.music.connect.ByteRange
 import java.io.Closeable
+import java.io.IOException
 import java.net.Inet4Address
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.atomic.AtomicReference
 
-/** Sequential live WAV, with a bounded, RIFF-compatible resource size.
- * Honor Station's HTTP range requests. No random access to audio that has not
- * been captured; a new session is required to seek outside this live resource.
- */
+/** The live clock produces PCM independently of TCP writes. HTTP readers only
+ * copy immutable bytes, so a retry or a slow socket cannot change the audio. */
 internal class StationLivePcm(phone: Inet4Address, station: Inet4Address,
     private val source: (Int) -> ByteArray) : Closeable {
     companion object {
         private const val RATE = 44100
         private const val FRAME_BYTES = 4
         private const val CHUNK = RATE * FRAME_BYTES / 50
-        // RIFF's 32-bit sizes must match the advertised HTTP entity.
+        private const val CHUNK_NS = 20_000_000L
+        private const val STARTUP_BYTES = RATE * FRAME_BYTES * 600 / 1000
+        private const val REPLAY_SECONDS = 30
+        private const val MAX_READERS = 4
+        private const val PROGRESS_TIMEOUT = 15_000L
+        // RIFF sizes must match the advertised HTTP entity.
         internal const val DATA_LENGTH = 3600L * RATE * FRAME_BYTES
         internal const val LENGTH = DATA_LENGTH + 44
         internal fun header(): ByteArray = Wav.header(RATE, 2, DATA_LENGTH)
     }
     private val closed = AtomicBoolean()
-    private val consumer = AtomicReference<HttpResponse?>(null)
+    private val lock = java.lang.Object()
+    private val consumers = mutableSetOf<HttpResponse>()
     private val requests = AtomicLong()
     private val delivered = AtomicLong()
-    private val replay = LivePcmReplay(RATE * FRAME_BYTES * 12)
+    private val replay = LivePcmReplay(RATE * FRAME_BYTES * REPLAY_SECONDS)
+    @Volatile private var producer: Thread? = null
+    @Volatile private var producerError: String? = null
     @Volatile private var lastWrite = 0L
+    @Volatile private var lastProduced = 0L
     private val path = "/live/${UUID.randomUUID()}/stream.wav"
     private val http = HttpServer("prism-live-pcm", 0, maxBody = 0,
         allow = { it == station }, handler = ::handle)
@@ -43,8 +50,70 @@ internal class StationLivePcm(phone: Inet4Address, station: Inet4Address,
         android.util.Log.i("PrismLive", "Direct PCM listening port=${http.port}")
     }
 
-    val receiving: Boolean get() = !closed.get() && delivered.get() >= RATE * FRAME_BYTES / 2 &&
-        android.os.SystemClock.elapsedRealtime() - lastWrite < 5000L
+    val receiving: Boolean get() = !closed.get() && producerError == null &&
+        delivered.get() >= RATE * FRAME_BYTES / 2 &&
+        android.os.SystemClock.elapsedRealtime() - lastWrite < PROGRESS_TIMEOUT
+
+    private fun startProducerLocked() {
+        if (producer != null) return
+        producer = Thread(::produce, "Prism-Live-PCM").apply { isDaemon = true; start() }
+    }
+
+    private fun produce() {
+        var due = System.nanoTime()
+        var nextLog = due + 5_000_000_000L
+        var late = 0L
+        try {
+            while (!closed.get()) {
+                val fresh = source(CHUNK)
+                check(fresh.size == CHUNK) { "Unexpected PCM chunk size" }
+                synchronized(lock) {
+                    if (closed.get()) return
+                    if (replay.end >= DATA_LENGTH) return
+                    replay.append(fresh)
+                    lastProduced = android.os.SystemClock.elapsedRealtime()
+                    lock.notifyAll()
+                }
+                due += CHUNK_NS
+                val now = System.nanoTime()
+                // Keep a monotonic cadence despite ordinary scheduler jitter. After
+                // a real scheduling stall, don't produce seconds of catch-up audio.
+                if (now - due > CHUNK_NS * 3) {
+                    late++
+                    due = now
+                }
+                if (now >= nextLog) {
+                    android.util.Log.i("PrismLive", "PCM clock late=$late; ${summary()}; ${StationAudioTap.formatSummary()}")
+                    nextLog = now + 5_000_000_000L
+                }
+                val wait = due - now
+                if (wait > 0) Thread.sleep(wait / 1_000_000L, (wait % 1_000_000L).toInt())
+            }
+        } catch (e: InterruptedException) {
+            if (!closed.get()) producerError = "interrupted"
+        } catch (e: Exception) {
+            if (!closed.get()) {
+                producerError = e.javaClass.simpleName
+                android.util.Log.w("PrismLive", "PCM producer failed", e)
+            }
+        } finally {
+            synchronized(lock) { lock.notifyAll() }
+        }
+    }
+
+    /** Wait on the producer without holding its lock during a TCP write.
+     * A lagged socket must reconnect, never skip bytes inside a WAV entity. */
+    private fun awaitBytes(offset: Long, length: Int): ByteArray? = synchronized(lock) {
+        val deadline = System.nanoTime() + 3_000_000_000L
+        while (!closed.get() && producerError == null) {
+            if (offset < replay.start) return@synchronized null
+            if (offset + length <= replay.end) return@synchronized replay.read(offset, length)
+            val wait = deadline - System.nanoTime()
+            if (wait <= 0) return@synchronized null
+            lock.wait((wait / 1_000_000L).coerceAtLeast(1L))
+        }
+        null
+    }
 
     private fun handle(req: HttpRequest, res: HttpResponse) {
         if (closed.get() || req.path != path || req.method !in listOf("GET", "HEAD")) {
@@ -53,11 +122,9 @@ internal class StationLivePcm(phone: Inet4Address, station: Inet4Address,
         requests.incrementAndGet()
         val headers = mapOf("Content-Type" to "audio/wav", "Cache-Control" to "no-store",
             "Accept-Ranges" to "bytes")
-        android.util.Log.i("PrismLive", "Direct PCM ${req.method} range=${req.headers["range"] ?: "none"}")
         val range = ByteRange.parse(req.header("range"), LENGTH)
         if (range == ByteRange.Unsatisfiable) {
-            res.text(416, "Invalid range", mapOf("Content-Range" to "bytes */$LENGTH"))
-            return
+            res.text(416, "Invalid range", mapOf("Content-Range" to "bytes */$LENGTH")); return
         }
         val first = if (range is ByteRange.Part) range.start else 0L
         val last = if (range is ByteRange.Part) range.end else LENGTH - 1
@@ -67,22 +134,27 @@ internal class StationLivePcm(phone: Inet4Address, station: Inet4Address,
         val status = if (range is ByteRange.Part) 206 else 200
         if (req.method == "HEAD") { res.start(status, responseHeaders, length); return }
         val wav = header()
-        // Header-only probes never consume the live audio.
         if (last < 44) {
             res.send(status, "audio/wav", wav.copyOfRange(first.toInt(), (last + 1).toInt()), responseHeaders)
             return
         }
-        if (!consumer.compareAndSet(null, res)) { res.text(503, "Already streaming"); return }
-        try {
-            if (closed.get()) return
-            val pcmStart = maxOf(first, 44L)
-            if (!replay.contains(pcmStart - 44)) {
-                res.text(416, "Live range unavailable", mapOf("Content-Range" to "bytes */$LENGTH"))
-                android.util.Log.w("PrismLive", "PCM range outside replay window $first-$last available=${44 + replay.start}..${44 + replay.end}")
-                return
+        val pcmStart = maxOf(first, 44L) - 44
+        val rejection = synchronized(lock) {
+            when {
+                closed.get() -> 503
+                !replay.contains(pcmStart) -> 416
+                consumers.size >= MAX_READERS -> 503
+                else -> { consumers.add(res); startProducerLocked(); 0 }
             }
+        }
+        if (rejection != 0) {
+            res.text(rejection, if (rejection == 416) "Live range unavailable" else "Live busy",
+                if (rejection == 416) mapOf("Content-Range" to "bytes */$LENGTH") else emptyMap())
+            android.util.Log.w("PrismLive", "PCM rejected status=$rejection range=$first-$last; ${summary()}")
+            return
+        }
+        try {
             val out = res.start(status, responseHeaders, length)
-            android.util.Log.i("PrismLive", "PCM HTTP $status bytes=$first-$last/$LENGTH")
             var pos = first
             if (pos < wav.size) {
                 val n = (wav.size - pos).toInt()
@@ -90,51 +162,49 @@ internal class StationLivePcm(phone: Inet4Address, station: Inet4Address,
                 pos += n
             }
             out.flush()
-            var deadline = System.nanoTime()
-            var lastLog = deadline
-            var nonZero = 0L
+            // Give the receiver a genuine initial reservoir, then allow it to
+            // fetch available bytes immediately instead of throttling every GET.
+            if (pcmStart == 0L) {
+                val warm = minOf(STARTUP_BYTES.toLong(), last - pos + 1).toInt()
+                if (warm > 0 && awaitBytes(0, warm) == null) throw IOException("PCM startup buffer unavailable")
+            }
+            android.util.Log.i("PrismLive", "PCM HTTP $status bytes=$first-$last/$LENGTH; ${summary()}")
             while (!closed.get() && pos <= last) {
                 val n = minOf(CHUNK.toLong(), last - pos + 1).toInt()
-                val offset = pos - 44
-                val needed = offset + n - replay.end
-                if (needed > 0) {
-                    // HTTP may split a stereo frame; the source never does.
-                    val aligned = ((needed + FRAME_BYTES - 1) / FRAME_BYTES * FRAME_BYTES).toInt()
-                    val fresh = source(aligned)
-                    check(fresh.size == aligned) { "Unexpected PCM chunk size" }
-                    // Retain before writing: even a failed socket write can be retried byte-exactly.
-                    replay.append(fresh)
-                }
-                val pcm = replay.read(offset, n)
-                nonZero += pcm.count { it != 0.toByte() }
+                val pcm = awaitBytes(pos - 44, n) ?: throw IOException("PCM replay expired or producer stalled at $pos")
                 out.write(pcm)
                 out.flush()
                 pos += n
                 delivered.addAndGet(n.toLong())
                 lastWrite = android.os.SystemClock.elapsedRealtime()
-                val now = System.nanoTime()
-                if (now - lastLog >= 1_000_000_000L) {
-                    android.util.Log.i("PrismLive", "PCM wire bytes=${delivered.get()} nonZeroBytes=$nonZero; ${StationAudioTap.formatSummary()}")
-                    nonZero = 0
-                    lastLog = now
-                }
-                deadline += n.toLong() * 1_000_000_000L / (RATE * FRAME_BYTES)
-                if (now - deadline > 40_000_000L) deadline = now
-                val wait = deadline - now
-                if (wait > 0) Thread.sleep(wait / 1_000_000L, (wait % 1_000_000L).toInt())
             }
-        } catch (e: java.io.IOException) {
-            android.util.Log.w("PrismLive", "PCM HTTP ended: ${e.javaClass.simpleName}; bytes=${delivered.get()}")
+        } catch (e: IOException) {
+            android.util.Log.w("PrismLive", "PCM HTTP ended: ${e.message}; ${summary()}")
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
         } finally {
-            consumer.compareAndSet(res, null)
-            android.util.Log.i("PrismLive", "Direct PCM request closed; bytes=${delivered.get()} next=${44 + replay.end}")
+            synchronized(lock) { consumers.remove(res) }
+            android.util.Log.i("PrismLive", "Direct PCM request closed; ${summary()}")
         }
     }
 
-    fun summary() = "PCM requests=${requests.get()} bytes=${delivered.get()} receiving=$receiving"
+    fun summary(): String {
+        val window = synchronized(lock) { "readers=${consumers.size} replay=${replay.start}..${replay.end}" }
+        val now = android.os.SystemClock.elapsedRealtime()
+        return "PCM requests=${requests.get()} bytes=${delivered.get()} $window " +
+            "writeAgeMs=${if (lastWrite == 0L) -1 else now - lastWrite} producerAgeMs=${if (lastProduced == 0L) -1 else now - lastProduced} " +
+            "producer=${producerError ?: "ok"} receiving=$receiving"
+    }
+
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
-        consumer.get()?.abort()
+        val sockets = synchronized(lock) { lock.notifyAll(); consumers.toList() }
+        sockets.forEach { it.abort() }
         http.stop()
+        producer?.let { thread ->
+            thread.interrupt()
+            if (thread !== Thread.currentThread()) try { thread.join(350) }
+            catch (_: InterruptedException) { Thread.currentThread().interrupt() }
+        }
     }
 }

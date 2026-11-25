@@ -185,6 +185,14 @@ internal class StationSmokeSession(
         }
     }
 
+    /** Tear down the old audio producer before a reconnect reuses its reader. */
+    fun closeLiveTransport() {
+        livePcm?.close()
+        livePcm = null
+        liveHls?.close()
+        liveHls = null
+    }
+
     fun liveReceiving(): Boolean = livePcm?.receiving ?: (liveHls?.receiving == true)
 
     fun liveConfirmed(): Boolean {

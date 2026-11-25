@@ -636,7 +636,9 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 publishLive()
                 var failures = 0
                 var stalled = 0
-                var lastRecovery = 0L
+                var direct = directConfirmed
+                var recoveryAttempts = 0
+                var healthySince = android.os.SystemClock.elapsedRealtime()
                 var lastCaptured = tap.captured
                 while (true) {
                     delay(1500)
@@ -645,21 +647,43 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                     stalled = if (p.isPlaying && captured == lastCaptured) stalled + 1 else 0
                     Log.i("PrismLive", "${r.name}: Live health delta=${captured - lastCaptured}; ${input.summary()}; ${active.liveStatus()}")
                     lastCaptured = captured
-                    if (stalled >= 3) error("PCM source stalled while playing")
-                    failures = if (active.liveReceiving()) 0 else failures + 1
-                    if (failures >= 4) {
-                        val now = android.os.SystemClock.elapsedRealtime()
-                        if (!directConfirmed || (lastRecovery != 0L && now - lastRecovery < 30_000L))
-                            error("Live HTTP stream ended: ${active.liveStatus()}")
-                        lastRecovery = now
-                        Log.w("PrismLive", "${r.name}: restoring interrupted PCM receiver")
-                        // Fresh HTTP resource, same local decoder and independent room reader.
-                        // Other rooms keep playing; do not reset group or local audio focus.
-                        input.rejoinLiveEdge()
-                        withContext(Dispatchers.IO) { active.playMusicLive(address, direct = true, source = input::read) }
-                        if (!awaitStream(9000L)) error("PCM recovery not confirmed: ${active.liveStatus()}")
+                    // Source buffering is not proof that a room disconnected.
+                    if (stalled == 3 || stalled % 10 == 0 && stalled > 0)
+                        Log.w("PrismLive", "${r.name}: source capture stalled; keeping receiver alive")
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    if (active.liveReceiving()) {
+                        if (failures != 0) healthySince = now
                         failures = 0
+                        if (now - healthySince >= 60_000L) recoveryAttempts = 0
+                        continue
                     }
+                    failures++
+                    if (failures < 3) continue
+                    healthySince = now
+                    var restored = false
+                    // Allow bounded retries; a repeatedly failing PCM receiver falls
+                    // back to the finite-object HLS transport, per room only.
+                    while (!restored && recoveryAttempts < 4) {
+                        recoveryAttempts++
+                        if (recoveryAttempts >= 3) direct = false
+                        val transport = if (direct) "PCM" else "HLS"
+                        Log.w("PrismLive", "${r.name}: restoring $transport attempt=$recoveryAttempts; ${active.liveStatus()}")
+                        try {
+                            withContext(Dispatchers.IO) {
+                                // Stop old producer before sharing its reader with a new one.
+                                active.closeLiveTransport()
+                                input.rejoinLiveEdge()
+                                active.playMusicLive(address, direct = direct, source = input::read, initialVolume = member.level)
+                            }
+                            restored = awaitStream(if (direct) 12_000L else 25_000L)
+                        } catch (e: CancellationException) { throw e }
+                        catch (e: Exception) { Log.w("PrismLive", "${r.name}: recovery failed: ${e.message}") }
+                        if (!restored) delay(1000L * recoveryAttempts)
+                    }
+                    if (!restored) error("Live recovery exhausted: ${active.liveStatus()}")
+                    failures = 0
+                    healthySince = android.os.SystemClock.elapsedRealtime()
+                    Log.i("PrismLive", "${r.name}: restored ${if (direct) "PCM" else "HLS"}")
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
