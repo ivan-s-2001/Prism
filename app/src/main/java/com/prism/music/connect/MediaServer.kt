@@ -15,11 +15,23 @@ class MediaServer(preferredPort: Int = PORT) {
         private set
     private class Entry(val body: CastBody, val observedPeer: String?) {
         val delivery = AtomicLong(0)
+        val clients = mutableSetOf<HttpResponse>()
+        var retired = false
     }
     private val sequence = AtomicLong(0)
     private val bodies = object : LinkedHashMap<String, Entry>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>?) = size > KEEP
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>?): Boolean {
+            if (size <= KEEP) return false
+            eldest?.value?.let(::retire)
+            return true
+        }
     }
+    private fun retire(entry: Entry) {
+        entry.retired = true
+        entry.clients.forEach { it.abort() }
+        entry.clients.clear()
+    }
+
     /** Requests served, for the log and tests: "GET key bytes=a-b". */
     val log = java.util.concurrent.ConcurrentLinkedQueue<String>()
 
@@ -31,13 +43,14 @@ class MediaServer(preferredPort: Int = PORT) {
 
     fun stop() {
         http.stop()
-        synchronized(bodies) { bodies.clear() }
+        synchronized(bodies) { bodies.values.forEach(::retire); bodies.clear() }
     }
 
     /** A new session: links from the last one stop working. */
     fun newSession() {
         synchronized(bodies) {
             token = newToken()
+            bodies.values.forEach(::retire)
             bodies.clear()
         }
     }
@@ -50,7 +63,7 @@ class MediaServer(preferredPort: Int = PORT) {
     fun publishForSession(expectedToken: String, key: String, body: CastBody, host: String, observedPeer: String? = null): String =
         synchronized(bodies) {
             check(token == expectedToken) { "Cast media session changed" }
-            bodies[key] = Entry(body, observedPeer)
+            bodies.put(key, Entry(body, observedPeer))?.let(::retire)
             "http://$host:$port/cast/$expectedToken/$key"
         }
 
@@ -67,6 +80,13 @@ class MediaServer(preferredPort: Int = PORT) {
         val key = "station_" + java.util.UUID.randomUUID().toString() + ".wav"
         bodies[key] = Entry(slice.body, original.observedPeer)
         StationSlice("http://${uri.host}:$port/cast/$token/$key", slice.offsetMs, slice.durationMs)
+    }
+
+    /** Revoke only a disposable Station slice, not its reusable original PCM source. */
+    fun retireStationSlice(url: String) {
+        val parts = runCatching { java.net.URI(url).path.trimStart('/').split('/') }.getOrNull() ?: return
+        if (parts.size != 3 || parts[0] != "cast" || !parts[2].startsWith("station_")) return
+        synchronized(bodies) { if (parts[1] == token) bodies.remove(parts[2])?.let(::retire) }
     }
 
     fun url(host: String, key: String) = "http://$host:$port/cast/$token/$key"
@@ -111,6 +131,11 @@ class MediaServer(preferredPort: Int = PORT) {
         if (parts.size != 3 || parts[0] != "cast") { res.text(404, "Not found"); return }
         val key = parts[2]
         val entry = synchronized(bodies) { if (parts[1] == token) bodies[key] else null } ?: run { res.text(404, "Not found"); return }
+        synchronized(bodies) {
+            if (entry.retired) { res.text(404, "Not found"); return }
+            entry.clients.add(res)
+        }
+        try {
         val body = entry.body
         val total = body.length
         val headers = linkedMapOf(
@@ -135,6 +160,9 @@ class MediaServer(preferredPort: Int = PORT) {
                 if (req.method == "GET") body.write(range.start, range.end, observedOutput(entry, req, out))
                 out.flush()
             }
+        }
+        } finally {
+            synchronized(bodies) { entry.clients.remove(res) }
         }
     }
 
