@@ -49,8 +49,10 @@ internal class StationSmokeSession(
         require(identity.deviceId == station.deviceId && identity.platform == station.platform)
     }
     private val stopControl = StationStopControl()
+    @Volatile private var liveState: StationPlaybackState? = null
     private val socket = GlagolSocket(station, identity.certificatePem) { text ->
         stopControl.onState(text)
+        StationPlaybackState.parse(text, android.os.SystemClock.elapsedRealtime())?.let { liveState = it }
         onState(text)
     }
     private var server: StationMp3Server? = null
@@ -100,6 +102,39 @@ internal class StationSmokeSession(
             liveProbe = null
             throw e
         }
+    }
+
+    suspend fun playMusicLive(phoneAddress: Inet4Address) {
+        server?.close()
+        server = null
+        liveProbe?.close()
+        liveProbe = null
+        send(GlagolProtocol.stop())
+        delay(150)
+        send(GlagolProtocol.volume(0.20))
+        val probe = StationLiveProbe(phoneAddress, station.address,
+            { android.util.Log.i("PrismLive", it) }, StationAudioTap::read)
+        liveProbe = probe
+        try {
+            val reply = socket.request(tokens.tokenFor(identity),
+                GlagolProtocol.playStream(probe.url, "Prism Live", "Prism"), 1000L)
+            if (reply != null && !reply.equals("SUCCESS", true)) error("Station rejected Live")
+        } catch (e: Throwable) {
+            probe.close()
+            liveProbe = null
+            throw e
+        }
+    }
+
+    fun liveReceiving(): Boolean {
+        val probe = liveProbe ?: return false
+        return probe.deliveredBytes > StationLiveProbe.RATE * 4 / 5 &&
+            System.nanoTime() / 1_000_000L - probe.lastWriteMs < 4000L
+    }
+
+    fun liveConfirmed(): Boolean {
+        val probe = liveProbe ?: return false
+        return liveState?.let { it.matches(probe.url) && it.playing == true } == true && liveReceiving()
     }
 
     fun liveSignal(signal: StationLiveProbe.Signal) {
