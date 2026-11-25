@@ -7,7 +7,14 @@ internal data class StationClock(
     val durationMs: Long? = null,
     val playing: Boolean? = null,
     val loading: Boolean = true,
-)
+) {
+    fun withObservation(song: String, position: Long?, duration: Long?, isPlaying: Boolean?, waiting: Boolean): StationClock {
+        val last = if (songId == song) positionMs else 0L
+        val length = duration?.takeIf { it > 0 } ?: durationMs?.takeIf { songId == song }
+        val reported = (position?.takeIf { it >= 0 } ?: last).let { if (length != null) it.coerceAtMost(length) else it }
+        return StationClock(song, reported, length, isPlaying, waiting)
+    }
+}
 
 internal class StationEndGate {
     private var lastPlayingAt: Long? = null
