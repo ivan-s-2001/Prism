@@ -227,12 +227,17 @@ internal object MyWave {
         artistEvidence: (String) -> Evidence = { Evidence() },
         quotaOffset: Int? = null,
         strictQuota: Boolean = false,
+        artistCap: Int? = null,
+        allowArtistRelaxation: Boolean = true,
+        candidateWeight: (Song) -> Double = { 1.0 },
+        explorationNoise: Double = 0.07,
     ): List<Song> {
         if (count <= 0) return emptyList()
         val recentKeys = recent.mapTo(hashSetOf(), LocalRadio::sameSong)
         val random = Random(seed)
         val diversity = style.diversity.coerceIn(0, 100) / 100.0
-        val artistLimit = if (diversity >= 0.75) 2 else if (diversity <= 0.25) 4 else 3
+        val artistLimit = artistCap?.coerceAtLeast(1) ?: if (diversity >= 0.75) 2 else if (diversity <= 0.25) 4 else 3
+        val noise = explorationNoise.coerceIn(0.0, 0.95)
         val explore = 0.1 + 0.9 * style.discoveryPercent.coerceIn(0, 100) / 100.0
         val energyBias = style.tune.energy
         val favoriteKeys = favorites.mapTo(hashSetOf(), LocalRadio::sameSong)
@@ -251,7 +256,8 @@ internal object MyWave {
                 val context = profile.context(s)?.coerceIn(0.0, 1.0)?.let { 0.8 + 0.4 * it } ?: 1.0
                 val depth = signals.onTopList(s)?.let { if (it) 1.0 - style.depth.bias else 1.0 + style.depth.bias } ?: 1.0
                 val learned = artistEvidence(s.primaryArtist).weight(if (familiar(s) == false) explore else 0.0)
-                s to rank * novelty * energy * depth * rest * feedback * taste * context * learned * (0.93 + 0.14 * random.nextDouble())
+                s to rank * novelty * energy * depth * rest * feedback * taste * context * learned *
+                    candidateWeight(s).takeIf { it.isFinite() && it >= 0.0 }.let { it ?: 1.0 } * (1.0 - noise + 2.0 * noise * random.nextDouble())
             }
             .sortedByDescending { it.second }
             .toMutableList()
@@ -268,7 +274,7 @@ internal object MyWave {
                 val s = from[index].first
                 val artist = s.primaryArtist.lowercase()
                 LocalRadio.sameSong(s) !in seen &&
-                    (!strict || ((artist.isBlank() || artist != previous) && (artists[artist] ?: 0) < artistLimit))
+                    ((!strict && allowArtistRelaxation) || ((artist.isBlank() || artist != previous) && (artists[artist] ?: 0) < artistLimit))
             }.maxByOrNull { index ->
                 val (song, score) = from[index]
                 val fit = lastSong?.let { profile.transition(it, song) }?.coerceIn(0.0, 1.0)

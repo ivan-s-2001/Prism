@@ -1,6 +1,7 @@
 package com.prism.music.data.seasonal
 
 import com.prism.music.data.foryou.LocalRadio
+import com.prism.music.data.foryou.MyWave
 import com.prism.music.data.foryou.Variety
 import com.prism.music.data.innertube.SearchFilter
 import com.prism.music.data.innertube.SearchRank
@@ -114,9 +115,10 @@ class HolidayMixMaker(private val sources: Sources, private val atOnce: Int = AT
             // More than the mix needs, so the artist limit still leaves it full.
             val drawn = Variety.sample(pool, SIZE * 2, Variety.daySeed(week, mix.id), sharpness = 1.4) { it.second }
                 .sortedByDescending { it.second }.map { it.first }
-            val arranged = Variety.arrange(drawn, emptyList(), SIZE, 0.0, PER_ARTIST) { it.primaryArtist.lowercase() }
-            // Near the end only one artist may be left to take: one song shorter rather than the same artist twice running.
-            return arranged.filterIndexed { i, s -> i == 0 || !s.primaryArtist.equals(arranged[i - 1].primaryArtist, ignoreCase = true) }
+            // Same selector, but an anonymous weekly recipe: no personal history or settings are read here.
+            return MyWave.start(emptyList(), drawn, emptyList(), { false }, { true },
+                Variety.daySeed(week, mix.id), SIZE, MyWave.Style(discoveryPercent = 0),
+                quotaOffset = 0, strictQuota = true, artistCap = PER_ARTIST, allowArtistRelaxation = false)
         }
 
         /**

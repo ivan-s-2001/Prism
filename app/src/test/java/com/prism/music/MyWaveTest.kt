@@ -415,4 +415,16 @@ class MyWaveTest {
         assertEquals(MyWave.Depth.DEEP, style.depth)
         assertNull(MyWave.legacyStyle(com.prism.music.data.foryou.RadioTune(), -1))
     }
+
+    @Test fun themedRecipesUseHardArtistLimitsWithoutRelaxingExclusions() {
+        val pool = (1..12).map { song("a$it", "A") } + (1..4).map { song("b$it", "B") } +
+            (1..4).map { song("c$it", "C") }
+        val result = MyWave.start(emptyList(), pool, emptyList(), { false }, { it.id != "a1" },
+            4L, count = 20, style = MyWave.Style(discoveryPercent = 0),
+            quotaOffset = 0, strictQuota = true, artistCap = 3, allowArtistRelaxation = false)
+        assertTrue(result.isNotEmpty())
+        assertTrue(result.groupingBy { it.primaryArtist }.eachCount().values.all { it <= 3 })
+        assertTrue(result.zipWithNext().none { (a,b) -> a.primaryArtist == b.primaryArtist })
+        assertFalse(result.any { it.id == "a1" })
+    }
 }

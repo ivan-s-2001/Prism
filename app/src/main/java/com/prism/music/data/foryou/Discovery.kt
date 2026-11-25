@@ -100,7 +100,7 @@ class Discovery(private val sources: Sources) {
         val want = NEW_SIZE * 3
         var pool = maker.discover(seeds, recipe, taste, artists, seed, exclude = l.lastWeeks, want = want)
         if (pool.size < NEW_SIZE) pool = maker.discover(seeds, recipe, taste, artists, seed, exclude = emptySet(), want = want)
-        return Made(spread(pool, NEW_SIZE, 2), seeds.map { it.title })
+        return Made(spread(pool, NEW_SIZE, 2, seed, l), seeds.map { it.title })
     }
 
     /** A week's seeds: favorites drawn by how much they're loved, an artist each; a starred artist's top song if there are too few. */
@@ -153,14 +153,19 @@ class Discovery(private val sources: Sources) {
         val pool = (if (fresh.size >= DEEP_SIZE) fresh else known)
         val drawn = Variety.sample(pool, DEEP_SIZE * 3, seed + 1, weight = ::weigh).map { it.first }
         val perArtist = maxOf(3, DEEP_SIZE / maxOf(1, drawn.map { it.primaryArtist.lowercase() }.distinct().size) + 1)
-        return Made(spread(drawn, DEEP_SIZE, perArtist), artists.map { it.name })
+        return Made(spread(drawn, DEEP_SIZE, perArtist, seed, l), artists.map { it.name })
     }
 
-    /** [Variety.arrange] with its artist limit raised only as far as it takes to fill the mix. */
-    private fun spread(pool: List<Song>, size: Int, perArtist: Int): List<Song> {
+    /** The common selector, with an explicit recipe constraint: discoveries stay unheard and diverse. */
+    private fun spread(pool: List<Song>, size: Int, perArtist: Int, seed: Long, l: Listener): List<Song> {
         var best = emptyList<Song>()
         for (limit in perArtist..perArtist + 2) {
-            best = Variety.arrange(emptyList(), pool, size, 1.0, limit) { it.primaryArtist.lowercase() }
+            val picked = MyWave.start(pool, emptyList(), emptyList(), { false },
+                { !l.heard.has(it) && !l.refused(it) }, seed, size, MyWave.Style(discoveryPercent = 100),
+                artistDoubt = l.artistDoubt, servedRecently = { (l.servedDaysAgo(it.id) ?: 99) <= 1 },
+                quotaOffset = 0, strictQuota = true, artistCap = limit, allowArtistRelaxation = false,
+                candidateWeight = { l.affinity(it) * l.feedbackWeight(it) })
+            if (picked.size > best.size) best = picked
             if (best.size >= size) break
         }
         return best

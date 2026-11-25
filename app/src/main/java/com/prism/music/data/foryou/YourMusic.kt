@@ -77,7 +77,7 @@ class YourMusic(private val c: AppContainer) {
         offlineOnly: Boolean = false): Boolean =
         !s.isVideo && !s.isEpisode && !s.isLive &&
             (s.durationSec == 0 || s.durationSec >= 60) &&
-            (if (offlineOnly) c.availableOffline(s.id) else recommendable(s)) &&
+            recommendable(s) && (!offlineOnly || c.availableOffline(s.id)) &&
             !c.library.isDisliked(s.id) && !c.exclusions.blocks(s) && !c.exclusions.isSongExcluded(s.id) &&
             !c.recFeedback.turnedDown(s.id, known) &&
             com.prism.music.data.ExplicitFilter.plays(c.settings.current.behavior.explicitContent, s)
@@ -556,11 +556,7 @@ class YourMusic(private val c: AppContainer) {
         val recent = c.sessionHeard.oldestFirst()
         val recentKeys = recent.mapTo(hashSetOf(), LocalRadio::sameSong)
         val feedback = c.recFeedback
-        fun eligible(song: Song) = ok(song) && !song.isVideo &&
-            (song.durationSec == 0 || song.durationSec >= 60) &&
-            (c.network.isOnline() || c.availableOffline(song.id)) &&
-            !feedback.turnedDown(song.id, known(song)) &&
-            com.prism.music.data.ExplicitFilter.plays(c.settings.current.behavior.explicitContent, song)
+        fun eligible(song: Song) = recommendationAllowed(song, known(song), offlineOnly = !c.network.isOnline())
         val related = if (c.network.isOnline()) waveRelated(taste.likedSeeds, draw.coerceAtLeast(0) * MyWave.HORIZON,
             recentKeys, ::known) else emptyList()
         val candidates = MyWave.fuse(listOf(related.filter(::recommendable), youtube.filter(::recommendable)), 160)

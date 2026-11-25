@@ -166,12 +166,22 @@ class ReleaseRadar(private val c: AppContainer) {
         if (!force && prefs.getString(PLAYLIST_WEEK, null) == week && c.db.mixes().get(MadeForYou.RADAR) != null) return
         val releases = c.db.releases().fresh(today.year - 1).filter { isRecent(it, today, 14) }
         val songs = ArrayList<Song>()
+        val taste = c.yourMusic.waveTaste()
+        val feedback = c.recFeedback
+        val recordings = hashSetOf<String>()
         for (r in releases) {
             if (songs.size >= MAX_SONGS) break
             val page = runCatching { withContext(Dispatchers.IO) { c.ytm.album(r.id) } }.getOrNull() ?: continue
-            val tracks = page.songs.filter { !c.library.isDisliked(it.id) }
-            val picked = if (r.kind == "Album") tracks.sortedByDescending { page.trackPlays[it.id] ?: 0L }.take(3) else tracks
-            picked.forEach { if (songs.size < MAX_SONGS && songs.none { s -> s.id == it.id }) songs += it }
+            val tracks = page.songs.filter { c.yourMusic.recommendationAllowed(it) }
+                .distinctBy(LocalRadio::sameSong)
+            val picked = if (r.kind == "Album") MyWave.start(
+                tracks.sortedByDescending { page.trackPlays[it.id] ?: 0L }, emptyList(), emptyList(),
+                { false }, { c.yourMusic.recommendationAllowed(it) }, Variety.daySeed(week, r.id),
+                count = 3, style = MyWave.Style(discoveryPercent = 100), profile = taste.profile,
+                artistDoubt = feedback::artistDoubt, artistEvidence = feedback.waveEvidence(),
+                quotaOffset = 0, avoid = recordings)
+            else tracks // Singles and EPs remain release collections, not shuffled recommendations.
+            picked.forEach { if (songs.size < MAX_SONGS && recordings.add(LocalRadio.sameSong(it))) songs += it }
         }
         val artists = releases.map { it.artistName }.distinct()
         c.forYou.saveMix(
