@@ -1,3 +1,4 @@
+import java.security.MessageDigest
 import java.awt.geom.Path2D
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -661,7 +662,7 @@ abstract class PrepareTablerIcons : DefaultTask() {
     abstract val outputDir: DirectoryProperty
 
     private fun blobSha(bytes: ByteArray): String {
-        val digest = java.security.MessageDigest.getInstance("SHA-1")
+        val digest = MessageDigest.getInstance("SHA-1")
         digest.update(("blob " + bytes.size + "\u0000").toByteArray(Charsets.UTF_8))
         return digest.digest(bytes).joinToString("") { "%02x".format(it.toInt() and 255) }
     }
