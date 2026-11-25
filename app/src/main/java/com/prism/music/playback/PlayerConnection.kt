@@ -646,7 +646,8 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
                 was, prefs.keepShuffle, startKind(source, songs, start, asVideo = startVideo != null, dj = dj), asked = shuffle,
                 prefs.shuffleButton, c.queue.smartAllowed(),
             )
-            val shuffled = mode != ShuffleMode.OFF
+            val shuffled = !source.isMyWave && mode != ShuffleMode.OFF
+            if (source.isMyWave) p.repeatMode = Player.REPEAT_MODE_OFF
             p.shuffleModeEnabled = shuffled
             p.setMediaItems(songs.mapIndexed { i, s -> s.toMediaItem(if (i == start) startVideo else null) }, start, startMs.coerceAtLeast(0))
             // The song it starts on first, the rest in a new order.
