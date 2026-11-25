@@ -109,7 +109,7 @@ internal class GlagolSocket(
     }
 
     /** Wait for the reply carrying our requestId; do not confuse a queued frame with a reply. */
-    suspend fun request(conversationToken: String, payload: JsonObject): String? {
+    suspend fun request(conversationToken: String, payload: JsonObject, timeoutMs: Long = 3000L): String? {
         if (withTimeoutOrNull(10_000) { opened.await(); true } != true) throw IOException("Station socket open timed out")
         val id = UUID.randomUUID().toString()
         val reply = CompletableDeferred<String>()
@@ -118,7 +118,7 @@ internal class GlagolSocket(
             check(socket.send(GlagolProtocol.envelope(conversationToken, payload, id))) {
                 "Station connection closed"
             }
-            return withTimeoutOrNull(3000) { reply.await() }
+            return withTimeoutOrNull(timeoutMs) { reply.await() }
         } finally {
             replies.remove(id)
         }
