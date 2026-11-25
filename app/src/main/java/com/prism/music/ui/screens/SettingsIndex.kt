@@ -78,7 +78,8 @@ object SettingsIndex {
     private fun pageEntry(page: SettingsPageId) = SettingEntry(page, "", page.title, page.oldNames + " " + page.words)
 
     val entries: List<SettingEntry> by lazy {
-        rootIndex + SettingsPageId.entries.map { pageEntry(it) } + SettingsPageId.entries.flatMap { it.index }
+        val pages = SettingsPageId.entries.filter { it != SettingsPageId.YANDEX || com.prism.music.BuildConfig.DEBUG }
+        rootIndex + pages.map { pageEntry(it) } + pages.flatMap { it.index }
     }
 
     /**
