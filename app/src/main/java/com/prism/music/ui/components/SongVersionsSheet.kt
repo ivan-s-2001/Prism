@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -31,6 +32,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.prism.music.data.SongVersions
+import com.prism.music.data.UncensoredRules
 import com.prism.music.data.innertube.SearchFilter
 import com.prism.music.data.model.Song
 import com.prism.music.data.model.SongItem
@@ -54,6 +56,7 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val picks by c.versions.picks.collectAsState()
     val picked = picks[song.id]?.id
+    val autoOriginals by c.uncensored.enabled.collectAsState()
     // null while looking; a failure when the search didn't answer.
     val found by produceState<Result<List<Song>>?>(null, song.id) {
         value = withContext(Dispatchers.IO) {
@@ -62,10 +65,13 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                 coroutineScope {
                     val songs = async { runCatching { c.ytm.search(query, SearchFilter.SONGS).items }.getOrDefault(emptyList()) }
                     val videos = async { runCatching { c.ytm.search(query, SearchFilter.VIDEOS).items }.getOrDefault(emptyList()) }
-                    val all = (songs.await() + videos.await()).filterIsInstance<SongItem>().map { it.song }
+                    val hint = if (song.title.any { it in '\u0400'..'\u04ff' }) "без цензуры" else "uncensored"
+                    val originals = async { runCatching { c.ytm.search("$query $hint", SearchFilter.VIDEOS).items }.getOrDefault(emptyList()) }
+                    val all = (songs.await() + videos.await() + originals.await()).filterIsInstance<SongItem>().map { it.song }
                     // Neither search answered (offline, or refused): shown as "couldn't look".
                     if (all.isEmpty()) throw java.io.IOException()
-                    SongVersions.candidates(song, all)
+                    val best = UncensoredRules.best(song, all)
+                    (listOfNotNull(best) + SongVersions.candidates(song, all)).distinctBy { it.id }
                 }
             }
         }
@@ -96,6 +102,16 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                 Text(tr(R.string.play_a_different_version), style = MaterialTheme.typography.titleLarge)
                 Text(tr(R.string.the_one_you_pick_plays_for), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text(tr(R.string.uncensored_recordings), style = MaterialTheme.typography.bodyLarge)
+                    Text(tr(R.string.uncensored_recordings_info), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = autoOriginals, onCheckedChange = c.uncensored::setEnabled)
+            }
             VersionRow(song, tr(R.string.version_original), picked == null, Modifier.testTag("version:own")) { choose(null) }
             // A file of the song on the phone plays from the file (a FLAC of an album bought elsewhere, say).
             if (!song.isLocal) {
@@ -123,7 +139,12 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                 r.isFailure -> Quiet(tr(R.string.couldn_t_look_for_other_versions))
                 r.getOrThrow().isEmpty() -> Quiet(tr(R.string.youtube_has_no_other_version_of))
                 else -> r.getOrThrow().forEach { v ->
-                    VersionRow(v, if (SongVersions.sameRecording(song, v)) tr(R.string.another_upload) else null, picked == v.id, Modifier.testTag("version:${v.id}")) {
+                    val tag = when {
+                        UncensoredRules.best(song, listOf(v)) != null -> tr(R.string.uncensored_candidate)
+                        SongVersions.sameRecording(song, v) -> tr(R.string.another_upload)
+                        else -> null
+                    }
+                    VersionRow(v, tag, picked == v.id, Modifier.testTag("version:${v.id}")) {
                         // The version itself is kept too: the song shows as it from now on (#328).
                         choose(SongVersions.Pick(v.id, versionLabel(v), v))
                     }
