@@ -72,6 +72,66 @@ class YourMusic(private val c: AppContainer) {
 
     private fun ok(s: Song) = !s.isEpisode && !s.isLive && !c.library.isDisliked(s.id) && !c.exclusions.blocks(s) && !c.exclusions.isSongExcluded(s.id)
 
+    internal data class WaveTaste(val profile: MyWave.Profile, val favorites: List<Song>)
+
+    /** Local, recency-weighted taste and listening-context profile, shared by Wave start and refill.
+     * Context has a small influence until enough history exists; no guesses about lyrics or activity.
+     */
+    internal suspend fun waveTaste(): WaveTaste = withContext(Dispatchers.Default) {
+        val s = snapshot()
+        val now = java.time.ZonedDateTime.now()
+        val zone = now.zone
+        val hour = now.hour
+        val weekend = now.dayOfWeek.value >= 6
+        val artist = HashMap<String, Double>()
+        val moment = HashMap<String, Double>()
+        val recent = s.events.filter { it.timestamp <= s.at && s.at - it.timestamp < 120L * DAY }
+        var contextWeight = 0.0
+        for (event in recent) {
+            val song = s.songs[event.songId] ?: continue
+            val a = song.primaryArtist.lowercase()
+            if (a.isBlank()) continue
+            val weight = Math.pow(0.5, (s.at - event.timestamp) / (30.0 * DAY))
+            artist.merge(a, weight, Double::plus)
+            val at = java.time.Instant.ofEpochMilli(event.timestamp).atZone(zone)
+            val delta = kotlin.math.abs(hour - at.hour)
+            if (minOf(delta, 24 - delta) <= 2 && (at.dayOfWeek.value >= 6) == weekend) {
+                moment.merge(a, weight, Double::plus)
+                contextWeight += weight
+            }
+        }
+        s.liked.forEach { song ->
+            song.primaryArtist.lowercase().takeIf { it.isNotBlank() }?.let { artist.merge(it, 0.6, Double::plus) }
+        }
+        val maxArtist = artist.values.maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
+        val maxMoment = moment.values.maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
+        val confidence = (contextWeight / 20.0).coerceIn(0.0, 1.0)
+        val profile = MyWave.Profile(
+            taste = { song ->
+                val a = artist[song.primaryArtist.lowercase()]?.let { kotlin.math.sqrt(it / maxArtist) }
+                val track = s.songs[song.id]?.let { s.model.score(it).coerceIn(0.0, 1.0) }
+                if (a == null && track == null) null else 0.55 * (track ?: 0.5) + 0.45 * (a ?: 0.5)
+            },
+            context = { song ->
+                moment[song.primaryArtist.lowercase()]?.let { 0.5 + confidence * (it / maxMoment - 0.5) }
+            },
+            transition = { from, to ->
+                val co = s.coListen[from.id]?.get(to.id)
+                val g1 = s.genres[from.id]
+                val g2 = s.genres[to.id]
+                when {
+                    co != null -> (0.5 + co / 8.0).coerceAtMost(1.0)
+                    g1 != null && g2 != null -> if (g1 == g2) 0.8 else 0.3
+                    else -> null
+                }
+            },
+        )
+        val favorites = s.songs.values.filter { ok(it) && !it.isVideo }
+            .sortedByDescending { s.model.score(it) * rest(s, it.id) }
+            .distinctBy(LocalRadio::sameSong).take(100)
+        WaveTaste(profile, favorites)
+    }
+
     /**
      * Prism's radio: up to [count] songs from your own music to follow [seedIds] (the newest last), none of [inQueue],
      * nothing played in the last two hours. [offlineOnly]: only songs that play without a connection.
