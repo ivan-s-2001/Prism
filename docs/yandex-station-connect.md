@@ -70,3 +70,22 @@ The Station must be an output device in the existing Prism Connect picker, not a
 - Confirm that the account does not require Plus for external playback. Voice commands for catalog search through Alice are a separate feature and not part of the initial acceptance.
 
 Do not treat diagnostic playback or command acknowledgements as proof of this production acceptance.
+
+
+## Multiroom hardware validation
+
+Station Lab has a multiroom test section: add up to eight account-verified
+Stations, select one local MP3, then start playback concurrently. Each
+member has its own pinned WebSocket, short-lived device token, private HTTP
+route, delivery counter, error and independent volume control. Group stop
+and a group volume command also fan out independently. Failed commands on
+one member do not cancel commands to the others.
+
+Acceptance: on two or more physical Stations verify the actual chosen MP3
+(not Yandex radio), bytes served per member, independent volume changes,
+removal of one member without interruption to the others, and group stop.
+The current protocol is audio_play, not legacy radio_play. No acoustic
+synchronization, production group queue integration, persistent groups,
+or subscription-free operation is claimed until tested. The production
+Cast currently still owns one RendererLink; group playback is limited to
+the debug Lab pending these hardware results.
