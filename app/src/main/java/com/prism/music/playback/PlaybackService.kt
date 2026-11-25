@@ -1805,7 +1805,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         if (src.kind != QueueKind.SINGLE && !radio && player.repeatMode != Player.REPEAT_MODE_OFF) return
         if (player.mediaItemCount - player.currentMediaItemIndex > 3 || c.queue.autoplayLoading) return
         // A radio that ran dry may have moved on to another song's radio (No repeats this session).
-        val waveSeed = if (wave) (0 until player.mediaItemCount).reversed().firstNotNullOfOrNull { i ->
+        val waveSeed = if (wave) (0..player.currentMediaItemIndex.coerceAtLeast(0)).reversed().firstNotNullOfOrNull { i ->
             player.getMediaItemAt(i).toSong()?.takeIf { !it.isLocal && !it.isLive && !it.isEpisode && !c.library.isDisliked(it.id) && !c.exclusions.blocks(it) && !c.recFeedback.turnedDown(it.id, known = false) }?.id
         } else null
         val previousSeed = c.queue.reseededFor(src) ?: src.seedId
@@ -1857,6 +1857,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 existing, heardLately, turnedDown = { fb.turnedDown(it.id, known = false) },
                 allowed = {
                     !c.library.isDisliked(it.id) && !c.exclusions.blocks(it) && com.prism.music.data.ExplicitFilter.plays(explicit, it) &&
+                        (!wave || (!c.exclusions.isSongExcluded(it.id) && !fb.turnedDown(it.id, known = it.id in c.library.likedIds.value) && !it.isEpisode && !it.isLive)) &&
                         // #299: Autoplay's own songs only: a radio the listener started is left as it is.
                         (radio || com.prism.music.data.AutoplayLength.fits(it, behavior.autoplayMaxMinutes))
                 },
