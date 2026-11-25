@@ -84,7 +84,7 @@ internal object ConnectDeviceClient {
 
     private suspend fun post(path: String, credential: String, body: JsonObject = buildJsonObject {}): JsonObject =
         withContext(Dispatchers.IO) {
-            require(path in setOf("pair", "status", "claim", "pull", "command", "release", "revoke"))
+            require(path in setOf("pair", "status", "claim", "pull", "heartbeat", "command", "release", "revoke"))
             val request = Request.Builder().url("$BASE/v2/$path")
                 .header("Authorization", "Bearer $credential")
                 .post(body.toString().toRequestBody(jsonType)).build()
@@ -136,6 +136,13 @@ internal object ConnectDeviceClient {
             put("generation", lease.generation)
             put("state", state)
         })["command"] as? JsonObject
+
+    suspend fun heartbeat(lease: Lease, state: JsonObject) {
+        post("heartbeat", lease.credential, buildJsonObject {
+            put("generation", lease.generation)
+            put("state", state)
+        })
+    }
 
     suspend fun release(lease: Lease) {
         post("release", lease.credential, buildJsonObject {
