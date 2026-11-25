@@ -361,6 +361,11 @@ class AppContainer(val app: Application) {
     val db = PrismDatabase.build(app)
     /** Versions of songs the listener picked to hear instead (1.7.9, "Play a different version"). */
     val versions = com.prism.music.data.SongVersions(app.getSharedPreferences("song_versions", android.content.Context.MODE_PRIVATE))
+    val uncensored = com.prism.music.data.UncensoredVersions(
+        app.getSharedPreferences("uncensored_versions", Context.MODE_PRIVATE),
+    ) { query, filter ->
+        ytm.search(query, filter).items.filterIsInstance<com.prism.music.data.model.SongItem>().map { it.song }
+    }
     /** 1.8.7 §3.2: what plays for each row, one answer for playback, downloads, covers, history and lyrics. */
     val plays = com.prism.music.data.meta.PlaysAs(com.prism.music.data.meta.PlaysAs.fileIn(app.filesDir), scope, pickOf = { versions.picks.value[it] })
     val streams by lazy { StreamResolver(app, http, settings, innerTube).apply { versionOf = versions::streamedOf; resolverMade = this } }
@@ -708,6 +713,42 @@ class AppContainer(val app: Application) {
     @Volatile private var songStartedAt = 0L
     init { scope.launch { player.currentSong.collect { songStartedAt = android.os.SystemClock.elapsedRealtime() } } }
 
+    // Scan a small upcoming window, never interrupt the current recording.
+    init {
+        scope.launch(Dispatchers.Main) {
+            kotlinx.coroutines.flow.combine(
+                uncensored.enabled, player.upNext, player.queue,
+            ) { enabled, order, queue ->
+                if (enabled) order.take(3).mapNotNull { index -> queue.firstOrNull { it.index == index }?.song }
+                else emptyList()
+            }.distinctUntilChanged().collectLatest { songs ->
+                if (songs.isEmpty()) return@collectLatest
+                quietNetwork()
+                for (song in songs.distinctBy { it.id }) {
+                    resolveOriginalVersion(song)
+                }
+            }
+        }
+    }
+
+    suspend fun resolveOriginalVersion(song: com.prism.music.data.model.Song) {
+        if (!uncensored.enabled.value || dataSaving() ||
+            settings.current.behavior.explicitContent != com.prism.music.data.prefs.ExplicitContent.SHOW ||
+            versions.of(song.id) != null || uncensored.wasManual(song.id) ||
+            player.currentSong.value?.id == song.id
+        ) return
+        val candidate = uncensored.find(song) ?: return
+        kotlinx.coroutines.withContext(Dispatchers.Main) {
+            if (uncensored.enabled.value && !dataSaving() &&
+                settings.current.behavior.explicitContent == com.prism.music.data.prefs.ExplicitContent.SHOW &&
+                versions.of(song.id) == null && !uncensored.wasManual(song.id) &&
+                player.currentSong.value?.id != song.id
+            ) {
+                pickVersion(song, com.prism.music.data.SongVersions.Pick(candidate.id, candidate.artistText, candidate), automatic = true)
+            }
+        }
+    }
+
     /**
      * Waits until the network is free for background saving (offline copies of playlists, covers, download retries):
      * not while the music is buffering, nor in a song's first 20 s, when its stream is loading. Since 1.6.8 that saving
@@ -871,7 +912,8 @@ class AppContainer(val app: Application) {
      * download comes down again as the new one (each recording keeps its own cached part, [songCacheKey]). Playing now,
      * the song starts again where it was.
      */
-    fun pickVersion(song: com.prism.music.data.model.Song, pick: com.prism.music.data.SongVersions.Pick?) {
+    fun pickVersion(song: com.prism.music.data.model.Song, pick: com.prism.music.data.SongVersions.Pick?, automatic: Boolean = false) {
+        if (!automatic) uncensored.manualChoice(song.id)
         if (versions.of(song.id) == pick?.id?.takeIf { it != song.id }) return
         versions.set(song.id, pick)
         soundFrom.remove(song.id)
