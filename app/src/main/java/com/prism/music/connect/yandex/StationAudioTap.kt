@@ -23,7 +23,11 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
 
     /** Each station sees the same PCM, with an independent non-destructive read cursor. */
     class Reader internal constructor(internal var cursor: Long) : java.io.Closeable {
+        internal var underrunBytes = 0L
+        internal var skippedBytes = 0L
+        internal var adjustedFrames = 0L
         fun read(length: Int): ByteArray = StationAudioTap.readFor(this, length)
+        fun summary(): String = StationAudioTap.readerSummary(this)
         override fun close() = StationAudioTap.removeReader(this)
     }
 
@@ -34,9 +38,53 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
     }
 
     @Synchronized private fun removeReader(reader: Reader) { readers.remove(reader) }
+    @Synchronized private fun readerSummary(reader: Reader): String =
+        "queuedMs=${(written - reader.cursor).coerceAtMost(size.toLong()) * 1000 / (RATE * 4)} underrunBytes=${reader.underrunBytes} skippedBytes=${reader.skippedBytes} adjustedFrames=${reader.adjustedFrames}"
+
     @Synchronized private fun readFor(reader: Reader, length: Int): ByteArray {
-        if (reader !in readers) return ByteArray(length)
-        return readAt(length, reader.cursor) { reader.cursor = it }
+        require(length >= 0 && length % 4 == 0)
+        if (reader !in readers || !active || !running) return ByteArray(length)
+        val oldest = written - size
+        if (reader.cursor < oldest) {
+            reader.skippedBytes += oldest - reader.cursor
+            reader.cursor = oldest
+        }
+        val available = written - reader.cursor
+        // Correct only persistent clock drift with at most one stereo frame per
+        // 20 ms. A tiny linear interpolation avoids a discontinuous sample drop.
+        val adjust = if (length == RATE * 4 / 50 && available >= length + 4) {
+            when {
+                available < RATE * 4 / 12 -> -1
+                available > RATE * 4 * 3 / 4 -> 1
+                else -> 0
+            }
+        } else 0
+        if (adjust == 0) {
+            reader.underrunBytes += (length - available).coerceAtLeast(0L)
+            return readAt(length, reader.cursor) { reader.cursor = it }
+        }
+        val input = readAt(length + adjust * 4, reader.cursor) { reader.cursor = it }
+        reader.adjustedFrames += adjust.toLong()
+        val inFrames = input.size / 4
+        val outFrames = length / 4
+        val out = ByteArray(length)
+        fun sample(frame: Int, ch: Int): Int {
+            val index = frame * 4 + ch * 2
+            return (input[index].toInt() and 255) or (input[index + 1].toInt() shl 8)
+        }
+        for (frame in 0 until outFrames) {
+            val at = frame.toDouble() * (inFrames - 1) / (outFrames - 1)
+            val a = at.toInt()
+            val b = minOf(a + 1, inFrames - 1)
+            val fraction = at - a
+            for (ch in 0..1) {
+                val value = (sample(a, ch) * (1 - fraction) + sample(b, ch) * fraction).toInt()
+                val index = frame * 4 + ch * 2
+                out[index] = value.toByte()
+                out[index + 1] = (value shr 8).toByte()
+            }
+        }
+        return out
     }
     private var inputRate = 0
     private var channels = 0
