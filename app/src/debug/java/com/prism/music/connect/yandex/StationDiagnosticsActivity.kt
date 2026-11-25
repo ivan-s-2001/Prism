@@ -24,6 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
 import okhttp3.CookieJar
@@ -42,6 +43,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
     private var scan: Job? = null
     private var operation: Job? = null
     private var session: StationSmokeSession? = null
+    private var connectedStation: YandexStation? = null
     private var file: File? = null
     private var login: Dialog? = null
     private val frames = AtomicLong()
@@ -87,7 +89,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
             runOperation("Sending play command") {
                 val active = session ?: error("Not connected")
                 val mp3 = file ?: error("No file")
-                val station = selected()
+                val station = connectedStation ?: error("Not connected")
                 val address = withContext(Dispatchers.IO) {
                     DatagramSocket().use {
                         it.connect(station.address, station.port)
@@ -107,7 +109,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
             report("State frames: ${frames.get()}\nMP3 bytes delivered: ${delivered.get()}\nOnly audible playback confirms success.")
         }
         button("Disconnect") {
-            operation?.cancel()
+            if (operation?.isActive == true) { report("Another operation is running."); return@button }
             session?.close()
             session = null
             report("Disconnected. Use Stop first to terminate remote playback.")
@@ -121,6 +123,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
     private fun sessionOrThrow(): StationSmokeSession = session ?: error("Not connected")
 
     private fun startScan() {
+        if (operation?.isActive == true) { report("Another operation is running."); return }
         scan?.cancel()
         session?.close()
         session = null
@@ -159,6 +162,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
         try {
             next.ping()
             session = next
+            connectedStation = station
             report("Account match and TLS connection established. Ping queued; check state frames.")
         } catch (e: Throwable) {
             next.close()
