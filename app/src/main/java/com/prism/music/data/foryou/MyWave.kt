@@ -116,6 +116,42 @@ internal object MyWave {
         }
     }
 
+    /** The supplied pool contains completed, policy-eligible downloads only. Never duplicate
+     * an upcoming recording. Relax unavailable quota slots only in offline mode. */
+    fun offlineMix(
+        pool: List<Song>, likes: List<Song>, upcoming: List<Song>, previous: Song?,
+        heard: (Song) -> Boolean, style: Style, signals: RadioSignals, profile: Profile,
+        count: Int, offset: Int, seed: Long,
+        artistDoubt: (String) -> Double = { 0.0 },
+        artistEvidence: (String) -> Evidence = { Evidence() },
+    ): List<Song> {
+        val queued = upcoming.mapTo(hashSetOf(), LocalRadio::sameSong)
+        val available = pool.distinctBy(LocalRadio::sameSong).filter { LocalRadio.sameSong(it) !in queued }
+        val previousKey = previous?.let(LocalRadio::sameSong)
+        val fresh = available.filter { !heard(it) && LocalRadio.sameSong(it) != previousKey }
+        val cycle = fresh.ifEmpty { available.filter { LocalRadio.sameSong(it) != previousKey } }.ifEmpty { available }
+        val preferred = cycle.filter {
+            when (style.russianPercent) {
+                0 -> russianTitle(it) == false
+                100 -> russianTitle(it) == true
+                else -> true
+            }
+        }.ifEmpty { cycle }
+        val localLikes = likes.filter { liked -> preferred.any { it.id == liked.id } }
+        val likedIds = localLikes.mapTo(hashSetOf()) { it.id }
+        val strict = mix(preferred, localLikes, isKnown = { heard(it) || it.id in likedIds },
+            heard = { false }, allowed = { true }, seed = seed, style = style, signals = signals,
+            profile = profile, count = count, offset = offset, previousSong = previous,
+            artistDoubt = artistDoubt, artistEvidence = artistEvidence)
+        val used = strict.mapTo(hashSetOf(), LocalRadio::sameSong)
+        val rest = start(preferred, localLikes, emptyList(), heard,
+            allowed = { LocalRadio.sameSong(it) !in used }, seed = seed,
+            count = count - strict.size, style = style, signals = signals, profile = profile,
+            previousSong = strict.lastOrNull() ?: previous, artistDoubt = artistDoubt,
+            artistEvidence = artistEvidence)
+        return (strict + rest).distinctBy(LocalRadio::sameSong)
+    }
+
     fun mix(
         candidates: List<Song>, likes: List<Song>, isKnown: (Song) -> Boolean,
         heard: (Song) -> Boolean, allowed: (Song) -> Boolean, seed: Long,

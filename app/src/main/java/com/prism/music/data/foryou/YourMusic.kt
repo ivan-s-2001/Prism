@@ -289,34 +289,10 @@ class YourMusic(private val c: AppContainer) {
                     !feedback.turnedDown(song.id, known = song.id in c.library.likedIds.value) &&
                     com.prism.music.data.ExplicitFilter.plays(c.settings.current.behavior.explicitContent, song)
             }.distinctBy(LocalRadio::sameSong)
-            val queued = existing.mapTo(hashSetOf(), LocalRadio::sameSong)
-            val available = pool.filter { LocalRadio.sameSong(it) !in queued }
-            val previousKey = previous?.let(LocalRadio::sameSong)
-            val fresh = available.filter { !c.sessionHeard.has(it) && LocalRadio.sameSong(it) != previousKey }
-            val unheardOrRepeat = fresh.ifEmpty { available.filter { LocalRadio.sameSong(it) != previousKey } }
-                .ifEmpty { available }
-            // The offline pool is finite; prefer the selected language and mix, but
-            // never stop merely because a quota cannot be filled. Recycle only
-            // after unplayed downloads are exhausted; never duplicate upcoming items.
-            val preferred = unheardOrRepeat.filter {
-                when (style.russianPercent) {
-                    0 -> MyWave.russianTitle(it) == false
-                    100 -> MyWave.russianTitle(it) == true
-                    else -> true
-                }
-            }.ifEmpty { unheardOrRepeat }
-            val likes = taste.likes.filter { liked -> preferred.any { it.id == liked.id } }
-            val heard: (Song) -> Boolean = { false }
-            val strict = MyWave.mix(preferred, likes, isKnown = { c.sessionHeard.has(it) || it.id in c.library.likedIds.value },
-                heard = heard, allowed = { true }, seed = System.nanoTime(), style = style,
-                signals = RadioSignals(), profile = taste.profile, count = count, offset = offset, previousSong = previous)
-            val used = strict.mapTo(hashSetOf(), LocalRadio::sameSong)
-            val rest = MyWave.start(preferred, likes, emptyList(), c.sessionHeard::has,
-                allowed = { LocalRadio.sameSong(it) !in used }, seed = System.nanoTime(),
-                count = count - strict.size, style = style, profile = taste.profile,
-                previousSong = strict.lastOrNull() ?: previous, artistDoubt = feedback::artistDoubt,
-                artistEvidence = feedback.waveEvidence())
-            return@withContext (strict + rest).distinctBy(LocalRadio::sameSong)
+            val signals = c.discover.radioSignals(pool, style.tune.copy(newness = 0f), fetchTops = false)
+            return@withContext MyWave.offlineMix(pool, taste.likes, existing, previous,
+                c.sessionHeard::has, style, signals, taste.profile, count, offset, System.nanoTime(),
+                artistDoubt = feedback::artistDoubt, artistEvidence = feedback.waveEvidence())
         }
         val avoid = (existing + listOfNotNull(previous) + c.sessionHeard.oldestFirst()).mapTo(hashSetOf(), LocalRadio::sameSong)
         val ids = existing.mapTo(hashSetOf()) { it.id }

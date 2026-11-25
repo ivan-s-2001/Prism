@@ -242,4 +242,37 @@ class MyWaveTest {
         assertEquals(4, result.size)
         assertFalse(result.zipWithNext().any { it.first.primaryArtist == it.second.primaryArtist })
     }
+
+    @Test fun offlineMixFillsMissingDiscoveryQuotaWithDownloadedMusic() {
+        val a = song("a", "A")
+        val b = song("b", "B")
+        val style = MyWave.Style(discoveryPercent = 100)
+        val result = MyWave.offlineMix(listOf(a, b), listOf(a, b), emptyList(), null,
+            { true }, style, com.prism.music.data.foryou.RadioSignals(), MyWave.Profile(), 2, 0, 42L)
+        assertEquals(setOf(a, b), result.toSet())
+    }
+
+    @Test fun offlineMixDoesNotDuplicateUpcomingSongsAndCanRecycle() {
+        val a = song("a", "A")
+        val b = song("b", "B")
+        val c = song("c", "C")
+        val result = MyWave.offlineMix(listOf(a, b, c), emptyList(), listOf(b), a,
+            { true }, MyWave.Style(), com.prism.music.data.foryou.RadioSignals(), MyWave.Profile(), 8, 3, 42L)
+        assertEquals(listOf(c), result)
+    }
+
+    @Test fun offlineMixUsesSingleDownloadAfterExhaustion() {
+        val a = song("a", "A")
+        val result = MyWave.offlineMix(listOf(a), emptyList(), emptyList(), a,
+            { true }, MyWave.Style(), com.prism.music.data.foryou.RadioSignals(), MyWave.Profile(), 8, 0, 42L)
+        assertEquals(listOf(a), result)
+    }
+
+    @Test fun stripOrderIncludesAllScenariosWithoutSelectionDependentOrdering() {
+        val scenarios = com.prism.music.data.foryou.WaveScenarios
+        val order = scenarios.stripOrder(19, false)
+        assertEquals("evening", order.first().id)
+        assertEquals(scenarios.all.toSet(), order.toSet())
+        assertEquals(scenarios.all.size, order.size)
+    }
 }
