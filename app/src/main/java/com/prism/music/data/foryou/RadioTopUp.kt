@@ -29,6 +29,8 @@ object RadioTopUp {
         val turnedDown: (Song) -> Boolean,
         /** Not disliked, not excluded, allowed by the explicit filter. */
         val allowed: (Song) -> Boolean,
+        /** Recording aliases already in the queue, not just exact YouTube IDs. */
+        val queuedRecordings: Set<String> = emptySet(),
     )
 
     /** The batch as 1.8.1 made it, tuned when a [tune] is set. */
@@ -38,18 +40,23 @@ object RadioTopUp {
     ): List<Song> {
         // Not what was heard in the last few hours, nor what the listener turned down (skipped at once when a
         // suggestion): YouTube's radio for a favourite brings the same songs back day after day otherwise.
-        val theirs = RadioTuner.apply(youtube.filter { it.id !in rules.heardLately && !rules.turnedDown(it) }, tune, signals, seed)
-        val own = RadioTuner.apply(mine, tune, signals, seed + 1)
+        fun eligible(song: Song) = song.id !in rules.inQueue && song.id !in rules.heardLately &&
+            LocalRadio.sameSong(song) !in rules.queuedRecordings && !rules.turnedDown(song) && rules.allowed(song)
+        val theirs = RadioTuner.apply(youtube.filter(::eligible).distinctBy(LocalRadio::sameSong), tune, signals, seed)
+        val theirsKeys = theirs.mapTo(hashSetOf(), LocalRadio::sameSong)
+        val own = RadioTuner.apply(mine.filter(::eligible).distinctBy(LocalRadio::sameSong)
+            .filter { LocalRadio.sameSong(it) !in theirsKeys }, tune, signals, seed + 1)
         val base = when {
-            songRadio || own.isEmpty() -> 1.0
+            own.isEmpty() -> 1.0
             theirs.isEmpty() -> 0.0
+            songRadio -> 0.75
             // Both: YouTube's radio leads, your own songs that belong with it in between (about two in five).
             else -> 0.6
         }
         // An artist a few times a batch at most, never twice running.
         return Variety.arrange(own, theirs, BATCH, RadioTuner.freshShare(base, tune), PER_ARTIST) { it.primaryArtist.lowercase() }
-            .distinctBy { it.id }
-            .filter { it.id !in rules.inQueue && rules.allowed(it) }
+            .distinctBy(LocalRadio::sameSong)
+            .filter(::eligible)
     }
 
     /** No repeats: a session's heard songs, and how to ask for more. */
@@ -127,7 +134,7 @@ object RadioTopUp {
 
     /** Of [songs], the older half by [heardAt] (songs not heard yet count as oldest), oldest first, at most a batch. */
     fun comingRound(songs: List<Song>, heardAt: (Song) -> Long?, rules: Rules): List<Song> {
-        val can = songs.distinctBy { it.id }.filter(rules.allowed).sortedBy { heardAt(it) ?: 0L }
+        val can = songs.distinctBy(LocalRadio::sameSong).filter { rules.allowed(it) && !rules.turnedDown(it) }.sortedBy { heardAt(it) ?: 0L }
         return can.take((can.size + 1) / 2).take(BATCH)
     }
 

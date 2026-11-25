@@ -136,7 +136,7 @@ class ForYou(private val c: AppContainer) {
         }
     }
 
-    private fun ok(s: Song) = !s.isLocal && c.yourMusic.recommendable(s) && !c.library.isDisliked(s.id) && !c.exclusions.blocks(s)
+    private fun ok(s: Song) = !s.isLocal && c.yourMusic.recommendationAllowed(s, known = s.id in c.library.likedIds.value)
 
     /**
      * The listener as the mix maker sees them: every song they know scored, with how much it's been heard and served
@@ -159,10 +159,10 @@ class ForYou(private val c: AppContainer) {
         val played = data.played90 + data.played90.mapNotNull { data.songs[it] }.map { LocalRadio.sameSong(it) }
         return MixMaker.Taste(
             known, played,
-            refused = { s, knownSong -> !ok(s) || c.exclusions.isSongExcluded(s.id) || fb.turnedDown(s.id, knownSong) },
+            refused = { s, knownSong -> s.isLocal || !c.yourMusic.recommendationAllowed(s, known = knownSong || s.id in c.library.likedIds.value) },
             artistDoubt = fb::artistDoubt,
             servedDaysAgo = fb::servedDaysAgo,
-            affinity = { MyWave.affinity(profile, it) },
+            affinity = { c.yourMusic.recommendationScore(profile, it) },
             feedbackWeight = { evidence(it.primaryArtist).weight(0.0) },
         )
     }

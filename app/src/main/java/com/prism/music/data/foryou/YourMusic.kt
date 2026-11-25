@@ -72,6 +72,16 @@ class YourMusic(private val c: AppContainer) {
 
     internal fun recommendable(s: Song): Boolean = RecommendationQuality.allowed(s, s.id in c.library.likedIds.value)
 
+    /** Hard exclusions shared by all generated music, not by explicitly selected tracks. */
+    internal fun recommendationAllowed(s: Song, known: Boolean = s.id in c.library.likedIds.value,
+        offlineOnly: Boolean = false): Boolean =
+        !s.isVideo && !s.isEpisode && !s.isLive &&
+            (s.durationSec == 0 || s.durationSec >= 60) &&
+            (if (offlineOnly) c.availableOffline(s.id) else recommendable(s)) &&
+            !c.library.isDisliked(s.id) && !c.exclusions.blocks(s) && !c.exclusions.isSongExcluded(s.id) &&
+            !c.recFeedback.turnedDown(s.id, known) &&
+            com.prism.music.data.ExplicitFilter.plays(c.settings.current.behavior.explicitContent, s)
+
     private fun ok(s: Song) = recommendable(s) && !c.library.isDisliked(s.id) && !c.exclusions.blocks(s) && !c.exclusions.isSongExcluded(s.id)
 
     internal data class WaveTaste(val profile: MyWave.Profile, val favorites: List<Song>, val likedSeeds: List<Song>, val likes: List<Song>)
@@ -293,12 +303,7 @@ class YourMusic(private val c: AppContainer) {
             // A fresh list of completed downloads, never remote candidates or a stale home feed.
             val downloaded = withContext(Dispatchers.IO) { c.downloads.completedSongs() }
             val feedback = c.recFeedback
-            val pool = downloaded.filter { song ->
-                c.availableOffline(song.id) && !c.library.isDisliked(song.id) && !c.exclusions.blocks(song) &&
-                    !c.exclusions.isSongExcluded(song.id) && !song.isVideo && !song.isEpisode && !song.isLive &&
-                    !feedback.turnedDown(song.id, known = song.id in c.library.likedIds.value) &&
-                    com.prism.music.data.ExplicitFilter.plays(c.settings.current.behavior.explicitContent, song)
-            }.distinctBy(LocalRadio::sameSong)
+            val pool = downloaded.filter { recommendationAllowed(it, offlineOnly = true) }.distinctBy(LocalRadio::sameSong)
             val signals = c.discover.radioSignals(pool, style.tune.copy(newness = 0f), fetchTops = false)
             return@withContext MyWave.offlineMix(pool, taste.likes, existing, previous,
                 c.sessionHeard::has, style, signals, taste.profile, count, offset, System.nanoTime(),
@@ -322,9 +327,7 @@ class YourMusic(private val c: AppContainer) {
             return MyWave.mix(candidates, taste.likes, isKnown = known,
             heard = c.sessionHeard::has,
             allowed = { song ->
-                song.id !in ids && ok(song) && (song.durationSec == 0 || song.durationSec >= 60) &&
-                    !feedback.turnedDown(song.id, known = song.id in knownIds) &&
-                    com.prism.music.data.ExplicitFilter.plays(c.settings.current.behavior.explicitContent, song)
+                song.id !in ids && recommendationAllowed(song, known = song.id in knownIds)
             },
             seed = System.nanoTime(), style = style, signals = signals, profile = taste.profile,
             count = count, offset = offset, previousSong = previous, avoid = avoid, artistDoubt = feedback::artistDoubt,
@@ -359,11 +362,12 @@ class YourMusic(private val c: AppContainer) {
         // are to it goes by that (#461).
         val seedGenres = seeds.filter { it.id !in s.genres }.takeIf { it.isNotEmpty() }
             ?.let { runCatching { c.meta.cachedGenres(it) }.getOrNull() }.orEmpty()
+        val profile = waveTaste().profile
         val pool = LocalRadio.Pool(
             // Not clips under a minute (an album's intro, a skit, a sound file on the phone): they'd break the run of songs.
-            songs = s.songs.values.filter { ok(it) && !it.isVideo && (it.durationSec == 0 || it.durationSec >= 60) && (!offlineOnly || c.availableOffline(it.id)) },
+            songs = s.songs.values.filter { recommendationAllowed(it, offlineOnly = offlineOnly) },
             coListen = s.coListen,
-            affinity = { s.model.score(it) * rest(s, it.id) },
+            affinity = { s.model.score(it) * rest(s, it.id) * recommendationScore(profile, it) },
             genreOf = { s.genres[it] ?: seedGenres[it] },
             keyFit = { a, b -> keyFit(a, b) },
             bpmOf = { c.mixTempo.djBpm(it) },
@@ -389,7 +393,7 @@ class YourMusic(private val c: AppContainer) {
     suspend fun sections(offlineOnly: Boolean): Sections = withContext(Dispatchers.Default) {
         val s = snapshot()
         val now = System.currentTimeMillis()
-        val play: (Song) -> Boolean = { ok(it) && !it.isVideo && (!offlineOnly || c.availableOffline(it.id)) }
+        val play: (Song) -> Boolean = { recommendationAllowed(it, offlineOnly = offlineOnly) }
         val byId = s.events.groupBy { it.songId }
         val last = byId.mapValues { (_, e) -> e.maxOf { it.timestamp } }
 
