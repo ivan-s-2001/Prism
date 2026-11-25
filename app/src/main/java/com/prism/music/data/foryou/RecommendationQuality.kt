@@ -10,7 +10,7 @@ internal object RecommendationQuality {
     private const val RETRY_AFTER_MS = 15 * 60 * 1000L
 
     fun alternateRecording(song: Song): Boolean = alternate.containsMatchIn(song.title) ||
-        song.album?.let { alternate.containsMatchIn(it.name) } == true
+        song.album?.let { alternate.containsMatchIn(it.title) } == true
 
     fun failed(id: String) {
         val now = System.currentTimeMillis()
