@@ -135,6 +135,9 @@ fun formatTime(ms: Long): String {
 internal val MARK_TAP_HALF = 12.dp
 
 /** A hairline capsule with no thumb that thickens under the finger. */
+/** Only an embedded, theme-surface player supplies ink. Media overlays keep the upstream defaults. */
+internal val LocalEmbeddedPlayerInk = androidx.compose.runtime.staticCompositionLocalOf<Color?> { null }
+
 @Composable
 fun ThinSlider(
     value: Float,
@@ -178,6 +181,9 @@ fun ThinSlider(
     markTag: String? = null,
     markLabel: String? = null,
 ) {
+    val embeddedInk = LocalEmbeddedPlayerInk.current
+    val sliderInk = embeddedInk ?: Color.White
+    val darkSpectrum = embeddedInk == null || com.prism.music.ui.theme.LocalIsDark.current
     var dragging by remember { mutableStateOf(false) }
     val markTapNow by androidx.compose.runtime.rememberUpdatedState(markTap.takeIf { onMarkTap != null })
     val onMarkTapNow by androidx.compose.runtime.rememberUpdatedState(onMarkTap)
@@ -250,7 +256,7 @@ fun ThinSlider(
             val r = CornerRadius(size.height / 2f)
             val filled = size.width * value.coerceIn(0f, 1f)
             // The player is always dark: White light's white (not its mid grey) on it (Reddit: "white is giving gray").
-            val brush = fill ?: if (spectrum) Brush.horizontalGradient(*com.prism.music.ui.theme.PrismTokens.spectrumColors(true).toTypedArray(), startX = 0f, endX = size.width) else null
+            val brush = fill ?: if (spectrum) Brush.horizontalGradient(*com.prism.music.ui.theme.PrismTokens.spectrumColors(darkSpectrum).toTypedArray(), startX = 0f, endX = size.width) else null
             if (wave != null && wave.isNotEmpty()) {
                 // The waveform: a bar per point, its height the song's loudness there; the played part in the fill.
                 val step = size.width / wave.size
@@ -262,47 +268,47 @@ fun ThinSlider(
                     val top = Offset(x, (size.height - h) / 2)
                     val bar = Size(w, h)
                     if (x + w / 2 <= filled) {
-                        if (brush != null) drawRoundRect(brush, top, bar, bars) else drawRoundRect(Color.White.copy(alpha = 0.92f), top, bar, bars)
-                    } else drawRoundRect(Color.White.copy(alpha = 0.22f), top, bar, bars)
+                        if (brush != null) drawRoundRect(brush, top, bar, bars) else drawRoundRect(sliderInk.copy(alpha = 0.92f), top, bar, bars)
+                    } else drawRoundRect(sliderInk.copy(alpha = 0.22f), top, bar, bars)
                 }
             } else if (shape != null && outline != null) {
                 // Shaped by the crossfade (1.8.1, as the owner's mockup): the bar's outline, the played part of it in the
                 // fill up to the playhead, the rest in the track's grey.
                 val path = outline.outline(shape, size.width, size.height)
-                drawPath(path, Color.White.copy(alpha = 0.20f))
-                if (secondary > 0f) clipRect(right = size.width * secondary.coerceIn(0f, 1f)) { drawPath(path, Color.White.copy(alpha = 0.12f)) }
+                drawPath(path, sliderInk.copy(alpha = 0.20f))
+                if (secondary > 0f) clipRect(right = size.width * secondary.coerceIn(0f, 1f)) { drawPath(path, sliderInk.copy(alpha = 0.12f)) }
                 if (filled > 0f) {
                     val beat = pulse?.invoke()?.coerceIn(0f, 1f) ?: 0f
                     if (beat > 0.02f) {
                         val grow = size.height * 1.6f * beat
-                        val glow = brush ?: androidx.compose.ui.graphics.SolidColor(Color.White)
+                        val glow = brush ?: androidx.compose.ui.graphics.SolidColor(sliderInk)
                         drawRoundRect(glow, Offset(0f, -grow), Size(filled, size.height + 2 * grow), CornerRadius(size.height / 2 + grow), alpha = 0.22f * beat)
                     }
                     clipRect(right = filled) {
-                        if (brush != null) drawPath(path, brush) else drawPath(path, Color.White.copy(alpha = 0.92f))
+                        if (brush != null) drawPath(path, brush) else drawPath(path, sliderInk.copy(alpha = 0.92f))
                     }
                 }
             } else {
-                drawRoundRect(Color.White.copy(alpha = 0.20f), cornerRadius = r)
-                if (secondary > 0f) drawRoundRect(Color.White.copy(alpha = 0.12f), size = Size(size.width * secondary.coerceIn(0f, 1f), size.height), cornerRadius = r)
+                drawRoundRect(sliderInk.copy(alpha = 0.20f), cornerRadius = r)
+                if (secondary > 0f) drawRoundRect(sliderInk.copy(alpha = 0.12f), size = Size(size.width * secondary.coerceIn(0f, 1f), size.height), cornerRadius = r)
                 val played = Size(filled.coerceAtLeast(size.height).coerceAtMost(size.width), size.height)
                 if (filled > 0f) {
                     // Pulse: the played part swells around its middle and a soft glow rises from it.
                     val beat = pulse?.invoke()?.coerceIn(0f, 1f) ?: 0f
                     if (beat > 0.02f) {
                         val grow = size.height * 1.6f * beat
-                        val glow = brush ?: androidx.compose.ui.graphics.SolidColor(Color.White)
+                        val glow = brush ?: androidx.compose.ui.graphics.SolidColor(sliderInk)
                         drawRoundRect(glow, Offset(0f, -grow), Size(played.width, size.height + 2 * grow), CornerRadius(size.height / 2 + grow), alpha = 0.22f * beat)
                     }
                     if (brush != null) drawRoundRect(brush, size = played, cornerRadius = r)
-                    else drawRoundRect(Color.White.copy(alpha = 0.92f), size = played, cornerRadius = r)
+                    else drawRoundRect(sliderInk.copy(alpha = 0.92f), size = played, cornerRadius = r)
                     ribbons?.let { drawRibbonStrands(strands, filled, it(), brush) }
                 }
             }
             // Ticks: a faint hairline that stands just past the line, there if you look, never in the way.
             marks.forEach { m ->
                 val x = size.width * m.coerceIn(0f, 1f)
-                drawLine(Color.White.copy(alpha = 0.34f), Offset(x, -1.5.dp.toPx()), Offset(x, size.height + 1.5.dp.toPx()), 1.dp.toPx(), StrokeCap.Round)
+                drawLine(sliderInk.copy(alpha = 0.34f), Offset(x, -1.5.dp.toPx()), Offset(x, size.height + 1.5.dp.toPx()), 1.dp.toPx(), StrokeCap.Round)
             }
             if (thumb) {
                 // On the shaped bar the knob rides the shape: as small as the bar is thin there (1.8.1).
@@ -317,16 +323,16 @@ fun ThinSlider(
                         val half = maxOf(size.height / 2 + 5.dp.toPx(), base) * ride
                         val w = (if (dragging) 4.dp else 3.dp).toPx()
                         drawLine(Color.Black.copy(alpha = 0.18f), Offset(x, y - half + 1f), Offset(x, y + half + 1f), w + 1.5f, StrokeCap.Round)
-                        drawLine(Color.White, Offset(x, y - half), Offset(x, y + half), w, StrokeCap.Round)
+                        drawLine(sliderInk, Offset(x, y - half), Offset(x, y + half), w, StrokeCap.Round)
                     }
                     com.prism.music.data.prefs.ScrubberThumb.RING -> {
                         drawCircle(Color.Black.copy(alpha = 0.18f), knob + 1.5f, Offset(x, y + 1f))
                         drawCircle(Color.Black.copy(alpha = 0.55f), knob, Offset(x, y))
-                        drawCircle(Color.White, knob, Offset(x, y), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
+                        drawCircle(sliderInk, knob, Offset(x, y), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
                     }
                     else -> {
                         drawCircle(Color.Black.copy(alpha = 0.18f), knob + 1.5f, Offset(x, y + 1f))
-                        drawCircle(Color.White, knob, Offset(x, y))
+                        drawCircle(sliderInk, knob, Offset(x, y))
                     }
                 }
             }
@@ -410,6 +416,8 @@ fun PlayheadScrubber(position: androidx.compose.runtime.State<Long>, durationMs:
 /** Seek bar with elapsed / remaining under it and a centre label between them. */
 @Composable
 fun PlayerScrubber(positionMs: Long, durationMs: Long, centerLabel: @Composable BoxScope.() -> Unit = {}) {
+    val embeddedInk = LocalEmbeddedPlayerInk.current
+    val playerInk = embeddedInk ?: Color.White
     val pc = LocalContainer.current.player
     val current by pc.currentSong.collectAsState()
     // A live stream has no start or end: a full bar marked LIVE, not a clock of its rolling window.
@@ -449,7 +457,12 @@ fun PlayerScrubber(positionMs: Long, durationMs: Long, centerLabel: @Composable 
     val blendMark = blend?.takeIf { settings.view.crossfadeMark && it.songId == current?.id && blendShape?.fadesOut != true }
         ?.let { (it.startMs.toFloat() / duration).takeIf { f -> f in 0.01f..0.99f } }
     val times = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")
-    val fill = scrubberFill(settings.scrubberColor, current?.let { com.prism.music.data.PlaylistCovers.artOf(it) })
+    val fill = if (embeddedInk == null) scrubberFill(settings.scrubberColor, current?.let { com.prism.music.data.PlaylistCovers.artOf(it) })
+    else when (settings.scrubberColor) {
+        com.prism.music.data.prefs.ScrubberColor.SPECTRUM -> null
+        com.prism.music.data.prefs.ScrubberColor.WHITE -> androidx.compose.ui.graphics.SolidColor(playerInk)
+        else -> androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary)
+    }
     // Waveform: the song's outline from its scan (a plain bar until there is one).
     val waveStamp by c.waves.stamp.collectAsState()
     val wave by androidx.compose.runtime.produceState<FloatArray?>(null, style, current?.id, waveStamp) {
@@ -518,10 +531,10 @@ fun PlayerScrubber(positionMs: Long, durationMs: Long, centerLabel: @Composable 
             val elapsed = settings.player.times == com.prism.music.data.prefs.PlayerTimes.BOTH || settings.player.times == com.prism.music.data.prefs.PlayerTimes.ELAPSED
             val left = settings.player.times == com.prism.music.data.prefs.PlayerTimes.BOTH || settings.player.times == com.prism.music.data.prefs.PlayerTimes.LEFT
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                if (elapsed) Text(formatTime((shown * duration).toLong()), style = times, color = Color.White.copy(alpha = 0.55f)) else Spacer(Modifier.width(1.dp))
+                if (elapsed) Text(formatTime((shown * duration).toLong()), style = times, color = playerInk.copy(alpha = 0.65f)) else Spacer(Modifier.width(1.dp))
                 if (left) Text(
                     if (showLength) formatTime(duration) else "−" + formatTime(duration - (shown * duration).toLong()),
-                    style = times, color = Color.White.copy(alpha = 0.55f),
+                    style = times, color = playerInk.copy(alpha = 0.65f),
                     modifier = Modifier
                         .clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
                         .clickable(onClickLabel = if (showLength) tr(R.string.show_time_left) else tr(R.string.show_song_length)) { c.settings.setShowTrackLength(!showLength) },
@@ -628,6 +641,7 @@ fun TransportRow(
     leadingAction: (@Composable () -> Unit)? = null,
     trailingAction: (@Composable () -> Unit)? = null,
 ) {
+    val playerInk = LocalEmbeddedPlayerInk.current ?: Color.White
     val pc = LocalContainer.current.player
     val style = LocalAppSettings.current.transportStyle
     val playSize = if (compact) 58.dp else 74.dp
@@ -658,7 +672,7 @@ fun TransportRow(
         if (style == TransportStyle.GLYPHS) {
             if (isLoading) {
                 Box(Modifier.size(playTouch), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp, modifier = Modifier.size(if (compact) 30.dp else 38.dp))
+                    CircularProgressIndicator(color = playerInk, strokeWidth = 3.dp, modifier = Modifier.size(if (compact) 30.dp else 38.dp))
                 }
             } else {
                 TransportGlyph(if (isPlaying) PrismIcons.Pause else PrismIcons.Play, if (isPlaying) tr(R.string.widget_pause) else tr(R.string.widget_play), playSize, playTouch, modifier = if (playTag == null) Modifier else Modifier.testTag(playTag)) { playAction?.invoke() ?: pc.togglePlay() }
@@ -739,6 +753,8 @@ private fun ModeGlyph(icon: ImageVector, description: String, active: Boolean, b
  */
 @Composable
 private fun PlayDisc(isPlaying: Boolean, isLoading: Boolean, filled: Boolean, size: Dp, accent: Color? = null, tag: String? = null, onClick: () -> Unit) {
+    val embeddedInk = LocalEmbeddedPlayerInk.current
+    val playerInk = embeddedInk ?: Color.White
     val haptics = rememberHaptics()
     val pressed = remember { MutableInteractionSource() }
     Box(
@@ -747,11 +763,12 @@ private fun PlayDisc(isPlaying: Boolean, isLoading: Boolean, filled: Boolean, si
     ) {
         Box(
             Modifier.size(size).clip(CircleShape)
-                .background(if (filled) (accent ?: Color.White) else (accent ?: Color.White).copy(alpha = if (accent == null) 0.10f else 0.18f))
+                .background(if (filled) (accent ?: playerInk) else (accent ?: playerInk).copy(alpha = if (accent == null) 0.10f else 0.18f))
                 .then(if (com.prism.music.ui.theme.LocalAppSettings.current.view.playRing) Modifier.border(2.dp, com.prism.music.ui.theme.PrismTokens.spectrumRing(), CircleShape) else Modifier),
             contentAlignment = Alignment.Center,
         ) {
-            val tint = if (filled && (accent ?: Color.White).luminance() >= 0.179f) Color.Black else Color.White
+            val tint = if (embeddedInk != null) { if (filled) MaterialTheme.colorScheme.onPrimary else playerInk }
+                else if (filled && (accent ?: Color.White).luminance() >= 0.179f) Color.Black else Color.White
             if (isLoading) CircularProgressIndicator(color = tint, strokeWidth = 1.5.dp, modifier = Modifier.size(size * 0.42f))
             else Crossfade(isPlaying, animationSpec = tween(160), label = "playDisc") { p ->
                 Icon(if (p) PrismIcons.Pause else PrismIcons.Play, if (p) tr(R.string.widget_pause) else tr(R.string.widget_play), tint = tint, modifier = Modifier.size(size * (if (filled) 0.56f else 0.46f)))
@@ -796,6 +813,7 @@ private fun TransportGlyph(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val playerInk = LocalEmbeddedPlayerInk.current ?: Color.White
     val alpha by animateFloatAsState(if (enabled) 1f else 0.3f, label = "transportAlpha")
     val haptics = rememberHaptics()
     val tap by rememberUpdatedState(onClick)
@@ -832,7 +850,7 @@ private fun TransportGlyph(
         ),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, description, tint = Color.White.copy(alpha = alpha), modifier = Modifier.size(size).graphicsLayer { scaleY = heightScale })
+        Icon(icon, description, tint = playerInk.copy(alpha = alpha), modifier = Modifier.size(size).graphicsLayer { scaleY = heightScale })
     }
 }
 
@@ -1258,14 +1276,15 @@ private fun BottomGlyph(icon: ImageVector, description: String, highlighted: Boo
 /** A bare button beside the credits (like, menu): Spectrum keeps them out of discs; [active] (liked) in full white. */
 @Composable
 fun CircleGlyph(icon: ImageVector, description: String, active: Boolean = false, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val playerInk = LocalEmbeddedPlayerInk.current ?: Color.White
     val ink by animateFloatAsState(if (active) 1f else 0.8f, label = "glyphInk")
     val haptics = rememberHaptics()
     Box(
-        modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(alpha = if (active) 0.22f else 0.13f)).border(1.dp, Color.White.copy(alpha = 0.16f), CircleShape)
+        modifier.size(40.dp).clip(CircleShape).background(playerInk.copy(alpha = if (active) 0.22f else 0.13f)).border(1.dp, playerInk.copy(alpha = 0.16f), CircleShape)
             .clickable(remember { MutableInteractionSource() }, indication = null, onClickLabel = description) { haptics.click(); onClick() },
         contentAlignment = Alignment.Center,
     ) {
-        Crossfade(icon, animationSpec = tween(180), label = "glyph") { Icon(it, description, tint = Color.White.copy(alpha = ink), modifier = Modifier.size(20.dp)) }
+        Crossfade(icon, animationSpec = tween(180), label = "glyph") { Icon(it, description, tint = playerInk.copy(alpha = ink), modifier = Modifier.size(20.dp)) }
     }
 }
 

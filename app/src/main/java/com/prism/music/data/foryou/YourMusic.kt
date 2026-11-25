@@ -211,11 +211,13 @@ class YourMusic(private val c: AppContainer) {
         return "${s.authUser}|${s.dataSyncId}|${s.accountName}"
     }
 
-    private suspend fun cachedWaveRelated(avoid: Set<String> = emptySet(), allowed: (Song) -> Boolean = { true }): List<Song> {
+    private suspend fun cachedWaveRelated(avoid: Set<String> = emptySet(), allowed: (Song) -> Boolean = { true },
+        seeds: List<Song>? = null): List<Song> {
         val account = waveAccount() + "|"
         val now = System.currentTimeMillis()
+        val keys = seeds?.mapTo(hashSetOf()) { account + it.id }
         return wavePageLock.withLock {
-            MyWave.fuse(wavePages.filter { (key, page) -> key.startsWith(account) && now - page.at in 0L..600_000L }
+            MyWave.fuse(wavePages.filter { (key, page) -> key.startsWith(account) && (keys == null || key in keys) && now - page.at in 0L..600_000L }
                 .values.map { page -> page.songs.filter { LocalRadio.sameSong(it) !in avoid && allowed(it) } }, 160)
         }
     }
@@ -342,8 +344,12 @@ class YourMusic(private val c: AppContainer) {
         val known: (Song) -> Boolean = { history?.has(it) != false || it.id in knownIds ||
             LocalRadio.sameSong(it) in likedKeys }
         // With no likes, recommendations can still lead to related songs as the session develops.
-        val seeds = (taste.likedSeeds + listOfNotNull(previous).filter { !it.isLocal && !it.isVideo && !it.isEpisode && !it.isLive })
-            .distinctBy { it.id }
+        // A positive profile wins over an arbitrary feed. A new profile may use the feed to discover initial seeds.
+        val positive = taste.likedSeeds + listOfNotNull(previous)
+        val seeds = VibeLearning.recallSeeds(positive, base,
+            id = { it.id }, artist = { it.primaryArtist }, eligible = {
+                !it.isLocal && !it.isVideo && !it.isEpisode && !it.isLive && recommendationAllowed(it, known(it))
+            })
         val feedback = c.recFeedback
         val recentArtists = existing.takeLast(12).map { it.primaryArtist }
         fun eligible(song: Song) = LocalRadio.sameSong(song) !in avoid &&
@@ -375,17 +381,17 @@ class YourMusic(private val c: AppContainer) {
                 artistDoubt = feedback::artistDoubt, artistEvidence = feedback.waveEvidence(vibeFeedbackKey()), quotaOffset = offset,
                 recentArtists = recentArtists)
         }
-        val cached = if (style.discoveryPercent > 0) cachedWaveRelated(avoid, ::eligible) else emptyList()
+        val cached = if (style.discoveryPercent > 0) cachedWaveRelated(avoid, ::eligible, seeds) else emptyList()
         if (fast) {
             val ready = select(cached)
             if (ready.isNotEmpty() || style.discoveryPercent == 0) return@withContext ready
             // Only on a cache miss: a short first lookup, not three full radios.
             val quick = kotlinx.coroutines.withTimeoutOrNull(900L) {
-                waveRelated(seeds, offset, avoid, known, maxRequests = 1, timeoutMs = 850L, allowed = ::eligible)
+                waveRelated(seeds, offset, avoid, known, maxRequests = 1, timeoutMs = 850L, scoped = true, allowed = ::eligible)
             }
-            return@withContext select(quick ?: cachedWaveRelated(avoid, ::eligible), allowSparseProfile = true)
+            return@withContext select(quick ?: cachedWaveRelated(avoid, ::eligible, seeds), allowSparseProfile = true)
         }
-        val related = if (style.discoveryPercent > 0) waveRelated(seeds, offset, avoid, known, allowed = ::eligible) else cached
+        val related = if (style.discoveryPercent > 0) waveRelated(seeds, offset, avoid, known, scoped = true, allowed = ::eligible) else cached
         select(related, allowSparseProfile = true)
     }
 

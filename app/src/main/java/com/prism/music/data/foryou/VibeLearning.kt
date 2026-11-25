@@ -64,6 +64,15 @@ internal object VibeLearning {
     fun diversityWeight(pressure: Double, diversity: Double): Double =
         1.0 / (1.0 + pressure.coerceAtLeast(0.0) * (0.12 + 0.38 * diversity.coerceIn(0.0, 1.0)))
 
+    /** Bounded artist-balanced recall seeds. Contextual caches never become personal seeds by accident. */
+    fun <T> recallSeeds(positive: List<T>, fallback: List<T>, id: (T) -> String, artist: (T) -> String,
+        eligible: (T) -> Boolean, limit: Int = 12): List<T> {
+        val pool = positive.filter(eligible).distinctBy(id).ifEmpty { fallback.filter(eligible).distinctBy(id) }
+        val diverse = pool.distinctBy { artist(it).lowercase().trim().ifBlank { id(it) } }
+        val used = diverse.mapTo(hashSetOf(), id)
+        return (diverse + pool.filter { id(it) !in used }).take(limit.coerceAtLeast(0))
+    }
+
     class Session(private val clock: () -> Long = { System.nanoTime() / 1_000_000L }) {
         private data class Event(val artist: String, val outcome: Outcome, val at: Long)
         private val events = ArrayDeque<Event>()

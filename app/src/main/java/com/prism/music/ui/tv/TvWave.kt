@@ -185,13 +185,6 @@ internal fun TvWavePlace(nav: TvNav) {
                             MyWave.Depth.HITS -> tr(R.string.prism_stream_hits)
                             MyWave.Depth.DEEP -> tr(R.string.prism_stream_deep_cuts)
                         } }, { editor = editor.tune(draft.copy(depth = it)) })
-                    Text(tr(R.string.prism_stream_player_card_backdrop), style = MaterialTheme.typography.titleSmall)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        WaveTvButton(tr(R.string.prism_stream_track_artwork), { editor = editor.copy(themeColors = false) },
-                            Modifier.weight(1f).tvItem("tv_wave/artwork"), primary = !editor.themeColors)
-                        WaveTvButton(tr(R.string.prism_stream_prism_theme), { editor = editor.copy(themeColors = true) },
-                            Modifier.weight(1f).tvItem("tv_wave/theme"), primary = editor.themeColors)
-                    }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         WaveTvButton(tr(R.string.prism_stream_save_scenario), { namingPreset = true },
@@ -204,7 +197,7 @@ internal fun TvWavePlace(nav: TvNav) {
                         WaveTvButton(tr(R.string.prism_stream_cancel), { toggleTuning(false) }, Modifier.weight(1f).tvItem("tv_wave/cancel"))
                         WaveTvButton(tr(R.string.prism_stream_done), {
                             val final = editor
-                            c.settings.applyStreamTuning(final.themeColors.takeIf { it != baseline.themeColors }, baseline.presets, final.presets,
+                            c.settings.applyStreamTuning(null, baseline.presets, final.presets,
                                 baseline.scenarioStyles, final.scenarioStyles)
                             toggleTuning(false)
                             if (final.style != style && c.queue.source.value.isMyWave) start(final.style, final.presetId)
@@ -260,12 +253,12 @@ internal fun TvWavePlace(nav: TvNav) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(title, Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium)
                 }
-                Row(Modifier.weight(1f).fillMaxWidth().tvGlass(TvShapes.card).padding(24.dp),
+                Row(Modifier.weight(1f).fillMaxWidth().tvGlass(com.prism.music.ui.theme.LocalUi.current.shape(24.dp)).padding(24.dp),
                     horizontalArrangement = Arrangement.spacedBy(if (narrow) 20.dp else 36.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     BoxWithConstraints(Modifier.weight(if (narrow) 0.65f else 0.85f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                         Artwork(now?.art, Modifier.size(minOf(maxWidth, maxHeight, 340.dp)),
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp), size = 1080)
+                            shape = com.prism.music.ui.theme.LocalUi.current.shape(18.dp), size = 1080)
                     }
                     Column(Modifier.weight(1.15f), verticalArrangement = Arrangement.spacedBy(if (narrow) 8.dp else 16.dp)) {
                         Text(now?.title ?: tr(R.string.prism_stream_music_in_your_rhythm),

@@ -61,4 +61,14 @@ class VibeLearningTest {
         assertTrue(VibeLearning.diversityWeight(3.0, 1.0) < VibeLearning.diversityWeight(3.0, 0.0))
         assertTrue(VibeLearning.artistPressure(List(1000) { "A" }).getValue("a") < 6.0)
     }
+
+    @Test fun personalSeedsPreferPositiveHistoryAndUseDiverseFallbackOnlyWhenNeeded() {
+        val positives = listOf("a:1", "a:2", "b:1")
+        val fallback = listOf("c:1", "d:1", "e:1")
+        fun select(p: List<String>, limit: Int) = VibeLearning.recallSeeds(p, fallback,
+            id = { it }, artist = { it.substringBefore(':') }, eligible = { it != "blocked" }, limit = limit)
+        assertEquals(listOf("a:1", "b:1"), select(positives, 2))
+        assertEquals(listOf("c:1", "d:1"), select(listOf("blocked"), 2))
+        assertEquals(emptyList<String>(), select(positives, 0))
+    }
 }

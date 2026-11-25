@@ -33,7 +33,6 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
@@ -42,13 +41,8 @@ import coil3.request.ImageRequest
 import com.prism.music.data.model.hiRes
 import com.prism.music.ui.player.playerCoverRequest
 import com.prism.music.ui.player.pausedCoverScale
-import com.prism.music.ui.player.ThemeBackdrop
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.luminance
-import com.prism.music.ui.player.rememberFullArtworkBlur
-import com.prism.music.ui.player.FullArtworkBlurBackdrop
 import com.prism.music.ui.player.TransportRow
 import com.prism.music.ui.player.PlayerScrubber
 import com.prism.music.ui.player.CircleGlyph
@@ -261,15 +255,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val hasPrevious by c.player.hasPrevious.collectAsState()
     val current = song.takeIf { wave }
     val cover = current?.let { c.covers.art(SongItem(it)) }
-    // The artwork mode is a real player backdrop, not an extracted palette.
-    // The player's own white ink stays stable as covers change.
-    val accent = if (settings.streamThemeColors) lerp(scheme.primary, Color.White, if (scheme.primary.luminance() < 0.28f) 0.48f else 0f) else Color.White
-    val blurred = rememberFullArtworkBlur(cover.takeUnless { settings.streamThemeColors }, settings.player.blur)
-    var lastBlur by remember { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(cover, blurred, settings.streamThemeColors) {
-        if (cover == null || settings.streamThemeColors) lastBlur = null
-        else if (blurred != null) lastBlur = blurred
-    }
+    // An embedded card always follows Prism's active appearance; no independent Vibe palette.
+    val accent = scheme.primary
     val context = LocalContext.current
     val artUrl = hiRes(cover, 1200)
     var artTry by remember(artUrl) { mutableIntStateOf(0) }
@@ -317,13 +304,9 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     @Composable fun Hero(modifier: Modifier) {
         // The surrounding route keeps Home's ScreenBackdrop. All media effects are clipped to this one panel.
         GlassSurface(modifier.testTag("home:my_wave"), shape = ui.shape(24.dp),
-            onMedia = true, inPage = true) {
-            if (settings.streamThemeColors) ThemeBackdrop()
-            else Crossfade(targetState = lastBlur, animationSpec = tween(fadeMs), label = "streamBackdrop",
-                modifier = Modifier.matchParentSize()) { image ->
-                if (image == null) ThemeBackdrop()
-                else FullArtworkBlurBackdrop(image, scrim = (1.3f - 0.95f * settings.player.backdropShow.coerceAtLeast(0f)).coerceAtLeast(0.8f))
-            }
+            onMedia = false, inPage = true) {
+            CompositionLocalProvider(com.prism.music.ui.player.LocalEmbeddedPlayerInk provides scheme.onSurface,
+                LocalContentColor provides scheme.onSurface) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
             @Composable fun CoverArt(modifier: Modifier) {
                 val scale by animateFloatAsState(
@@ -331,9 +314,9 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     tween(fadeMs), label = "streamCoverScale")
                 val shape = ui.shape(16.dp)
                 Box(modifier.graphicsLayer { scaleX = scale; scaleY = scale }
-                    .shadow(10.dp, shape).clip(shape).background(Color.Black.copy(alpha = 0.25f))
+                    .shadow(10.dp, shape).clip(shape).background(scheme.surfaceContainerHighest)
                     .clickable(enabled = current != null, onClick = onOpenPlayer), contentAlignment = Alignment.Center) {
-                    if (shownCover == null) Icon(if (current == null) PrismIcons.Stream else PrismIcons.Song, null, Modifier.fillMaxSize(0.32f), tint = Color.White.copy(alpha = 0.35f))
+                    if (shownCover == null) Icon(if (current == null) PrismIcons.Stream else PrismIcons.Song, null, Modifier.fillMaxSize(0.32f), tint = scheme.onSurfaceVariant.copy(alpha = 0.65f))
                     Crossfade(targetState = shownCover, animationSpec = tween(fadeMs), label = "streamArtwork",
                         modifier = Modifier.matchParentSize()) { image ->
                         if (image != null) AsyncImage(image, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -356,7 +339,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 } else if (on) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown
                 val label = if (like) tr(R.string.prism_stream_like) else tr(R.string.prism_stream_not_for_me)
                 Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                    if (item == null) Icon(glyph, label, tint = Color.White.copy(alpha = 0.3f), modifier = Modifier.size(20.dp))
+                    if (item == null) Icon(glyph, label, tint = scheme.onSurfaceVariant.copy(alpha = 0.4f), modifier = Modifier.size(20.dp))
                     else CircleGlyph(glyph, label, active = on) {
                         if (like) c.library.toggleLike(item)
                         else {
@@ -371,9 +354,9 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     Column(Modifier.weight(1f).then(if (current != null) Modifier.clickable(onClick = onOpenPlayer) else Modifier),
                         verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(current?.title ?: tr(R.string.prism_stream_music_in_your_rhythm),
-                            style = playerTitleStyle(MaterialTheme.typography, settings), color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            style = playerTitleStyle(MaterialTheme.typography, settings), color = scheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text(current?.primaryArtist ?: tr(R.string.prism_stream_start_listening),
-                            style = playerArtistStyle(MaterialTheme.typography, settings), color = Color.White.copy(alpha = 0.72f),
+                            style = playerArtistStyle(MaterialTheme.typography, settings), color = scheme.onSurfaceVariant,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (reactions) {
@@ -390,7 +373,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 TransportRow(isPlaying = wave && playing, isLoading = pending && !wave,
                     previousEnabled = wave && hasPrevious, nextEnabled = wave && hasNext,
                     compact = true, showModes = false, playAction = { if (wave) c.player.togglePlay() else if (!starting) start() },
-                    playAccent = accent.takeIf { settings.streamThemeColors }, playTag = "home:my_wave:play")
+                    playAccent = accent, playTag = "home:my_wave:play")
                     }
                 }
             }
@@ -411,8 +394,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     } else Column(Modifier.fillMaxWidth()) {
                         com.prism.music.ui.player.ThinSlider(value = 0f, onValueChange = {})
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("0:00", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.55f))
-                            Text("–:–", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.55f))
+                            Text("0:00", style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+                            Text("–:–", style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -444,6 +427,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 }
             }
         }
+            }
         }
     }
 
@@ -490,7 +474,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         fun applySettings() {
             val initial = baseline ?: return
             val final = editor ?: return
-            c.settings.applyStreamTuning(final.themeColors.takeIf { it != initial.themeColors }, initial.presets, final.presets,
+            c.settings.applyStreamTuning(null, initial.presets, final.presets,
                 initial.scenarioStyles, final.scenarioStyles)
             if (final.presetId != null && initial.presets.none { it.id == final.presetId } && final.presets.any { it.id == final.presetId })
                 revealPresetId = final.presetId
@@ -504,7 +488,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         }
         ModalBottomSheet(onDismissRequest = { closeSettings() },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = scheme.surfaceContainerHigh) {
+            shape = ui.shape(28.dp), containerColor = scheme.surfaceContainerHigh, contentColor = scheme.onSurface) {
             Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f).padding(horizontal = 20.dp).navigationBarsPadding().imePadding()) {
                 Row(Modifier.fillMaxWidth().padding(bottom = 18.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -537,19 +521,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     }
                     if (advanced) {
                     WaveChoices(tr(R.string.prism_stream_popularity), MyWave.Depth.entries, draftStyle.depth, ::depthName) { value -> change { it.tune(it.style.copy(depth = value)) } }
-                    Text(tr(R.string.prism_stream_player_card_backdrop), style = MaterialTheme.typography.titleSmall)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        PrismChip(fitLabel = true, selected = !editing.themeColors,
-                            onClick = { change { it.copy(themeColors = false) } },
-                            modifier = Modifier.weight(1f).height(44.dp).testTag("stream:color:artwork"),
-                            label = tr(R.string.prism_stream_track_artwork))
-                        PrismChip(fitLabel = true, selected = editing.themeColors,
-                            onClick = { change { it.copy(themeColors = true) } },
-                            modifier = Modifier.weight(1f).height(44.dp).testTag("stream:color:theme"),
-                            label = tr(R.string.prism_stream_prism_theme))
                     }
 
-                    }
                     HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.65f))
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (editing.presets.isNotEmpty())
