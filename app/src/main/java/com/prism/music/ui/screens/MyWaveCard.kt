@@ -641,7 +641,7 @@ private fun WaveScale(
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(right, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
-                if (automaticLabel == null)
+                if (ratio && automaticLabel == null)
                     Text("$percent%", style = MaterialTheme.typography.headlineSmall, color = scheme.onSurface)
             }
         }

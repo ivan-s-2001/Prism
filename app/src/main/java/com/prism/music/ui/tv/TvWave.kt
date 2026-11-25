@@ -293,7 +293,7 @@ private fun TvWaveScale(title: String, value: Int, left: String, right: String,
             }
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(right, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
-                if (automaticLabel == null) Text("$percent%", style = MaterialTheme.typography.titleMedium)
+                if (ratio && automaticLabel == null) Text("$percent%", style = MaterialTheme.typography.titleMedium)
             }
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
