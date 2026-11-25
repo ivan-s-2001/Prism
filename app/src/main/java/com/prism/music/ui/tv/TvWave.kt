@@ -177,7 +177,7 @@ internal fun TvWavePlace(nav: TvNav) {
                     }
                     Text(tr(R.string.prism_stream_changes_apply_after_confirmation),
                         style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         TvButton(tr(R.string.prism_stream_cancel), { toggleTuning(false) }, Modifier.weight(1f).tvItem("tv_wave/cancel"))
                         TvButton(tr(R.string.prism_stream_done), {
                             val final = editor
@@ -322,7 +322,7 @@ private fun TvWaveScale(title: String, value: Int, left: String, right: String,
                 if (ratio && automaticLabel == null) Text("${100 - percent}%", style = MaterialTheme.typography.titleMedium)
             }
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(right, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+                Text(right, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.End)
                 if (ratio && automaticLabel == null) Text("$percent%", style = MaterialTheme.typography.titleMedium)
             }
         }

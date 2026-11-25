@@ -163,7 +163,7 @@ private fun TabBarPreview(c: ThemeColors) {
                 if (!words) Icon(if (on && tab == NavTab.MY_WAVE) PrismIcons.StreamFilled else tab.icon(), null, Modifier.size(22.dp), tint = if (on) scheme.onBackground else c.ink3)
                 val showLabel = !minimal && (s.navLabels == NavLabels.ALWAYS || words || (s.navLabels == NavLabels.SELECTED && on))
                 if (showLabel) Text(s.tabNames[tab] ?: tab.label, style = MaterialTheme.typography.labelSmall, color = if (on) scheme.onBackground else c.ink3, maxLines = 1, softWrap = false,
-                    overflow = TextOverflow.Ellipsis, autoSize = com.prism.music.ui.components.FitAutoSize(minFontSize = 8.sp, maxFontSize = MaterialTheme.typography.labelSmall.fontSize), modifier = Modifier.padding(horizontal = 3.dp))
+                    overflow = TextOverflow.Ellipsis, autoSize = com.prism.music.ui.components.FitAutoSize(minFontSize = minOf(8f, MaterialTheme.typography.labelSmall.fontSize.value).sp, maxFontSize = MaterialTheme.typography.labelSmall.fontSize), modifier = Modifier.padding(horizontal = 3.dp))
                 if (!docked && on) Box(Modifier.padding(top = 3.dp).width(14.dp).height(2.dp).clip(CircleShape).background(light))
             }
         }

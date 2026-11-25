@@ -580,7 +580,7 @@ private fun HeroCard(d: ReplayData, period: Period, notYet: Boolean, loading: Bo
             Column(Modifier.toggleListenUnit()) {
                 Text(total.text(anim.value.toLong()), color = Color.White, style = MaterialTheme.typography.displayLarge,
                     maxLines = 1, softWrap = false, modifier = Modifier.fillMaxWidth(),
-                    autoSize = com.prism.music.ui.components.FitAutoSize(minFontSize = 22.sp, maxFontSize = MaterialTheme.typography.displayLarge.fontSize))
+                    autoSize = com.prism.music.ui.components.FitAutoSize(minFontSize = minOf(22f, MaterialTheme.typography.displayLarge.fontSize.value).sp, maxFontSize = MaterialTheme.typography.displayLarge.fontSize))
                 Text(tr(R.string.listened_2, total.unit).trim(),color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.titleMedium)
             }
             Spacer(Modifier.height(18.dp))
@@ -706,7 +706,7 @@ private fun Stat(value: String, label: String, modifier: Modifier = Modifier) {
     Column(modifier) {
         Text(value, color = Color.White, style = MaterialTheme.typography.headlineSmall,
             maxLines = 1, softWrap = false, modifier = Modifier.fillMaxWidth(),
-            autoSize = com.prism.music.ui.components.FitAutoSize(minFontSize = 14.sp, maxFontSize = MaterialTheme.typography.headlineSmall.fontSize))
+            autoSize = com.prism.music.ui.components.FitAutoSize(minFontSize = minOf(14f, MaterialTheme.typography.headlineSmall.fontSize.value).sp, maxFontSize = MaterialTheme.typography.headlineSmall.fontSize))
         Text(label, color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelMedium, maxLines = 2)
     }
 }

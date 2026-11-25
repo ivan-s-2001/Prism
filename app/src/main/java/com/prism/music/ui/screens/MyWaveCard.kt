@@ -289,7 +289,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(title, style = pageTitleStyle(), color = scheme.onBackground, maxLines = 1)
-                Text(status, color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                Text(status, color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             RoundAction(PrismIcons.Refresh, tr(R.string.prism_stream_refresh_stream),
                 enabled = !starting, modifier = Modifier.testTag("home:my_wave:refresh")) {
@@ -494,7 +494,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             Column(Modifier.fillMaxWidth().heightIn(max = 640.dp).padding(horizontal = 20.dp).navigationBarsPadding().imePadding()) {
                 Row(Modifier.fillMaxWidth().padding(bottom = 18.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(tr(R.string.prism_stream_tune_your_stream), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                    Text(tr(R.string.prism_stream_tune_your_stream), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
                     PrismChip(selected = false, onClick = { change { it.reset() } }, label = tr(R.string.prism_stream_reset), icon = PrismIcons.Refresh, modifier = Modifier.height(44.dp))
                 }
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
@@ -616,7 +616,7 @@ private fun WaveScale(
             }
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(right, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+                Text(right, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.End)
                 if (ratio && automaticLabel == null)
                     Text("$percent%", style = MaterialTheme.typography.headlineSmall, color = scheme.onSurface)
             }

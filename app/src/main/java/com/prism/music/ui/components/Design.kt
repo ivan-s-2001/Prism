@@ -57,6 +57,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalDensity
 import com.prism.music.data.prefs.TitleSize
 import com.prism.music.ui.LocalNavigator
 import com.prism.music.ui.theme.GlassSurface
@@ -243,18 +245,23 @@ fun PrismChip(
     val lifted = glassFill(2.6f)
     val bg by animateColorAsState(if (selected) lifted else if (idle != Color.Unspecified) idle else quiet, tween(180), label = "chipBg")
     val fg by animateColorAsState(if (selected) scheme.onSurface else scheme.onSurfaceVariant, tween(180), label = "chipFg")
+    val labelStyle = MaterialTheme.typography.labelLarge
+    val chipHeight = with(LocalDensity.current) { labelStyle.lineHeight.toDp() }.plus(12.dp).coerceAtLeast(36.dp)
     Row(
-        modifier.height(36.dp).clip(CircleShape).background(bg)
+        modifier.height(chipHeight).clip(CircleShape).background(bg)
             .then(if (selected) Modifier.spectrumRing(CircleShape) else Modifier.border(1.dp, glassEdge(), CircleShape))
             .semantics { this.selected = selected }
             .then(
                 if (onLongClick == null) Modifier.clickable(onClick = onClick)
                 else Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = onLongClickLabel),
-            ).padding(horizontal = 15.dp),
+            ).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
     ) {
         if (icon != null) { Icon(icon, null, Modifier.size(18.dp), tint = fg); Spacer(Modifier.width(6.dp)) }
-        Text(label, style = MaterialTheme.typography.labelLarge, color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(label, style = labelStyle, color = fg, maxLines = 1, softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            autoSize = FitAutoSize(minFontSize = minOf(10f, labelStyle.fontSize.value).sp, maxFontSize = labelStyle.fontSize))
     }
 }
 
@@ -281,8 +288,10 @@ fun PrismScenarioDisc(
             contentAlignment = Alignment.Center) {
             Icon(icon, null, Modifier.size(26.dp), tint = if (selected) scheme.onSurface else scheme.onSurfaceVariant)
         }
-        Box(Modifier.fillMaxWidth().height(32.dp), contentAlignment = Alignment.TopCenter) {
-            Text(label, style = MaterialTheme.typography.labelMedium,
+        val captionStyle = MaterialTheme.typography.labelMedium
+        val captionHeight = with(LocalDensity.current) { captionStyle.lineHeight.toDp() * 2 }.coerceAtLeast(32.dp)
+        Box(Modifier.fillMaxWidth().height(captionHeight), contentAlignment = Alignment.TopCenter) {
+            Text(label, style = captionStyle, modifier = Modifier.padding(horizontal = 2.dp),
                 color = if (selected) scheme.onSurface else scheme.onSurfaceVariant,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -325,8 +334,9 @@ fun <T> Segmented(options: List<T>, selected: T, label: (T) -> String, modifier:
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    label(o), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    color = fg, modifier = Modifier.padding(horizontal = 6.dp),
+                    label(o), style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+                    autoSize = FitAutoSize(minFontSize = minOf(10f, MaterialTheme.typography.labelLarge.fontSize.value).sp, maxFontSize = MaterialTheme.typography.labelLarge.fontSize),
+                    color = fg, modifier = Modifier.padding(horizontal = 4.dp),
                 )
             }
         }

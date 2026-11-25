@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.tv.material3.Border
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
@@ -127,7 +128,8 @@ fun TvButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, i
             Icon(icon, null, Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
         }
-        Text(text, style = MaterialTheme.typography.titleSmall)
+        Text(text, style = MaterialTheme.typography.titleSmall, maxLines = 2,
+            overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
     }
 }
 
@@ -175,8 +177,10 @@ fun TvScenarioDisc(label: String, icon: ImageVector, selected: Boolean, onClick:
             border = IconButtonDefaults.border(focusedBorder = tvFocusBorder(CircleShape, TV_RING_THIN))) {
             Icon(icon, label, Modifier.size(28.dp))
         }
-        Box(Modifier.fillMaxWidth().height(36.dp), contentAlignment = Alignment.TopCenter) {
-            Text(label, style = MaterialTheme.typography.labelMedium,
+        val captionStyle = MaterialTheme.typography.labelMedium
+        val captionHeight = with(LocalDensity.current) { captionStyle.lineHeight.toDp() * 2 }.coerceAtLeast(36.dp)
+        Box(Modifier.fillMaxWidth().height(captionHeight), contentAlignment = Alignment.TopCenter) {
+            Text(label, style = captionStyle, modifier = Modifier.padding(horizontal = 4.dp),
                 color = if (selected) scheme.onSurface else scheme.onSurfaceVariant,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
