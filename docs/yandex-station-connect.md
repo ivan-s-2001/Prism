@@ -89,3 +89,31 @@ synchronization, production group queue integration, persistent groups,
 or subscription-free operation is claimed until tested. The production
 Cast currently still owns one RendererLink; group playback is limited to
 the debug Lab pending these hardware results.
+
+
+## Alice voice control (separate integration)
+
+References: https://www.music-assistant.io/player-support/yandex-station/ and
+https://github.com/volodarskij/alice-spotify-bridge .
+Glagol external streams do not register the Prism queue with Alice.
+Native next/previous/seek may target Yandex content instead; do not infer
+a next command from a foreign radio/track or forcibly reclaim playback.
+
+- For local playback state, prefer explicit state.playing, not hasPause.
+  Follow physical/voice volume and pause changes, and test Alice speaking
+  and foreign playback interruptions; do not auto-resume after explicit stop.
+- For reliable voice search and queue navigation, investigate an opt-in
+  Yandex Dialogs skill with an HTTPS webhook and authenticated command
+  channel to the active Prism player. Require explicit account/device pairing,
+  replay protection and session expiry; no public unauthenticated control.
+- Command intents: next, previous, pause, resume, stop, relative/absolute
+  seek, search-and-play, enqueue, group volume and named Station volume.
+  Route through the existing queue, never through native Yandex music search.
+- Example invocation: "Алиса, попроси Призму включить Metallica".
+  Short unqualified commands outside the skill are not guaranteed.
+- Local-first player remains independent of the optional cloud skill.
+  Skill backend, account linking and voice command delivery are not implemented.
+
+Stop diagnostics now check fresh playing=false and attempt an explicit
+stop phrase if necessary. Hardware validation is pending; a command
+acknowledgement alone is not proof of stopping.
