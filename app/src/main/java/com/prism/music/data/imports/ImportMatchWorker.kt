@@ -101,11 +101,11 @@ class ImportMatchWorker(context: Context, params: WorkerParameters) : CoroutineW
             .build()
 
         /** Starts matching (or picks up its network rule again), and keeps the weekly retry lined up. */
-        fun enqueue(context: Context, mobile: Boolean) {
+        fun enqueue(context: Context, mobile: Boolean, explicitTransfer: Boolean = false) {
             val wm = WorkManager.getInstance(context)
             wm.enqueueUniqueWork(
                 NAME, ExistingWorkPolicy.REPLACE,
-                OneTimeWorkRequestBuilder<ImportMatchWorker>().setConstraints(constraints(mobile))
+                OneTimeWorkRequestBuilder<ImportMatchWorker>().setConstraints(if (explicitTransfer) Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build() else constraints(mobile))
                     .setBackoffCriteria(BackoffPolicy.LINEAR, 30, TimeUnit.SECONDS).build(),
             )
             wm.enqueueUniquePeriodicWork(WEEKLY, ExistingPeriodicWorkPolicy.UPDATE, weekly(mobile))
