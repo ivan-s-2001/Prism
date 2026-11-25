@@ -1914,6 +1914,11 @@ data class AppSettings(
     val frostedPages: Boolean = true,
     val replayThemeColors: Boolean = false,
     val streamThemeColors: Boolean = false,
+    val streamShowCover: Boolean = true,
+    val streamShowProgress: Boolean = true,
+    val streamShowReactions: Boolean = true,
+    val streamShowStatus: Boolean = true,
+    val streamCompactScenarios: Boolean = false,
     val streamRussianPercent: Int = -1,
     val streamPresets: List<SavedWavePreset> = emptyList(),
     val streamStyleOrigin: String? = null,
@@ -2323,6 +2328,11 @@ class SettingsRepository(
         val frostedPages = booleanPreferencesKey("frosted_pages")
         val replayThemeColors = booleanPreferencesKey("replay_theme_colors")
         val streamThemeColors = booleanPreferencesKey("stream_theme_colors")
+        val streamShowCover = booleanPreferencesKey("stream_show_cover")
+        val streamShowProgress = booleanPreferencesKey("stream_show_progress")
+        val streamShowReactions = booleanPreferencesKey("stream_show_reactions")
+        val streamShowStatus = booleanPreferencesKey("stream_show_status")
+        val streamCompactScenarios = booleanPreferencesKey("stream_compact_scenarios")
         val streamRussianPercent = intPreferencesKey("stream_russian_percent")
         val streamPresets = stringPreferencesKey("stream_presets")
         val streamStyleOrigin = stringPreferencesKey("stream_style_origin")
@@ -2468,6 +2478,7 @@ class SettingsRepository(
                 fontChoice, textScale, corners, uiDensity, titleSize, cardSize, reduceMotion, navStyle, navLabels, navHideOnScroll,
                 navTabs, startTab, miniPlayerStyle, miniSkipButtons, miniPrevButton, miniPlayButton, miniProgress, miniProgressColor, miniFillStrength, playRing, playingInPageColor, playerBackground, playerBackdropShow, playerArtCorners, transportStyle,
                 coverSize, scrubberStyle, artShrinkOnPause, showOutputDevice, lyricsAlign, libraryView, playlistHeroCover, frostedPages, replayThemeColors, streamThemeColors, streamRussianPercent,
+                streamShowCover, streamShowProgress, streamShowReactions, streamShowStatus, streamCompactScenarios,
                 immersiveArt, immersiveLyrics, immersiveControls, playerShuffleRepeat, lightStyle,
                 playerLayout, vinylTonearm, playerDeck, playerButtons, scrubberColor, playerTitleAlign, playerTitleSize, playerTitleScroll,
                 playerTimes, meshSpeed, meshIntensity, playerBlur, canvasFillsBackground,
@@ -2513,7 +2524,8 @@ class SettingsRepository(
                 volumeMatchesProgress to 'b', playerHandle to 'b', hideStatusBarPlayer to 'b', playerNavBand to 'b',
                 lyricsAlign to 's', lyricsBlur to 'b', lyricsProgressLine to 'b', lyricsSourceButton to 'b', lyricsScale to 'f',
                 libraryView to 's', libraryViews to 's', libraryColumns to 's', librarySubtitles to 'b', playlistHeroCover to 'b',
-                homeHeader to 's', homeHeaderHeight to 's', replayThemeColors to 'b', streamThemeColors to 'b', streamRussianPercent to 'i', replayCard to 's', hideStatusBar to 'b',
+                homeHeader to 's', homeHeaderHeight to 's', replayThemeColors to 'b', streamThemeColors to 'b', streamRussianPercent to 'i',
+                streamShowCover to 'b', streamShowProgress to 'b', streamShowReactions to 'b', streamShowStatus to 'b', streamCompactScenarios to 'b', replayCard to 's', hideStatusBar to 'b',
                 cornerScale to 'f', songShape to 's', albumShape to 's', artistShape to 's', playerShape to 's', buttonShape to 's', playOutlined to 'b',
                 typeWeight to 's', typeSpacing to 's', titleFont to 's', tabTint to 's', playerTitleWeight to 's', typeClassic to 'b', controlsClassic to 'b',
                 panelPlayer to 's', queueHeadings to 'b', queueDjChip to 'b', castMark to 'b', immersiveVideo to 'b', bleedFit to 's', coverFlight to 'b',
@@ -3109,6 +3121,11 @@ class SettingsRepository(
             frostedPages = p[K.frostedPages] ?: d.frostedPages,
             replayThemeColors = p[K.replayThemeColors] ?: d.replayThemeColors,
             streamThemeColors = p[K.streamThemeColors] ?: d.streamThemeColors,
+            streamShowCover = p[K.streamShowCover] ?: d.streamShowCover,
+            streamShowProgress = p[K.streamShowProgress] ?: d.streamShowProgress,
+            streamShowReactions = p[K.streamShowReactions] ?: d.streamShowReactions,
+            streamShowStatus = p[K.streamShowStatus] ?: d.streamShowStatus,
+            streamCompactScenarios = p[K.streamCompactScenarios] ?: d.streamCompactScenarios,
             streamRussianPercent = (p[K.streamRussianPercent] ?: d.streamRussianPercent).coerceIn(-1, 100),
             streamPresets = readStreamPresets(p[K.streamPresets]),
             streamStyleOrigin = p[K.streamStyleOrigin]?.takeIf(com.prism.music.data.foryou.MyWave::isOrigin)
@@ -3958,6 +3975,11 @@ class SettingsRepository(
     fun setFrostedPages(v: Boolean) = edit { it[K.frostedPages] = v }
     fun setReplayThemeColors(v: Boolean) = edit { it[K.replayThemeColors] = v }
     fun setStreamThemeColors(v: Boolean) = edit { it[K.streamThemeColors] = v }
+    fun setStreamShowCover(v: Boolean) = edit { it[K.streamShowCover] = v }
+    fun setStreamShowProgress(v: Boolean) = edit { it[K.streamShowProgress] = v }
+    fun setStreamShowReactions(v: Boolean) = edit { it[K.streamShowReactions] = v }
+    fun setStreamShowStatus(v: Boolean) = edit { it[K.streamShowStatus] = v }
+    fun setStreamCompactScenarios(v: Boolean) = edit { it[K.streamCompactScenarios] = v }
     fun setStreamRussianPercent(v: Int) = edit { it[K.streamRussianPercent] = v.coerceIn(-1, 100) }
     internal fun setStreamStyle(style: com.prism.music.data.foryou.MyWave.Style, scenarioId: String? = null) = edit {
         it[K.streamStyleOrigin] = style.origin

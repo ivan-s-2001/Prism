@@ -143,6 +143,13 @@ fun TvSettingsPlace(nav: TvNav) {
                 TvSettingAction.Run { nav.go(TvRoute.HomeEditor) },
             ),
         ),
+        TvSettingGroup(tr(R.string.stream), PrismIcons.Stream, emptyList()) to listOf(
+            TvSettingRow(TvSetting(tr(R.string.artwork), on = settings.streamShowCover), TvSettingAction.Flip({ c.settings.setStreamShowCover(it) }, settings.streamShowCover)),
+            TvSettingRow(TvSetting(tr(R.string.progress_bar), on = settings.streamShowProgress), TvSettingAction.Flip({ c.settings.setStreamShowProgress(it) }, settings.streamShowProgress)),
+            TvSettingRow(TvSetting(tr(R.string.prism_stream_appearance_reactions), on = settings.streamShowReactions), TvSettingAction.Flip({ c.settings.setStreamShowReactions(it) }, settings.streamShowReactions)),
+            TvSettingRow(TvSetting(tr(R.string.prism_stream_appearance_status), on = settings.streamShowStatus), TvSettingAction.Flip({ c.settings.setStreamShowStatus(it) }, settings.streamShowStatus)),
+            TvSettingRow(TvSetting(tr(R.string.prism_stream_appearance_compact_scenarios), on = settings.streamCompactScenarios), TvSettingAction.Flip({ c.settings.setStreamCompactScenarios(it) }, settings.streamCompactScenarios)),
+        ),
         TvSettingGroup(tr(R.string.text_size), PrismIcons.Visible, emptyList()) to listOf(
             TvSettingRow(TvSetting(tr(R.string.text_size), percent(settings.textScale)), TvSettingAction.Choose(SIZES.map { v -> percent(v) to { c.settings.setTextScale(v) } })),
         ),

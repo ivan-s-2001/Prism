@@ -40,6 +40,7 @@ private val page = SettingsPageId.HOME_LIBRARY
 /** The page's six groups, by the names they're drawn and found under. */
 internal object HlGroups {
     val home get() = tr(R.string.home)
+    val stream get() = tr(R.string.stream)
     val search get() = tr(R.string.search)
     val replayCard get() = tr(R.string.replay_card)
     val library get() = tr(R.string.library)
@@ -75,6 +76,11 @@ fun HomeLibraryPage(bottomPadding: Dp, find: String? = null, showBack: Boolean =
     val d = remember { AppSettings() }
     val reset = ListeningResets()
     val onOff: (Boolean) -> String = { ListeningResets.onOff(it) }
+    val streamShowCoverChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.artwork), s.streamShowCover, d.streamShowCover, onOff) { prefs.setStreamShowCover(it) }
+    val streamShowProgressChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.progress_bar), s.streamShowProgress, d.streamShowProgress, onOff) { prefs.setStreamShowProgress(it) }
+    val streamShowReactionsChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_reactions), s.streamShowReactions, d.streamShowReactions, onOff) { prefs.setStreamShowReactions(it) }
+    val streamShowStatusChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_status), s.streamShowStatus, d.streamShowStatus, onOff) { prefs.setStreamShowStatus(it) }
+    val streamCompactScenariosChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_compact_scenarios), s.streamCompactScenarios, d.streamCompactScenarios, onOff) { prefs.setStreamCompactScenarios(it) }
 
     // What differs from how Prism comes, for the rows' dots and for Reset this page (top to bottom, as the page).
     val continueChanged = reset.add(tr(R.string.continue_line), s.home.continueLine, d.home.continueLine, onOff) { prefs.setHomeContinue(it) }
@@ -137,6 +143,13 @@ fun HomeLibraryPage(bottomPadding: Dp, find: String? = null, showBack: Boolean =
                 tr(R.string.buttons_at_the_top_of_home), TopButtons.entries, topButtons, { it.label },
                 info = tr(R.string.off_podcasts_opens_from_library_playlists), changed = topButtonsChanged,
             ) { HomeChoices.setTopButtons(prefs, it) }
+        }
+        group(HlGroups.stream) {
+            SwitchRow(tr(R.string.artwork), s.streamShowCover, changed = streamShowCoverChanged) { prefs.setStreamShowCover(it) }
+            SwitchRow(tr(R.string.progress_bar), s.streamShowProgress, changed = streamShowProgressChanged) { prefs.setStreamShowProgress(it) }
+            SwitchRow(tr(R.string.prism_stream_appearance_reactions), s.streamShowReactions, changed = streamShowReactionsChanged) { prefs.setStreamShowReactions(it) }
+            SwitchRow(tr(R.string.prism_stream_appearance_status), s.streamShowStatus, changed = streamShowStatusChanged) { prefs.setStreamShowStatus(it) }
+            SwitchRow(tr(R.string.prism_stream_appearance_compact_scenarios), s.streamCompactScenarios, changed = streamCompactScenariosChanged) { prefs.setStreamCompactScenarios(it) }
         }
         group(HlGroups.search) {
             SwitchRow(tr(R.string.open_the_keyboard), s.searchKeyboard, info = tr(R.string.ready_to_type_when_search_opens), changed = keyboardChanged) { prefs.setSearchKeyboard(it) }
@@ -318,6 +331,7 @@ fun homeLibraryValue(s: AppSettings, dark: Boolean): String {
 val homeLibraryLookKeys: List<String> = listOf(
     "replay_card", "replay_card_graph", "library_view", "library_views", "library_columns", "library_subtitles",
     "playlist_hero_cover", "album_hero_cover", "downloads_albums",
+    "stream_show_cover", "stream_show_progress", "stream_show_reactions", "stream_show_status", "stream_compact_scenarios",
 )
 
 /** Old group titles → this page's groups: "Liked songs" (on Recommendations before 1.8.4) held what is in Library now. */
@@ -350,6 +364,12 @@ val homeLibraryIndex: List<SettingEntry> by lazy {
         SettingEntry(page, g.home, tr(R.string.continue_line), tr(R.string.continue_album_resume_greeting_hide_context)),
         SettingEntry(page, g.home, tr(R.string.recently_played_shows), tr(R.string.recently_played_albums_playlists_songs_home)),
         SettingEntry(page, g.home, tr(R.string.buttons_at_the_top_of_home), words(R.string.podcasts_button, R.string.customize_button_at_the_top)),
+        // Vibe appearance
+        SettingEntry(page, g.stream, tr(R.string.artwork), tr(R.string.stream)),
+        SettingEntry(page, g.stream, tr(R.string.progress_bar), tr(R.string.stream)),
+        SettingEntry(page, g.stream, tr(R.string.prism_stream_appearance_reactions), tr(R.string.stream)),
+        SettingEntry(page, g.stream, tr(R.string.prism_stream_appearance_status), tr(R.string.stream)),
+        SettingEntry(page, g.stream, tr(R.string.prism_stream_appearance_compact_scenarios), tr(R.string.stream)),
         // Search
         SettingEntry(page, g.search, tr(R.string.search)),
         SettingEntry(page, g.search, tr(R.string.open_the_keyboard), tr(R.string.search_typing)),

@@ -5873,4 +5873,7 @@
     <string name="crossfade_automix_detail">Приёмы диджея, в такт</string>
     <string name="hear_it_on_the_next_song">Послушать на следующей песне</string>
     <string name="hear_it_on_the_next_song_none">Пока нет песни, с которой можно смешать</string>
+    <string name="prism_stream_appearance_reactions">Лайк и дизлайк</string>
+    <string name="prism_stream_appearance_status">Статус воспроизведения</string>
+    <string name="prism_stream_appearance_compact_scenarios">Компактные сценарии</string>
 </resources>

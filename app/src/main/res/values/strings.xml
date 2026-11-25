@@ -5774,4 +5774,7 @@
     <string name="transition_echo_out_detail">The last beat echoes away as the next song starts</string>
     <string name="transition_mark">Your own transition into the next song</string>
     <string name="transition_edit">Edit the transition into the next song</string>
+    <string name="prism_stream_appearance_reactions">Like and dislike</string>
+    <string name="prism_stream_appearance_status">Playback status</string>
+    <string name="prism_stream_appearance_compact_scenarios">Compact scenarios</string>
 </resources>

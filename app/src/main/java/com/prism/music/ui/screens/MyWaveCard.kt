@@ -291,7 +291,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(title, style = pageTitleStyle(), color = scheme.onBackground, maxLines = 1)
-                Text(status, color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (settings.streamShowStatus) Text(status, color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             RoundAction(PrismIcons.Shuffle, tr(R.string.prism_stream_refresh_stream),
                 enabled = !starting, modifier = Modifier.testTag("home:my_wave:refresh")) {
@@ -359,7 +359,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                             style = playerArtistStyle(MaterialTheme.typography, settings), color = scheme.onSurfaceVariant,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    if (reactions) {
+                    if (reactions && settings.streamShowReactions) {
                         Spacer(Modifier.width(8.dp))
                         Reaction(true)
                         Spacer(Modifier.width(8.dp))
@@ -407,22 +407,22 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             if (landscape) {
                 Row(Modifier.fillMaxSize().padding(inset), horizontalArrangement = Arrangement.spacedBy(ui.gap(24.dp)),
                     verticalAlignment = Alignment.CenterVertically) {
-                    BoxWithConstraints(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    if (settings.streamShowCover) BoxWithConstraints(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                         CoverArt(Modifier.size(minOf(maxWidth, maxHeight)))
                     }
                     Column(Modifier.weight(1.3f), verticalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
                         Metadata(reactions = true)
-                        Progress()
+                        if (settings.streamShowProgress) Progress()
                         Transport()
                     }
                 }
             } else {
-                Column(Modifier.fillMaxSize().padding(inset), verticalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
-                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Column(Modifier.fillMaxSize().padding(inset), verticalArrangement = if (settings.streamShowCover) Arrangement.spacedBy(ui.gap(12.dp)) else Arrangement.spacedBy(ui.gap(12.dp), Alignment.CenterVertically)) {
+                    if (settings.streamShowCover) BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                         CoverArt(Modifier.size(minOf(maxWidth, maxHeight)))
                     }
                     Metadata(reactions = true)
-                    Progress()
+                    if (settings.streamShowProgress) Progress()
                     Transport()
                 }
             }
@@ -431,10 +431,15 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         }
     }
 
+    @Composable fun ScenarioTile(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+        if (settings.streamCompactScenarios) PrismChip(selected, onClick, label, modifier, icon, fitLabel = true)
+        else PrismScenarioDisc(label, icon, selected, onClick, modifier)
+    }
+
     @Composable fun Controls() {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(12.dp)),
             verticalAlignment = Alignment.CenterVertically) {
-            PrismScenarioDisc(tr(R.string.prism_stream_tune), PrismIcons.Customize, selected = false,
+            ScenarioTile(tr(R.string.prism_stream_tune), PrismIcons.Customize, selected = false,
                 onClick = { openSettings() }, modifier = Modifier.testTag("home:my_wave:settings"))
             LazyRow(Modifier.weight(1f).scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward }),
                 state = scenarioScroll,
@@ -442,13 +447,13 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 horizontalArrangement = Arrangement.spacedBy(ui.gap(12.dp)),
                 contentPadding = PaddingValues(horizontal = ui.gap(12.dp), vertical = ui.gap(4.dp))) {
                 items(savedPresets, key = { it.id }) { preset ->
-                    PrismScenarioDisc(label = preset.name, icon = PrismIcons.Bookmark,
+                    ScenarioTile(label = preset.name, icon = PrismIcons.Bookmark,
                         selected = activeSaved?.id == preset.id,
                         onClick = { start(MyWave.style(preset.origin), preset.id) },
                         modifier = Modifier.testTag("wave:custom:${preset.id}"))
                 }
                 items(scenarioOrder, key = { it.id }) { scenario ->
-                    PrismScenarioDisc(
+                    ScenarioTile(
                         label = scenario.label,
                         icon = PrismIcons.waveScenario(scenario.glyph),
                         selected = activeSaved == null && (chosenPresetId == scenario.id || (chosenPresetId == null && style == WaveScenarios.resolve(scenario, settings.streamScenarioStyles, style.russianPercent))),
