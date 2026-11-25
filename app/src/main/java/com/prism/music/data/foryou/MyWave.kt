@@ -56,8 +56,8 @@ internal object MyWave {
             }
             .sortedByDescending { it.second }
             .map { it.first }.toMutableList()
-        val picks = pool(recommendations)
-        val known = pool(favorites)
+        val picks = pool(recommendations.filter { familiar(it) != true })
+        val known = pool(favorites + recommendations.filter { familiar(it) == true })
         val last = pool(recent)
         val seen = hashSetOf<String>()
         val out = mutableListOf<Song>()
