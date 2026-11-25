@@ -1,12 +1,9 @@
 package com.prism.music.connect.yandex
 
-import android.app.Dialog
+import android.app.AlertDialog
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.webkit.CookieManager
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.LinearLayout
@@ -28,14 +25,10 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
-import okhttp3.Cookie
-import okhttp3.CookieJar
-import okhttp3.HttpUrl
 
 /**
  * Internal hardware diagnostic only. Not in release APKs.
- * Login is performed on Yandex's page. No passwords or session values are displayed,
- * exported, or written to Prism preferences. Android WebView manages its own cookies.
+ * Login takes place in the external browser; OAuth tokens are held in memory only.
  */
 class StationDiagnosticsActivity : ComponentActivity() {
     private val devices = linkedMapOf<String, YandexStation>()
@@ -47,7 +40,8 @@ class StationDiagnosticsActivity : ComponentActivity() {
     private var session: StationSmokeSession? = null
     private var connectedStation: YandexStation? = null
     private var file: File? = null
-    private var login: Dialog? = null
+    private var accessToken: String? = null
+    private var loginJob: Job? = null
     private val frames = AtomicLong()
     private val delivered = AtomicLong()
     private var stage = "Idle"
@@ -87,7 +81,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
                 setOnClickListener { action() }
             })
         }
-        button("Sign in on Yandex (experimental)") { showLogin() }
+        button("Sign in with Yandex device code") { showLogin() }
         button("Scan local network") { startScan() }
         chooser = Spinner(this)
         adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, mutableListOf<String>())
@@ -178,7 +172,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
         session?.close()
         session = null
         frames.set(0)
-        val api = QuasarStationApi(YandexWebCookieJar())
+        val api = QuasarStationApi(accessToken ?: error("Sign in with device code first"))
         stage = "Quasar device list / certificate"
         val identity = api.verify(station)
         stage = "TLS WebSocket / device token / ping"
@@ -195,39 +189,46 @@ class StationDiagnosticsActivity : ComponentActivity() {
     }
 
     private fun showLogin() {
-        if (login?.isShowing == true) return
-        val dialog = Dialog(this)
-        val web = WebView(this)
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        root.addView(TextView(this).apply {
-            text = "Sign in directly on the Yandex page. If Yandex blocks embedded login, stop; do not paste credentials or cookies elsewhere."
-        })
-        root.addView(web, LinearLayout.LayoutParams(-1, 0, 1f))
-        root.addView(Button(this).apply {
-            text = "Done"
-            setOnClickListener { CookieManager.getInstance().flush(); dialog.dismiss() }
-        })
-        web.settings.javaScriptEnabled = true
-        web.settings.domStorageEnabled = true
-        web.settings.allowFileAccess = false
-        web.settings.allowContentAccess = false
-        web.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
-        web.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                if (!request.isForMainFrame) return false
-                val uri = request.url
-                val host = uri.host.orEmpty().lowercase()
-                return uri.scheme != "https" ||
-                    !(host == "yandex.ru" || host.endsWith(".yandex.ru") ||
-                      host == "ya.ru" || host == "yandex.com" || host.endsWith(".yandex.com"))
+        if (loginJob?.isActive == true) {
+            report("Authorization is already in progress.")
+            return
+        }
+        if (operation?.isActive == true) return
+        scan?.cancel()
+        session?.close()
+        session = null
+        accessToken = null
+        loginJob = lifecycleScope.launch {
+            report("Requesting Yandex device code...")
+            try {
+                val auth = YandexDeviceAuth()
+                val grant = auth.requestCode()
+                val dialog = AlertDialog.Builder(this@StationDiagnosticsActivity)
+                    .setTitle("Yandex authorization")
+                    .setMessage("Enter this code on the official Yandex page:\n\n${grant.userCode}\n\nConfirm access there, then return to Prism.")
+                    .setPositiveButton("Open Yandex") { _, _ ->
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(grant.verificationUrl)))
+                    }
+                    .setNegativeButton("Cancel") { _, _ -> loginJob?.cancel() }
+                    .setOnCancelListener { loginJob?.cancel() }
+                    .create()
+                report("Enter the displayed device code on Yandex.")
+                dialog.show()
+                try {
+                    accessToken = auth.awaitToken(grant)
+                    report("Yandex OAuth authorized. Scan and connect your Station.")
+                } finally {
+                    dialog.dismiss()
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                report("Authorization canceled.")
+                throw e
+            } catch (e: Exception) {
+                lastError = if (e is YandexAuthException) e.message.orEmpty() else e.javaClass.simpleName
+                report("OAuth: $lastError")
+                android.util.Log.w("PrismStationLab", "OAuth: $lastError")
             }
         }
-        dialog.setContentView(root)
-        dialog.setOnDismissListener { web.stopLoading(); web.destroy(); login = null }
-        dialog.show()
-        dialog.window?.setLayout(-1, -1)
-        login = dialog
-        web.loadUrl("https://passport.yandex.ru/auth")
     }
 
     private fun importMp3(uri: Uri): File {
@@ -269,7 +270,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
             catch (e: Exception) {
                 val safeMessage = e.message.orEmpty().let { msg ->
                     when {
-                        msg in setOf("Not connected", "No file", "No IPv4 route", "Select a Station", "Station is not in this Yandex account", "No Station certificate in account metadata", "Yandex rejected the device token request", "Station certificate mismatch", "Station connection closed", "Invalid Yandex device list") -> msg
+                        msg in setOf("Sign in with device code first", "Not connected", "No file", "No IPv4 route", "Select a Station", "Station is not in this Yandex account", "No Station certificate in account metadata", "Yandex rejected the device token request", "Station certificate mismatch", "Station connection closed", "Invalid Yandex device list") -> msg
                         Regex("Quasar HTTP [0-9]{3}").matches(msg) -> msg
                         else -> e.javaClass.simpleName
                     }
@@ -284,7 +285,8 @@ class StationDiagnosticsActivity : ComponentActivity() {
     private fun report(message: String) { status.text = message }
 
     override fun onDestroy() {
-        login?.dismiss()
+        loginJob?.cancel()
+        accessToken = null
         scan?.cancel()
         operation?.cancel()
         session?.close()
@@ -292,13 +294,4 @@ class StationDiagnosticsActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    /** Only two Quasar HTTPS hosts may receive their own existing first-party cookies. */
-    private class YandexWebCookieJar : CookieJar {
-        override fun loadForRequest(url: HttpUrl): List<Cookie> {
-            if (!url.isHttps || url.host !in setOf("quasar.iot.yandex.ru", "quasar.yandex.ru")) return emptyList()
-            return CookieManager.getInstance().getCookie(url.toString()).orEmpty()
-                .split(';').mapNotNull { Cookie.parse(url, it.trim()) }
-        }
-        override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) = Unit
-    }
 }
