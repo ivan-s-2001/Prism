@@ -73,7 +73,7 @@ class ConnectApi:
                     g = self.sessions.claim(a, did)
                     self.last_host = did
                     return 200, {"generation": g}
-                if path == "/v2/pull":
+                if path in ("/v2/pull", "/v2/heartbeat"):
                     g = data.get("generation")
                     state = data.get("state")
                     if not isinstance(state, dict) or set(state) - {"title", "artist", "station", "playing", "position", "duration", "volume", "loading"}:
@@ -89,7 +89,7 @@ class ConnectApi:
                             type(state[field]) is not int or not 0 <= state[field] <= (100 if field == "volume" else 31536000000)):
                             raise Conflict("invalid_state")
                     self.sessions.heartbeat(a, did, g, state)
-                    return 200, {"command": self.sessions.pull(a, did, g)}
+                    return 200, {"command": self.sessions.pull(a, did, g) if path == "/v2/pull" else None}
                 if path == "/v2/command":
                     rid = data.get("id")
                     if not isinstance(rid, str) or not 1 <= len(rid) <= 64:
