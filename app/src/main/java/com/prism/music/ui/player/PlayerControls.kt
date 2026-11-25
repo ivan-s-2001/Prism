@@ -624,6 +624,8 @@ fun TransportRow(
     playAction: (() -> Unit)? = null,
     playAccent: Color? = null,
     playTag: String? = null,
+    leadingAction: (@Composable () -> Unit)? = null,
+    trailingAction: (@Composable () -> Unit)? = null,
 ) {
     val pc = LocalContainer.current.player
     val style = LocalAppSettings.current.transportStyle
@@ -637,6 +639,7 @@ fun TransportRow(
     val smart by LocalContainer.current.queue.smartShuffle.collectAsState()
     val repeat by pc.repeatMode.collectAsState()
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround, verticalAlignment = Alignment.CenterVertically) {
+        leadingAction?.invoke()
         if (modes) ShuffleGlyph(shuffle, smart) { pc.toggleShuffle() }
         val prevIcon = if (style == TransportStyle.GLYPHS) PrismIcons.Backward else PrismIcons.Previous
         val nextIcon = if (style == TransportStyle.GLYPHS) PrismIcons.Forward else PrismIcons.Next
@@ -671,6 +674,7 @@ fun TransportRow(
             repeat != Player.REPEAT_MODE_OFF,
             badge = if (repeat == Player.REPEAT_MODE_ONE) "1" else null,
         ) { pc.cycleRepeat() }
+        trailingAction?.invoke()
     }
 }
 
