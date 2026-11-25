@@ -376,7 +376,7 @@ class HistoryImports(private val c: AppContainer) {
     )
 
     suspend fun yandexProgress(): YandexProgress = withContext(Dispatchers.IO) {
-        val keys = prefs.getStringSet("yandex_last_keys", emptySet()).orEmpty().toList()
+        val keys = prefs.getStringSet("yandex_last_keys", emptySet()).orEmpty().toSet()
         val rows = keys.chunked(400).flatMap { c.db.imports().matches(it) }
         val job = LibraryJob.load(jobFile)
         val matched = rows.filter { MatchStatus.of(it.status).matched && it.matchedId != null }.map { it.songKey }.toSet()
@@ -471,6 +471,7 @@ class HistoryImports(private val c: AppContainer) {
         val total = dao.toMatchCount(week)
         var done = 0
         var failures = 0
+        var lastPlaced = 0
         while (System.currentTimeMillis() < until && !stopped()) {
             val batch = dao.toMatchYandex(week, 30).ifEmpty { dao.toMatch(week, 30) }
             if (batch.isEmpty()) break
@@ -487,7 +488,7 @@ class HistoryImports(private val c: AppContainer) {
                 }
                 // Offline or refused a few times running: stop for now, WorkManager tries again later.
                 if (failures >= AT_ONCE * 3) { applyLibraryNow(); return@withContext false }
-                if (done > 0 && done % AT_ONCE == 0) applyLibraryNow()
+                if (done - lastPlaced >= 15) { applyLibraryNow(); lastPlaced = done }
                 progress(done, total)
                 delay(PAUSE_MS)
                 if (System.currentTimeMillis() >= until || stopped()) break
