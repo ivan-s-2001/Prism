@@ -16,4 +16,21 @@ internal object VibeContext {
         val turn = (offset.coerceAtLeast(0) / MyWave.HORIZON) % songs.size
         return (songs.drop(turn) + songs.take(turn)).take(3)
     }
+
+    fun sparseProfileFallback(style: MyWave.Style, noLikes: Boolean): Boolean =
+        noLikes && style.discoveryPercent in 1..99
+
+    fun alternativeSeeds(original: List<Song>, selected: List<Song>): List<Song> {
+        val keys = original.mapTo(hashSetOf(), LocalRadio::sameSong)
+        return selected.asReversed().filter { !it.isLocal && !it.isEpisode && !it.isLive && !it.isVideo &&
+            LocalRadio.sameSong(it) !in keys }.distinctBy { it.primaryArtist.lowercase().ifBlank { it.id } }.take(3)
+    }
+
+    fun recycleCandidates(past: List<Song>, recent: List<Song>, upcoming: List<Song>, current: Song?): List<Song> {
+        val protected = (upcoming + listOfNotNull(current)).mapTo(hashSetOf(), LocalRadio::sameSong)
+        val eligible = (recent + past).distinctBy(LocalRadio::sameSong).filter {
+            LocalRadio.sameSong(it) !in protected && !it.isLive && !it.isEpisode && !it.isVideo
+        }
+        return eligible.take((eligible.size + 1) / 2)
+    }
 }

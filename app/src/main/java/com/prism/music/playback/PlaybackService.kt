@@ -1900,18 +1900,25 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             val originals = all.take(generatedStart).filter { it.id !in manual && !it.isEpisode && !it.isLive }
             val anchors = (if (src.vibeAnchors.isNotEmpty()) src.vibeAnchors else if (radio && anchor != null) listOf(anchor) else if (originals.isNotEmpty()) com.prism.music.data.foryou.VibeContext.anchors(originals) else emptyList())
                 .ifEmpty { listOfNotNull(all.lastOrNull()) }
-            val occupied = if (offline) all.drop(player.currentMediaItemIndex.coerceAtLeast(0)) else all
+            val at = player.currentMediaItemIndex.coerceAtLeast(0)
+            val protected = all.drop(at)
+            val past = all.take(at)
+            val occupied = if (offline) protected else all
             val additions = try {
-                c.yourMusic.contextBatch(anchors, occupied, (all.size - generatedStart).coerceAtLeast(0), explicitContext = radio)
+                c.yourMusic.contextBatch(anchors, occupied, (all.size - generatedStart).coerceAtLeast(0), explicitContext = radio,
+                    recyclePast = past, protectedQueue = protected)
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) {
                 android.util.Log.w("PrismRadio", "Context Stream batch failed", e)
                 emptyList()
             }
             if (!isActive || c.queue.source.value !== src || (!c.settings.current.autoplay && !radio)) return@launch
-            val currentKeys = (0 until player.mediaItemCount).mapNotNull { index ->
-                if (offline && index < player.currentMediaItemIndex) null else player.getMediaItemAt(index).toSong()
-            }.mapTo(hashSetOf(), com.prism.music.data.foryou.LocalRadio::sameSong)
+            val currentKeys = (player.currentMediaItemIndex.coerceAtLeast(0) until player.mediaItemCount)
+                .mapNotNull { player.getMediaItemAt(it).toSong() }
+                .mapTo(hashSetOf(), com.prism.music.data.foryou.LocalRadio::sameSong)
+            val pastKeys = (0 until player.currentMediaItemIndex.coerceAtLeast(0))
+                .mapNotNull { player.getMediaItemAt(it).toSong() }
+                .mapTo(hashSetOf(), com.prism.music.data.foryou.LocalRadio::sameSong)
             val accepted = additions.filter {
                 com.prism.music.data.foryou.LocalRadio.sameSong(it) !in currentKeys &&
                     c.yourMusic.recommendationAllowed(it, offlineOnly = offline)
@@ -1920,7 +1927,10 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 if (c.queue.autoplayStart.value < 0) c.queue.autoplayStart.value = player.mediaItemCount
                 player.addMediaItems(accepted.map { it.toMediaItem() })
                 c.recFeedback.served(accepted.map { it.id })
-                if (c.player.radioNotice.take(src, accepted.size)) c.player.reportError(tr(R.string.radio_started))
+                if (!offline && c.settings.current.behavior.autoplayNoRepeats &&
+                    accepted.any { com.prism.music.data.foryou.LocalRadio.sameSong(it) in pastKeys })
+                    c.player.reportError(tr(R.string.no_repeats_ran_out))
+                else if (c.player.radioNotice.take(src, accepted.size)) c.player.reportError(tr(R.string.radio_started))
             }
         }
         autoplayJob = job

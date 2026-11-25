@@ -427,4 +427,19 @@ class MyWaveTest {
         assertTrue(result.zipWithNext().none { (a,b) -> a.primaryArtist == b.primaryArtist })
         assertFalse(result.any { it.id == "a1" })
     }
+
+    @Test fun vibeSparseProfileDoesNotOverrideExplicitEndpoints() {
+        val style = MyWave.Style()
+        assertTrue(com.prism.music.data.foryou.VibeContext.sparseProfileFallback(style, true))
+        assertFalse(com.prism.music.data.foryou.VibeContext.sparseProfileFallback(style, false))
+        for (share in listOf(0, 100)) assertFalse(com.prism.music.data.foryou.VibeContext.sparseProfileFallback(style.copy(discoveryPercent = share), true))
+    }
+
+    @Test fun vibeRecyclesOldestOnlyAndProtectsUpcoming() {
+        val old = com.prism.music.data.model.Song("old", "Old")
+        val later = com.prism.music.data.model.Song("later", "Later")
+        val next = com.prism.music.data.model.Song("next", "Next")
+        val result = com.prism.music.data.foryou.VibeContext.recycleCandidates(listOf(old, later), listOf(old, later, next), listOf(next), next)
+        assertEquals(listOf(old), result)
+    }
 }
