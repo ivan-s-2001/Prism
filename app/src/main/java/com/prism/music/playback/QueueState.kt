@@ -21,6 +21,7 @@ data class QueueSource(
 ) {
     /** A radio started from one song: it keeps going with similar music, Autoplay or not. */
     val isSongRadio: Boolean get() = kind == QueueKind.RADIO && seedId != null
+    val isMyWave: Boolean get() = kind == QueueKind.RADIO && originId == com.prism.music.data.foryou.MyWave.ORIGIN
 }
 
 /** Shared queue bookkeeping between the UI-facing [PlayerConnection] and [PlaybackService]. */
