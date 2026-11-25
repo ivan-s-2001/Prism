@@ -48,6 +48,16 @@ class StationPlaybackStateTest {
         assertFalse(s.matches(url))
     }
 
+    @Test fun modernLiveEmptyIdRequiresExplicitPermissionAndFreshPlayingState() {
+        val s = requireNotNull(StationPlaybackState.parse(frame(true, id = ""), 42))
+        assertTrue(s.confirmsLive(url, "Prism Live", 41, true))
+        assertFalse(s.confirmsLive(url, "Prism Live", 41, false))
+        assertFalse(s.confirmsLive(url, "Prism Live", 43, true))
+        assertFalse(s.copy(playing = false).confirmsLive(url, "Prism Live", 41, true))
+        assertFalse(s.copy(type = "bluetooth").confirmsLive(url, "Prism Live", 41, true))
+        assertFalse(s.copy(id = "foreign").confirmsLive(url, "Same title", 41, true))
+    }
+
     @Test fun rejectBadNumericValues() {
         for (value in listOf("-1", "1e99", "null", "\"NaN\"", "{}")) {
             val s = requireNotNull(StationPlaybackState.parse(frame(true, progress = value), 42))
