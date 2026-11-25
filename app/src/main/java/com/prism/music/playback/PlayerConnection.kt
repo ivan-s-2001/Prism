@@ -654,7 +654,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
             if (shuffled) reshuffle(p)
             p.prepare()
             p.play()
-            if (mode == ShuffleMode.SMART) {
+            if (!source.isMyWave && mode == ShuffleMode.SMART) {
                 c.queue.smartShuffle.value = true
                 // Its picks now: the service's Smart Shuffle collector never saw it go off and on again above.
                 c.queue.smartStarted.value++
