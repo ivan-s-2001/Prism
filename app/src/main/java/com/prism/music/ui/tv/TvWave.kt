@@ -130,19 +130,18 @@ internal fun TvWavePlace(nav: TvNav) {
                 Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(l("Настроить поток", "Tune Stream"), style = MaterialTheme.typography.headlineMedium)
                     TvWaveScale(l("Характер потока", "Discovery mix"), draft.discoveryPercent,
-                        "${100 - draft.discoveryPercent}% / ${draft.discoveryPercent}%",
                         l("Лайки", "Liked songs"), l("Открытия", "Discoveries"), "discovery",
                         { editor = editor.discovery(it) })
                     val language = draft.russianPercent.takeIf { it >= 0 } ?: 50
                     TvWaveScale(l("Язык музыки", "Music language"), language,
-                        if (draft.russianPercent < 0) l("Авто", "Auto") else "${100 - language}% / $language%",
                         l("Иностранная", "Foreign"), l("Русская", "Russian"), "language",
-                        { editor = editor.tune(draft.copy(russianPercent = it)) })
+                        { editor = editor.tune(draft.copy(russianPercent = it)) },
+                        automaticLabel = l("Авто", "Auto").takeIf { draft.russianPercent < 0 })
                     TvButton(l("Авто", "Auto"), { editor = editor.tune(draft.copy(russianPercent = -1)) },
                         Modifier.tvItem("tv_wave/auto"), primary = draft.russianPercent < 0)
-                    TvWaveScale(l("Разнообразие", "Variety"), draft.diversity, "${draft.diversity}%",
+                    TvWaveScale(l("Разнообразие", "Variety"), draft.diversity,
                         l("Похожее", "Similar"), l("Разное", "Varied"), "diversity",
-                        { editor = editor.tune(draft.copy(diversity = it)) }, step = 10)
+                        { editor = editor.tune(draft.copy(diversity = it)) }, step = 10, ratio = false)
                     Text(l("Изменения вступят в силу после подтверждения", "Changes apply after confirmation"),
                         style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -278,13 +277,24 @@ internal fun TvWavePlace(nav: TvNav) {
 
 /** Consistent, remote-friendly version of the phone's numeric tuning controls. */
 @Composable
-private fun TvWaveScale(title: String, value: Int, summary: String, left: String, right: String,
-    tag: String, change: (Int) -> Unit, step: Int = 5) {
+private fun TvWaveScale(title: String, value: Int, left: String, right: String,
+    tag: String, change: (Int) -> Unit, step: Int = 5, ratio: Boolean = true, automaticLabel: String? = null) {
     val scheme = MaterialTheme.colorScheme
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            Text(summary, style = MaterialTheme.typography.titleMedium, color = scheme.primary)
+            if (automaticLabel != null) Text(automaticLabel, style = MaterialTheme.typography.titleMedium, color = scheme.primary)
+        }
+        val percent = value.coerceIn(0, 100)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Bottom) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(left, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+                if (ratio && automaticLabel == null) Text("${100 - percent}%", style = MaterialTheme.typography.titleMedium)
+            }
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(right, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+                if (automaticLabel == null) Text("$percent%", style = MaterialTheme.typography.titleMedium)
+            }
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -293,15 +303,11 @@ private fun TvWaveScale(title: String, value: Int, summary: String, left: String
                 val y = size.height / 2
                 drawLine(scheme.onSurfaceVariant.copy(alpha = 0.25f), androidx.compose.ui.geometry.Offset(0f, y),
                     androidx.compose.ui.geometry.Offset(size.width, y), strokeWidth = 4.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
-                drawLine(scheme.primary, androidx.compose.ui.geometry.Offset(0f, y),
+                if (!ratio) drawLine(scheme.primary, androidx.compose.ui.geometry.Offset(0f, y),
                     androidx.compose.ui.geometry.Offset(size.width * value / 100f, y), strokeWidth = 4.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
-                drawCircle(scheme.primary, radius = 5.dp.toPx(), center = androidx.compose.ui.geometry.Offset(size.width * value / 100f, y))
+                drawCircle(if (automaticLabel != null) scheme.onSurfaceVariant else scheme.primary, radius = 5.dp.toPx(), center = androidx.compose.ui.geometry.Offset(size.width * value / 100f, y))
             }
             TvButton("+$step", { change((value + step).coerceIn(0, 100)) }, Modifier.tvItem("tv_wave/$tag/up"))
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(left, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
-            Text(right, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
         }
     }
 }

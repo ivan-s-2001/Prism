@@ -553,7 +553,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                         title = l("Характер потока", "Discovery mix"),
                         value = discovery, onValueChange = { percent -> change { it.discovery(percent.toInt()) } },
                         left = l("Лайки", "Liked songs"), right = l("Открытия", "Discoveries"),
-                        summary = "${100 - discovery.toInt()}% / ${discovery.toInt()}%",
                         choices = listOf(0 to l("Лайки", "Liked"), 50 to l("Баланс", "Balance"),
                             70 to l("Для меня", "For me"), 100 to l("Новое", "New")),
                         selectedChoice = discovery.toInt(), step = 5, tag = "wave:discovery-percent",
@@ -566,7 +565,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                         title = l("Язык музыки", "Music language"),
                         value = russian, onValueChange = { percent -> change { it.tune(it.style.copy(russianPercent = percent.toInt())) } },
                         left = l("Иностранная", "Foreign"), right = l("Русская", "Russian"),
-                        summary = if (draftStyle.russianPercent < 0) l("Авто", "Auto") else "${100 - russian.toInt()}% / ${russian.toInt()}%",
+                        automaticLabel = l("Авто", "Auto").takeIf { draftStyle.russianPercent < 0 },
                         choices = listOf(-1 to l("Авто", "Auto"), 0 to l("Иностранная", "Foreign"),
                             50 to l("Баланс", "Balance"), 100 to l("Русская", "Russian")),
                         selectedChoice = if (draftStyle.russianPercent < 0) -1 else russian.toInt(),
@@ -582,7 +581,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                         title = l("Разнообразие", "Variety"),
                         value = diversity, onValueChange = { percent -> change { it.tune(it.style.copy(diversity = percent.toInt())) } },
                         left = l("Похожее", "Similar"), right = l("Разное", "Varied"),
-                        summary = "${diversity.toInt()}%",
+                        ratio = false,
                         choices = listOf(0 to l("Похожее", "Similar"), 50 to l("Баланс", "Balance"),
                             70 to l("Разное", "Varied"), 100 to l("Максимум", "Maximum")),
                         selectedChoice = diversity.toInt(), step = 10, tag = "wave:diversity-percent",
@@ -619,7 +618,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
 @Composable
 private fun WaveScale(
     title: String, value: Float, onValueChange: (Float) -> Unit,
-    left: String, right: String, summary: String,
+    left: String, right: String, ratio: Boolean = true, automaticLabel: String? = null,
     choices: List<Pair<Int, String>>, selectedChoice: Int, step: Int, tag: String,
     onCommit: (Int) -> Unit, detail: String,
 ) {
@@ -628,21 +627,37 @@ private fun WaveScale(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            Text(summary, style = MaterialTheme.typography.titleMedium, color = scheme.primary)
+            if (automaticLabel != null)
+                Text(automaticLabel, style = MaterialTheme.typography.titleMedium, color = scheme.primary)
         }
-        Column {
-            Slider(value = value, onValueChange = { next ->
-                onValueChange((kotlin.math.round(next / step).toInt() * step).coerceIn(0, 100).toFloat())
-            },
-                onValueChangeFinished = {
-                    onCommit((kotlin.math.round(value / step).toInt() * step).coerceIn(0, 100))
-                }, valueRange = 0f..100f, steps = 100 / step - 1,
-                modifier = Modifier.fillMaxWidth().testTag(tag))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        val percent = value.toInt().coerceIn(0, 100)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Bottom) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(left, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+                if (ratio && automaticLabel == null)
+                    Text("${100 - percent}%", style = MaterialTheme.typography.headlineSmall, color = scheme.onSurface)
+            }
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(right, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+                if (automaticLabel == null)
+                    Text("$percent%", style = MaterialTheme.typography.headlineSmall, color = scheme.onSurface)
             }
         }
+        Slider(value = value, onValueChange = { next ->
+            onValueChange((kotlin.math.round(next / step).toInt() * step).coerceIn(0, 100).toFloat())
+        }, onValueChangeFinished = {
+            onCommit((kotlin.math.round(value / step).toInt() * step).coerceIn(0, 100))
+        }, valueRange = 0f..100f, steps = 100 / step - 1,
+            colors = if (ratio) SliderDefaults.colors(
+                activeTrackColor = scheme.onSurfaceVariant.copy(alpha = 0.28f),
+                inactiveTrackColor = scheme.onSurfaceVariant.copy(alpha = 0.28f),
+                activeTickColor = scheme.onSurfaceVariant.copy(alpha = 0.35f),
+                inactiveTickColor = scheme.onSurfaceVariant.copy(alpha = 0.35f),
+                thumbColor = if (automaticLabel != null) scheme.onSurfaceVariant else scheme.primary
+            ) else SliderDefaults.colors(),
+            modifier = Modifier.fillMaxWidth().testTag(tag))
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             choices.forEach { (percent, label) ->
