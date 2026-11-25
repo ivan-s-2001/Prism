@@ -9,7 +9,7 @@ class Commands(unittest.TestCase):
         self.assertEqual(parse_command("пауза"), {"action": "pause"})
         self.assertEqual(parse_command("продолжи"), {"action": "resume"})
     def test_seek(self):
-        self.assertEqual(parse_command("перемотай назад на 30 секунд"), None)
+        self.assertEqual(parse_command("перемотай назад на 30 секунд"), {"action": "seek_relative", "value": -30})
         self.assertEqual(parse_command("перемотай на 30 секунд назад"), {"action": "seek_relative", "value": -30})
         self.assertEqual(parse_command("перемотай на 2 минуты"), {"action": "seek_relative", "value": 120})
     def test_search_volume(self):
