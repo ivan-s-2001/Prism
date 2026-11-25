@@ -113,8 +113,12 @@ internal class StationRendererLink(
         if (requested && !paused && a != null) {
             // No blind restarts when the receiver is already fetching the current URL.
             val current = state
-            if ((current?.matches(a.physical) == true && current.playing == true && current.at >= a.at) ||
-                delivery(a.physical) > 0L) return
+            if (current?.matches(a.physical) == true && current.playing == true && current.at >= a.at) return
+            val freshStop = current?.playing == false && current.at >= a.at
+            if (freshStop) {
+                val confirmed = absolute(current)
+                if (confirmed?.matches(a.logical) == true) target = confirmed.position ?: target
+            } else if (delivery(a.physical) > 0L) return
         }
         startAt(target)
     }
