@@ -126,6 +126,9 @@ interface ImportDao {
     )
     suspend fun toMatch(before: Long, limit: Int): List<ImportMatchEntity>
 
+    @Query("SELECT * FROM import_matches WHERE sourceId LIKE 'yandex:%' AND (status = 'PENDING' OR (status = 'NONE' AND checkedAt < :before)) ORDER BY checkedAt ASC, songKey ASC LIMIT :limit")
+    suspend fun toMatchYandex(before: Long, limit: Int): List<ImportMatchEntity>
+
     @Query("SELECT COUNT(*) FROM import_matches WHERE status = 'PENDING' OR (status = 'NONE' AND checkedAt < :before)")
     suspend fun toMatchCount(before: Long): Int
 
