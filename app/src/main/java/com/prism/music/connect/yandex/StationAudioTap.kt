@@ -149,7 +149,8 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
             val b = minOf(a + 1, inFrames - 1)
             val fraction = at - a
             for (ch in 0..1) {
-                val value = (sample(a, ch) * (1 - fraction) + sample(b, ch) * fraction).toInt()
+                val firstSample = sample(a, ch)
+                val value = (firstSample + (sample(b, ch) - firstSample) * fraction).toInt()
                 val index = frame * 4 + ch * 2
                 out[index] = value.toByte()
                 out[index + 1] = (value shr 8).toByte()
