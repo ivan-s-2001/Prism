@@ -7,7 +7,7 @@ import com.prism.music.connect.RendererLink
 import com.prism.music.connect.TransportInfo
 import java.io.IOException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.*
 
 /** Experimental adapter to Prism's existing queue and remote controls. */
@@ -114,8 +114,15 @@ internal class StationRendererLink(
         send(payload)
         send(GlagolProtocol.ping())
         // No fabricated success: require fresh position from this stream. Cancel on a newer seek.
-        val confirmed = kotlinx.coroutines.withTimeoutOrNull(1800) {
-            while (!StationSeekConfirmation.matches(state, url, target, before)) delay(80)
+        val confirmed = withTimeoutOrNull(1800) {
+            var nextPing = before + 450
+            while (!StationSeekConfirmation.matches(state, url, target, before)) {
+                delay(80)
+                if (SystemClock.elapsedRealtime() >= nextPing) {
+                    send(GlagolProtocol.ping())
+                    nextPing = SystemClock.elapsedRealtime() + 450
+                }
+            }
             true
         } == true
         if (!confirmed) throw IOException("Station did not confirm seek")
@@ -126,9 +133,11 @@ internal class StationRendererLink(
         val previous = state
         if (previous == null || now - previous.at > 2500) {
             send(GlagolProtocol.ping())
-            withTimeout(1800) {
-                while (state == null || SystemClock.elapsedRealtime() - (state?.at ?: 0) > 3000) delay(100)
-            }
+            val fresh = withTimeoutOrNull(1800) {
+                while (state == null || state === previous) delay(80)
+                true
+            } == true
+            if (!fresh) throw IOException("Station state timed out")
         }
         val s = state ?: throw IOException("No Station state")
         val currentUrl = loaded?.first
