@@ -433,6 +433,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         var lastTransport: TransportInfo? = null
         val misses = CastMisses(MAX_FAILURES)
         var lastFailure: String? = null
+        var stationFailureSince: Long? = null
         var foreign = 0
         var volume: Int? = null
         var volumeSetAt = 0L
@@ -466,8 +467,16 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
     @Volatile private var netBlocked = false
     private var netWatch: android.net.ConnectivityManager.NetworkCallback? = null
     private var wifiLock: WifiManager.WifiLock? = null
+    private var stationWakeLock: android.os.PowerManager.WakeLock? = null
 
     private fun holdNetwork() {
+        if (session?.renderer?.kind == RendererKind.YANDEX_STATION && stationWakeLock == null) {
+            stationWakeLock = runCatching {
+                app.getSystemService(android.os.PowerManager::class.java)
+                    ?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "Prism:StationCast")
+                    ?.apply { setReferenceCounted(false); acquire() }
+            }.onFailure { Log.w(TAG, "Station wake lock unavailable", it) }.getOrNull()
+        }
         if (wifiLock == null) wifiLock = runCatching {
             @Suppress("DEPRECATION") // The low-latency mode only holds while the app is on screen.
             app.getSystemService(WifiManager::class.java)?.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "prism-cast")
@@ -486,6 +495,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
     }
 
     private fun letGoOfNetwork() {
+        runCatching { stationWakeLock?.let { if (it.isHeld) it.release() } }
+        stationWakeLock = null
         runCatching { wifiLock?.release() }
         wifiLock = null
         netWatch?.let { cb -> runCatching { app.getSystemService(android.net.ConnectivityManager::class.java)?.unregisterNetworkCallback(cb) } }
@@ -1119,12 +1130,17 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 if (session !== s) break
                 r.onSuccess { (ti, pi) ->
                     s.misses.ok()
+                    s.stationFailureSince = null
                     runCatching { onPoll(s, ti, pi, rtt) }.onFailure { Log.w(TAG, "following ${s.renderer.name} failed", it) }
                 }.onFailure { e ->
                     if (e is CancellationException) throw e
                     if (station != null) publishStationClock(_stationClock.value?.copy(playing = null, loading = s.wantPlaying))
                     s.lastFailure = "${e.javaClass.simpleName}: ${e.message?.take(80)}"
-                    val lost = s.misses.failed(blocked = netBlocked)
+                    val lost = if (station != null) {
+                        val now = SystemClock.elapsedRealtime()
+                        val since = s.stationFailureSince ?: now.also { s.stationFailureSince = it }
+                        !netBlocked && now - since >= 30_000L
+                    } else s.misses.failed(blocked = netBlocked)
                     com.prism.music.playback.AudioDiagnostics.log("cast", "no answer (${s.misses.count}/$MAX_FAILURES${if (netBlocked) ", network held back: not counted" else ""}) after ${rtt * 2} ms: ${s.lastFailure}")
                     if (lost) {
                         disconnect(tr(R.string.lost_the_connection_to, s.renderer.name), keepPlaying = false)
@@ -1136,7 +1152,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                     if (v != null && v != s.volume && session === s) { s.volume = v; publish(s); hooks?.remoteChanged() }
                 }
                 if (!liveLocal) applyLocalMode()
-                delay(if (station != null) 250L else POLL_MS)
+                delay(if (station != null) { if (r.isFailure) 1000L else 250L } else POLL_MS)
             }
         }
     }
