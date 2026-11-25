@@ -87,6 +87,7 @@ object UncensoredRules {
 
 class UncensoredVersions(
     private val prefs: SharedPreferences,
+    private val searchYouTube: (suspend (String) -> List<Song>)? = null,
     private val search: suspend (String, SearchFilter) -> List<Song>,
 ) {
     private val _enabled = MutableStateFlow(prefs.getBoolean("enabled", false))
@@ -105,13 +106,14 @@ class UncensoredVersions(
 
     fun wasManual(id: String): Boolean = prefs.getBoolean("manual:$id", false)
 
-    suspend fun find(song: Song): Song? {
+    suspend fun find(song: Song, includeExternal: Boolean = false): Song? {
         if (!enabled.value || wasManual(song.id) || !UncensoredRules.eligible(song)) return null
         val now = System.currentTimeMillis()
-        if (checked[song.id]?.let { now - it in 0 until 86_400_000L } == true) return null
+        val key = song.id + if (includeExternal) ":external" else ":music"
+        if (checked[key]?.let { now - it in 0 until 86_400_000L } == true) return null
         if (!inFlight.add(song.id)) return null
         try {
-            return withTimeoutOrNull(4_000) {
+            return withTimeoutOrNull(if (includeExternal) 12_000L else 4_000L) {
                 withContext(Dispatchers.IO) {
                     val query = "${song.title} ${song.primaryArtist}".trim()
                     val hint = if (song.title.any { it in '\u0400'..'\u04ff' }) "без цензуры" else "uncensored"
@@ -137,10 +139,20 @@ class UncensoredVersions(
                             }
                         }.awaitAll().flatten()
                     }
-                    val candidate = UncensoredRules.best(song, results)
+                    val candidate = UncensoredRules.best(song, results) ?: if (includeExternal && searchYouTube != null) {
+                        val externalQuery = if (song.primaryArtist.equals("Heronwater", true)) "${song.title} Heroinwater $hint" else "$query $hint"
+                        val more = try {
+                            searchYouTube.invoke(externalQuery)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            emptyList()
+                        }
+                        UncensoredRules.best(song, more)
+                    } else null
                     if (results.isNotEmpty() && candidate == null) {
                         if (checked.size >= 2048) checked.clear()
-                        checked[song.id] = System.currentTimeMillis()
+                        checked[key] = System.currentTimeMillis()
                     }
                     candidate
                 }
