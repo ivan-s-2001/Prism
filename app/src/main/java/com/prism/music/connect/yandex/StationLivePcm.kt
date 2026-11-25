@@ -61,15 +61,23 @@ internal class StationLivePcm(phone: Inet4Address, station: Inet4Address,
             out.write(header())
             out.flush()
             var sent = 44L
+            var deadline = System.nanoTime()
             while (!closed.get() && sent < LENGTH) {
                 val n = minOf(CHUNK.toLong(), LENGTH - sent).toInt()
-                val before = System.nanoTime()
-                out.write(source(n))
+                val pcm = source(n)
+                check(pcm.size == n) { "Unexpected PCM chunk size" }
+                out.write(pcm)
                 out.flush()
                 sent += n
                 delivered.addAndGet(n.toLong())
                 lastWrite = android.os.SystemClock.elapsedRealtime()
-                val wait = n.toLong() * 1_000_000_000L / (RATE * FRAME_BYTES) - (System.nanoTime() - before)
+                // Use an absolute sample clock, not a fresh 20ms sleep each time:
+                // otherwise scheduler oversleep accumulates indefinitely.
+                val now = System.nanoTime()
+                deadline += n.toLong() * 1_000_000_000L / (RATE * FRAME_BYTES)
+                // Never burst seconds of stale audio after TCP backpressure.
+                if (now - deadline > 40_000_000L) deadline = now
+                val wait = deadline - now
                 if (wait > 0) Thread.sleep(wait / 1_000_000L, (wait % 1_000_000L).toInt())
             }
         } finally {
