@@ -269,7 +269,7 @@ internal fun TvWavePlace(nav: TvNav) {
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             TvButton(if (starting) tr(R.string.prism_stream_finding_music) else tr(R.string.prism_stream_refresh),
-                                { if (!starting) start() }, Modifier.weight(1f).tvItem("tv_wave/refresh"), icon = PrismIcons.Refresh)
+                                { if (!starting) start() }, Modifier.weight(1f).tvItem("tv_wave/refresh"), icon = PrismIcons.Shuffle)
                             if (current != null) TvButton(tr(R.string.prism_stream_player), { nav.go(TvRoute.Player) }, Modifier.weight(1f).tvItem("tv_wave/player"))
                         }
                     }

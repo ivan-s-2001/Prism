@@ -680,6 +680,10 @@ abstract class PrepareTablerIcons : DefaultTask() {
         val mapped = rows.map { it.substringBefore('\t') }.toSet()
         require(expected.all { it in mapped }) { "Missing Tabler mapping: " + (expected - mapped) }
         require(mapped.size == rows.size) { "Duplicate Tabler mappings" }
+        val scenarios = rows.filter { it.startsWith("Wave") }
+        require(scenarios.map { it.split('\t')[1] }.distinct().size == scenarios.size) {
+            "Stream scenarios must have distinct Tabler drawings"
+        }
         ZipFile(archive.get().asFile).use { zip ->
             val entries = zip.entries().asSequence().filterNot { it.isDirectory }.associateBy { it.name.substringAfter('/') }
             for (row in rows) {

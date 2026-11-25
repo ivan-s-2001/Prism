@@ -195,7 +195,8 @@ object PrismIcons {
                 addPath(
                     nodes,
                     fill = if (fill) ink else null, fillAlpha = alpha,
-                    stroke = ink, strokeLineWidth = p.width * IconStyle.weight.scale * classicLine,
+                    stroke = ink, strokeLineWidth = p.width * IconStyle.weight.scale * classicLine *
+                        (if (filled && s.twin == 0 && !useSelected && name == "Stream") 1.3f else 1f),
                     strokeLineCap = if (round) StrokeCap.Round else StrokeCap.Butt,
                     strokeLineJoin = if (round) StrokeJoin.Round else StrokeJoin.Miter,
                 )

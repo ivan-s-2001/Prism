@@ -291,7 +291,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 Text(title, style = pageTitleStyle(), color = scheme.onBackground, maxLines = 1)
                 Text(status, color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
-            RoundAction(PrismIcons.Refresh, tr(R.string.prism_stream_refresh_stream),
+            RoundAction(PrismIcons.Shuffle, tr(R.string.prism_stream_refresh_stream),
                 enabled = !starting, modifier = Modifier.testTag("home:my_wave:refresh")) {
                 if (onRetry != null && !wave) onRetry() else start()
             }
