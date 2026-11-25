@@ -1,6 +1,6 @@
 # Prism Connect: Yandex Station (experimental)
 
-This branch contains an experimental local transport for Prism's existing Connect interface. No UI, account sign-in, or production playback route is wired yet. The code has not been built or tested on hardware.
+This branch contains an experimental local transport for Prism's existing Connect interface. A debug-only hardware diagnostic activity now includes experimental first-party WebView sign-in. Production playback and production account sign-in are not wired. The code has not been built or tested on hardware.
 
 ## Milestone 1
 - Glagol command envelope, ping, stop, volume and radio_play encoder.
@@ -34,3 +34,27 @@ Record each Station's model/firmware, mDNS result, auth, ping, volume, test audi
 - https://github.com/AlexxIT/YandexStation
 
 No firmware modifications, external server or account secrets in the repository.
+
+## Station Lab debug APK
+
+GitHub Actions: [Yandex Station diagnostics](https://github.com/ivan-s-2001/Prism/actions/workflows/yandex-station-diagnostics.yml).
+The workflow runs Yandex unit tests and builds a side-by-side debug APK named Prism Station Lab (`com.prism.music.station`). Download the artifact only after a successful build.
+
+Local build:
+```sh
+./gradlew :app:testDebugUnitTest --tests 'com.prism.music.connect.yandex.*' :app:assembleDebug -PsideBySide=station -PsideByLabel="Prism Station Lab"
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n com.prism.music.station/com.prism.music.connect.yandex.StationDiagnosticsActivity
+```
+
+1. Connect phone and Station to the same Wi-Fi (no guest isolation).
+2. Open the debug diagnostics via ADB; the activity is protected by the DUMP permission and absent from release builds.
+3. Sign in directly on Yandex's page. The debug experiment uses first-party WebView cookies for the two Quasar hosts only; it does not export passwords or cookie values. Yandex may reject embedded login; if so, stop and implement a device authorization flow. Use a test account if possible.
+4. Scan, select a Station, verify account ownership and connect. If verification fails, do not bypass certificate verification.
+5. Select a short local CBR MP3 test file and Play test MP3.
+6. Refresh diagnostics, note frame/byte counters and confirm audible playback. Stop before disconnect.
+7. Repeat for Station 1, Lite and Midi; record firmware and whether the account has Plus. Do not share raw HTTP bodies, certificates' private keys, cookies or tokens.
+
+The existing Prism Cast implementation uses RendererLink, MediaServer and shadow playback. Production integration should reuse those once hardware confirms the protocol, with explicit capability handling for unsupported seek, queue preloading and pause. The diagnostic does not alter Prism's playback queue or expose a production route.
+
+Build and hardware status: not yet verified.
