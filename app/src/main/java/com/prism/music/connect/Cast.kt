@@ -525,7 +525,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                         StationConnectAccount.initialize(app)
                         val api = StationConnectAccount.api() ?: error("Sign in to Yandex in Settings")
                         val identity = api.verify(device)
-                        StationRendererLink(device, identity, api, server::deliverySequence, server::stationSlice)
+                        StationRendererLink(device, identity, api, server::deliverySequence, server::stationSlice, server::retireStationSlice)
                     }
                     RendererKind.GOOGLE_CAST -> GoogleCastLink(r)
                     else -> RendererControl(c.http, r)
