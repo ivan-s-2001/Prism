@@ -142,6 +142,44 @@ class MyWaveTest {
         assertTrue(result.count { it.primaryArtist == "A" } <= 2)
     }
 
+    @Test fun newLikesCarryMoreWeightButOldLikesRemainPositive() {
+        val day = 86_400_000L
+        val now = 500L * day
+        val today = MyWave.likeWeight(now, now)
+        val fortnight = MyWave.likeWeight(now - 14 * day, now)
+        val quarter = MyWave.likeWeight(now - 90 * day, now)
+        val year = MyWave.likeWeight(now - 365 * day, now)
+        assertEquals(1.0, today, 1e-9)
+        assertTrue(today > fortnight && fortnight > quarter && quarter > year)
+        assertTrue(year >= 0.20)
+        assertEquals(0.20, MyWave.likeWeight(0, now), 1e-9)
+        assertEquals(0.20, MyWave.likeWeight(now + day, now), 1e-9)
+        assertTrue(MyWave.likeSaturation(2.0) > MyWave.likeSaturation(1.0))
+        assertTrue(MyWave.likeSaturation(10.0) < 1.0)
+    }
+
+    @Test fun freshExplicitLikePromotesSongEvenWithOlderRankedCandidates() {
+        val old = song("old", "A")
+        val fresh = song("fresh", "B")
+        val profile = MyWave.Profile(likedAffinity = { if (it == fresh) 1.0 else 0.20 })
+        val result = MyWave.start(emptyList(), listOf(old, fresh), emptyList(), { false }, { true },
+            8L, 1, MyWave.Style(character = MyWave.Character.FAMILIAR), profile = profile)
+        assertEquals(listOf(fresh), result)
+    }
+
+    @Test fun dailyScenariosAreDistinctAndClockChangesOrderingOnly() {
+        val scenarios = com.prism.music.data.foryou.WaveScenarios
+        assertEquals(20, scenarios.all.size)
+        assertEquals(20, scenarios.all.map { it.id }.distinct().size)
+        assertEquals(20, scenarios.all.map { it.style }.distinct().size)
+        assertEquals("wake", scenarios.forDay(7, false).first().id)
+        assertEquals("day", scenarios.forDay(15, false).first().id)
+        assertEquals("weekend", scenarios.forDay(15, true).first().id)
+        assertEquals("evening", scenarios.forDay(20, false).first().id)
+        assertEquals("night", scenarios.forDay(2, false).first().id)
+        assertEquals(scenarios.forDay(7, false).toSet(), scenarios.forDay(20, true).toSet())
+    }
+
     @Test fun diversifiesArtistsWhenPossible() {
         val songs = listOf(song("a1", "A"), song("a2", "A"), song("b", "B"), song("c", "C"))
         val result = MyWave.start(songs, emptyList(), emptyList(), { false }, { true }, 13L, 4)
