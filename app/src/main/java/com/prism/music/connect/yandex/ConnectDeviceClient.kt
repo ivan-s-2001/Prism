@@ -151,13 +151,14 @@ internal object ConnectDeviceClient {
         })
     }
 
-    suspend fun command(generation: String, command: JsonObject) {
+    suspend fun command(generation: String, command: JsonObject): String {
         val credential = secret ?: throw IOException("Device not paired")
-        post("command", credential, buildJsonObject {
+        val result = post("command", credential, buildJsonObject {
             put("generation", generation)
             put("id", java.util.UUID.randomUUID().toString())
             put("command", command)
         })
+        return requireNotNull((result["id"] as? JsonPrimitive)?.contentOrNull)
     }
 
     suspend fun revoke(context: Context) {
