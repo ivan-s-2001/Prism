@@ -280,11 +280,12 @@ class YourMusic(private val c: AppContainer) {
 
     /** The same bounded startup sequence is used on phone and TV. */
     internal suspend fun startWave(base: List<Song>, style: MyWave.Style, previous: Song?,
+        existing: List<Song> = emptyList(),
         fallbackBase: suspend () -> List<Song> = { base },
     ): List<Song> {
-        val quick = waveBatch(base, style, 0, previous, emptyList(), count = 2, fast = true)
+        val quick = waveBatch(base, style, 0, previous, existing, count = 2, fast = true)
         if (quick.isNotEmpty()) return quick
-        return waveBatch(fallbackBase(), style, 0, previous, emptyList(), count = 2)
+        return waveBatch(fallbackBase(), style, 0, previous, existing, count = 2)
     }
 
     /** Shared start/refill path. New means absent from the available local and imported history, not a claim about

@@ -212,7 +212,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         selectionJob = scope.launch {
             try {
                 val began = android.os.SystemClock.elapsedRealtime()
-                val songs = c.yourMusic.startWave(recommendations, selected, current)
+                val occupied = if (previous.isMyWave) c.player.waveRetuneOccupied() else emptyList()
+                val songs = c.yourMusic.startWave(recommendations, selected, current, existing = occupied)
                 android.util.Log.i("PrismWave", "first selection: ${android.os.SystemClock.elapsedRealtime() - began}ms; tracks=${songs.size}")
                 // Latest selection wins; a slow response cannot restore an older set of filters.
                 if (!isActive || version != requestVersion || c.queue.source.value !== previous) return@launch
@@ -223,8 +224,16 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     c.player.reportError(if (!c.network.isOnline()) tr(R.string.prism_stream_no_matching_downloaded_tracks) else tr(R.string.prism_stream_not_enough_tracks_for_the_selected_mix_change_the_percentage_or_check))
                 } else {
                     val next = QueueSource(QueueKind.RADIO, title, seedId = nextSongs.first().id, originId = selected.origin)
-                    c.recFeedback.served(nextSongs.map { it.id })
-                    c.player.playQueue(nextSongs, 0, next)
+                    if (previous.isMyWave) {
+                        if (!c.player.retuneWave(previous, next, nextSongs)) {
+                            style = restoredStyle(previous.originId)
+                            c.player.reportError(tr(R.string.prism_stream_could_not_update_stream))
+                            return@launch
+                        }
+                    } else {
+                        c.recFeedback.served(nextSongs.map { it.id })
+                        c.player.playQueue(nextSongs, 0, next)
+                    }
                     c.settings.setStreamStyle(selected)
                 }
             } catch (e: CancellationException) { throw e }

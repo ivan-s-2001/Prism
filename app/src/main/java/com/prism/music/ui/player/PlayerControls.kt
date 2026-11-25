@@ -997,7 +997,11 @@ fun PlayerActionRow(
     val settings by c.settings.flow.collectAsState()
     val videoLoading by pc.videoLoading.collectAsState()
     // Settings → Player → "Song / Video switch" off: audio only, the Video button goes.
-    val chosen = settings.player.buttons.filter { it != PlayerButton.VIDEO || settings.showVideoSwitch }
+    val source by c.queue.source.collectAsState()
+    val continuous = source.isMyWave || source.isSongRadio
+    val chosen = settings.player.buttons.filter {
+        (it != PlayerButton.VIDEO || settings.showVideoSwitch) && (it != PlayerButton.RADIO || !source.isMyWave)
+    }
     // Six to a row still fits a small phone: the buttons narrow a little past four.
     val glyph = when { chosen.size >= 6 -> 46.dp; chosen.size == 5 -> 50.dp; else -> 56.dp }
     // In one glass capsule (1.7), or (1.7.8, #155) as separate buttons spread across the row, as Prism 1.6 had them.
@@ -1027,8 +1031,10 @@ fun PlayerActionRow(
                             if (repeat == Player.REPEAT_MODE_ONE) null else PrismIcons.Repeat, tr(R.string.repeat),
                             repeat != Player.REPEAT_MODE_OFF, label = if (repeat == Player.REPEAT_MODE_ONE) "1" else null, width = PILL_SEGMENT_WIDTH_TRIPLE,
                         ) { pc.cycleRepeat() }
-                        PillDivider()
-                        PillSegment(PrismIcons.Autoplay, tr(R.string.autoplay), settings.autoplay, width = PILL_SEGMENT_WIDTH_TRIPLE) { c.settings.setAutoplay(!settings.autoplay) }
+                        if (!continuous) {
+                            PillDivider()
+                            PillSegment(PrismIcons.Autoplay, tr(R.string.autoplay), settings.autoplay, width = PILL_SEGMENT_WIDTH_TRIPLE) { c.settings.setAutoplay(!settings.autoplay) }
+                        }
                     }
                     // #294: "Tidier queue": Back or pulling its title down closes it.
                     if (!settings.view.queueTidy) BottomGlyph(PrismIcons.Queue, tr(R.string.up_next), true, onToggleQueue)

@@ -735,6 +735,18 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         service?.maybeAutoplay()
     }
 
+    /** Queue items a retune must not replace or duplicate. Offline may reuse previously played downloads. */
+    internal fun waveRetuneOccupied(): List<Song> {
+        val p = player ?: return emptyList()
+        val manual = c.queue.userQueued.value
+        val online = c.network.isOnline()
+        return (0 until p.mediaItemCount).mapNotNull { index ->
+            val item = p.getMediaItemAt(index)
+            item.toSong()?.takeIf { (online && index <= p.currentMediaItemIndex) ||
+                index == p.currentMediaItemIndex || item.mediaId in manual }
+        }
+    }
+
     /** Retune a running Wave without changing the current MediaItem, its position, or play/pause state. */
     internal fun retuneWave(expected: QueueSource, next: QueueSource, candidates: List<Song>): Boolean {
         val p = player ?: return false
@@ -743,11 +755,13 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         if (at !in 0 until p.mediaItemCount) return false
         val manual = c.queue.userQueued.value
         val oldSize = p.mediaItemCount
-        val occupied = (0 until oldSize).filter { it <= at || p.getMediaItemAt(it).mediaId in manual }
-            .mapTo(hashSetOf()) { p.getMediaItemAt(it).mediaId }
-        val songs = candidates.filter { it.id !in occupied && !c.sessionHeard.has(it) &&
-            !c.library.isDisliked(it.id) && !c.exclusions.blocks(it) && !c.exclusions.isSongExcluded(it.id) &&
-            com.prism.music.data.ExplicitFilter.plays(c.settings.current.behavior.explicitContent, it) }.distinctBy { it.id }
+        val offline = !c.network.isOnline()
+        val occupied = waveRetuneOccupied().mapTo(hashSetOf(), com.prism.music.data.foryou.LocalRadio::sameSong)
+        val songs = candidates.filter {
+            com.prism.music.data.foryou.LocalRadio.sameSong(it) !in occupied &&
+                (offline || !c.sessionHeard.has(it)) &&
+                c.yourMusic.recommendationAllowed(it, offlineOnly = offline)
+        }.distinctBy(com.prism.music.data.foryou.LocalRadio::sameSong)
         if (songs.isEmpty()) return false
         ++playToken
         stopFill()

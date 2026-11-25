@@ -970,8 +970,9 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         // For "No repeats this session": heard, however briefly (a quick skip never reaches the history).
         if (!song.isEpisode) c.sessionHeard.note(song, c.queue.counterparts[song.id] ?: c.plays.videoOf(song.id))
         trackedSource = sourceOf(mediaItem)
-        trackedRecommended = picked || mediaItem.mediaId in c.queue.smartPicks.value ||
-            c.queue.source.value.originId?.let { com.prism.music.data.foryou.ForYou.isMixId(it) } == true
+        trackedRecommended = mediaItem.mediaId !in c.queue.userQueued.value &&
+            (picked || mediaItem.mediaId in c.queue.smartPicks.value ||
+                c.queue.source.value.originId?.let { com.prism.music.data.foryou.ForYou.isMixId(it) } == true)
         // Not while history is paused (#296): no "now playing" on Last.fm either.
         if (!com.prism.music.data.HistoryPause.paused(c.settings.current.behavior)) c.lastFm.started(song)
         trackedExcluded = c.exclusions.outOfTaste(song, c.queue.source.value.originId)
@@ -1879,9 +1880,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                     player.addMediaItems(additions.map { it.toMediaItem() })
                     c.recFeedback.served(additions.map { it.id })
                 } else if (player.mediaItemCount - player.currentMediaItemIndex <= 1) {
-                    c.player.reportError(if (java.util.Locale.getDefault().language == "ru")
-                        "Недостаточно треков для выбранной пропорции волны"
-                    else "Not enough tracks for the selected Wave mix")
+                    c.player.reportError(if (offline) tr(R.string.prism_stream_no_matching_downloaded_tracks)
+                        else tr(R.string.prism_stream_not_enough_matching_tracks))
                 }
                 return@launch
             }
@@ -2490,7 +2490,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         if (song != null && ms > 0 && !paused) c.lastFm.heard(song, ms)
         // What the listener made of a suggestion (1.7.9): skipped within its first moments, it's left out of them for a while;
         // heard through, it's welcome. Under ten seconds a play isn't kept at all, so this is the only trace of a quick skip.
-        if (song != null && trackedRecommended && !song.isEpisode && !song.isLive && !paused) {
+        if (song != null && trackedRecommended && !excluded && !song.isEpisode && !song.isLive && !paused) {
             val length = song.durationSec * 1000L
             when {
                 skipped && ms < minOf(30_000L, if (length > 0) length * 3 / 10 else 30_000L) -> c.recFeedback.skipped(song.id, song.primaryArtist)

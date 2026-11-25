@@ -105,7 +105,8 @@ internal fun TvWavePlace(nav: TvNav) {
         starting = true
         job = scope.launch {
             try {
-                val candidates = c.yourMusic.startWave(base, selected, previous) {
+                val occupied = if (old.isMyWave) c.player.waveRetuneOccupied() else emptyList()
+                val candidates = c.yourMusic.startWave(base, selected, previous, existing = occupied) {
                     if (base.isEmpty()) base = loadBase()
                     base
                 }
@@ -114,9 +115,17 @@ internal fun TvWavePlace(nav: TvNav) {
                 val picks = MyWave.initialPicks(candidates, current, offline = !c.network.isOnline())
                 if (picks.isEmpty()) c.player.reportError(if (!c.network.isOnline()) tr(R.string.prism_stream_no_matching_downloaded_tracks) else tr(R.string.prism_stream_not_enough_matching_tracks))
                 else {
+                    val next = QueueSource(QueueKind.RADIO, title, seedId = picks.first().id, originId = selected.origin)
+                    if (old.isMyWave) {
+                        if (!c.player.retuneWave(old, next, picks)) {
+                            c.player.reportError(tr(R.string.prism_stream_could_not_update_stream))
+                            return@launch
+                        }
+                    } else {
+                        c.recFeedback.served(picks.map { it.id })
+                        c.player.playQueue(picks, 0, next)
+                    }
                     style = selected
-                    c.recFeedback.served(picks.map { it.id })
-                    c.player.playQueue(picks, 0, QueueSource(QueueKind.RADIO, title, seedId = picks.first().id, originId = selected.origin))
                     c.settings.setStreamStyle(selected)
                 }
             } catch (e: CancellationException) { throw e }
