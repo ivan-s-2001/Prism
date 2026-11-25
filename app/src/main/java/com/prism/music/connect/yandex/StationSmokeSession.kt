@@ -56,6 +56,8 @@ internal class StationSmokeSession(
     @Volatile private var audioClientHls: Boolean? = null
     private var liveModern = true
     private var liveStoppedBoundary = false
+    private var liveMusicSession = false
+    private var liveCommandAttempted = false
     private val socket = GlagolSocket(station, identity.certificatePem) { text ->
         stopControl.onState(text)
         runCatching {
@@ -122,6 +124,9 @@ internal class StationSmokeSession(
     }
 
     suspend fun playMusicLive(phoneAddress: Inet4Address) {
+        liveMusicSession = true
+        liveCommandAttempted = false
+        liveStoppedBoundary = false
         server?.close()
         server = null
         liveProbe?.close()
@@ -156,7 +161,9 @@ internal class StationSmokeSession(
             android.util.Log.i("PrismLive", "Sending $directive audio_client=$audioClient audio_client_hls=$audioClientHls; ${stream.summary()}; captured=${StationAudioTap.captured}")
             val payload = if (liveModern) GlagolProtocol.playHls(stream.url, liveTitle, "Prism")
                 else GlagolProtocol.playRadio(stream.url, liveTitle, "Prism")
-            val reply = socket.request(tokens.tokenFor(identity), payload, 1500L)
+            val token = tokens.tokenFor(identity)
+            liveCommandAttempted = true
+            val reply = socket.request(token, payload, 1500L)
             android.util.Log.i("PrismLive", "$directive reply=${if (reply == null) "pending" else if (reply.equals("SUCCESS", true)) "success" else "rejected"}")
             if (reply != null && !reply.equals("SUCCESS", true)) error("Station rejected $directive")
         } catch (e: Throwable) {
@@ -198,7 +205,7 @@ internal class StationSmokeSession(
         liveProbe = null
         server?.close()
         server = null
-        stopControl.stop(socket, tokens.tokenFor(identity))
+        if (!liveMusicSession || liveCommandAttempted) stopControl.stop(socket, tokens.tokenFor(identity), allowTextFallback = !liveMusicSession)
     }
 
     private suspend fun send(payload: JsonObject) {
