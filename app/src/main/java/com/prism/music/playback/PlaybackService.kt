@@ -1843,9 +1843,31 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 withContext(Dispatchers.IO) { c.radio(from, "RDAMVM$from", continuation = token) }
             }.getOrNull()
             val r = if (!wantYouTube) null else askRadio(seed, continuation)
+            // An independent, positively selected seed widens recall without following the last track indefinitely.
+            // Never compete with Station casting; the primary radio still owns its continuation token.
+            val extra = if (wave && r != null && r.songs.isNotEmpty() && !c.castingNow &&
+                (waveStyle.character == com.prism.music.data.foryou.MyWave.Character.DISCOVERY || waveStyle.diversity >= 70)) {
+                val currentArtist = player.currentMediaItem?.toSong()?.primaryArtist
+                val alternate = session.oldestFirst().asReversed().firstOrNull {
+                    it.id != seed && !it.isLocal && !it.isVideo && !it.isLive && !it.isEpisode &&
+                        it.primaryArtist.isNotBlank() && !it.primaryArtist.equals(currentArtist, ignoreCase = true) &&
+                        it.id in c.library.likedIds.value && !c.library.isDisliked(it.id) &&
+                        !c.exclusions.blocks(it) && !c.exclusions.isSongExcluded(it.id) &&
+                        !c.recFeedback.turnedDown(it.id, known = true)
+                }
+                if (alternate == null) emptyList() else kotlinx.coroutines.withTimeoutOrNull(1800L) {
+                    try {
+                        withContext(Dispatchers.IO) { c.radio(alternate.id, "RDAMVM${alternate.id}", continuation = null).songs }
+                    } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (_: Exception) { emptyList() }
+                }.orEmpty()
+            } else emptyList()
+            if (!isActive || c.queue.source.value !== src) return@launch
+            val radioCandidates = if (extra.isEmpty()) r?.songs.orEmpty()
+                else com.prism.music.data.foryou.MyWave.fuse(listOf(r?.songs.orEmpty(), extra))
             // #461: beside YouTube's radio, only your songs close to the seed (or by artists on that radio).
             val mine = com.prism.music.data.foryou.LocalRadio.besideYouTube(
-                ownPicks, onlyYours = !useYouTube || mode == com.prism.music.data.prefs.AutoplaySource.YOURS, radio = r?.songs.orEmpty(),
+                ownPicks, onlyYours = !useYouTube || mode == com.prism.music.data.prefs.AutoplaySource.YOURS, radio = radioCandidates,
             ).map { it.song }
             // Dropped if the queue was replaced, or Autoplay was switched off, while loading. (With no repeats on, having
             // nothing from either isn't the end yet: [RadioTopUp.next] looks further.)
@@ -1864,9 +1886,9 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                         (radio || com.prism.music.data.AutoplayLength.fits(it, behavior.autoplayMaxMinutes))
                 },
             )
-            val first = r?.let { com.prism.music.data.foryou.RadioTopUp.Page(it.songs, it.continuation) }
+            val first = r?.let { com.prism.music.data.foryou.RadioTopUp.Page(radioCandidates, it.continuation) }
             val signals = if (tune.neutral && !wave) com.prism.music.data.foryou.RadioSignals()
-                else withContext(Dispatchers.IO) { c.discover.radioSignals(mine + r?.songs.orEmpty(), if (wave) tune.copy(newness = 0.5f) else tune) }
+                else withContext(Dispatchers.IO) { c.discover.radioSignals(mine + radioCandidates, if (wave) tune.copy(newness = 0.5f) else tune) }
             val askPage: suspend (String, String?) -> com.prism.music.data.foryou.RadioTopUp.Page? = { from, token ->
                 askRadio(from, token)?.let { com.prism.music.data.foryou.RadioTopUp.Page(it.songs, it.continuation) }
             }
