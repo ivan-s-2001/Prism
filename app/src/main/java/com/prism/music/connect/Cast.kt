@@ -17,6 +17,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.prism.music.AppContainer
 import com.prism.music.BuildConfig
+import com.prism.music.connect.yandex.ConnectDeviceClient
+import kotlinx.serialization.json.*
 import com.prism.music.connect.yandex.StationConnectAccount
 import com.prism.music.connect.yandex.StationDiscoveryEvent
 import com.prism.music.connect.yandex.StationRendererLink
@@ -377,6 +379,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
     private class Waiting(val song: Song, val at: Long)
 
     private class Session(val renderer: Renderer, val ctl: RendererLink, val host: String, val sink: Set<String>) {
+        var connectLease: ConnectDeviceClient.Lease? = null
         var current: Loaded? = null
         var next: Loaded? = null
         var nextSupported = true
@@ -404,6 +407,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
 
     private var session: Session? = null
     private val wire = Mutex()
+    private val stationClaimLock = Mutex()
     private var cleanupJob: Job? = null
     private var connectGeneration = 0L
     private var pollJob: Job? = null
@@ -506,7 +510,6 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             }
             if (generation != connectGeneration || state.value != CastState.Connecting(r)) { c.scope.launch(NonCancellable) { runCatching { ctl.close() } }; return@launch }
             val sink = ctl.sinkMimes()
-            server.newSession()
             val s = Session(r, ctl, host!!, sink)
             // Cast devices get each song as it comes (no "next" to line up), so it isn't got ready twice.
             s.nextSupported = r.kind != RendererKind.GOOGLE_CAST && r.kind != RendererKind.YANDEX_STATION
@@ -515,6 +518,29 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 c.scope.launch(NonCancellable) { runCatching { ctl.close() } }
                 return@launch
             }
+            if (r.kind == RendererKind.YANDEX_STATION) {
+                try {
+                    stationClaimLock.withLock {
+                        if (generation != connectGeneration || state.value != CastState.Connecting(r)) throw IOException("Connection cancelled")
+                        s.connectLease = ConnectDeviceClient.claim(app)
+                        if (generation != connectGeneration || state.value != CastState.Connecting(r)) {
+                            s.connectLease?.let { ConnectDeviceClient.release(it) }
+                            throw IOException("Connection cancelled")
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    c.scope.launch(NonCancellable) { runCatching { ctl.close() } }
+                    throw e
+                } catch (_: Exception) {
+                    c.scope.launch(NonCancellable) { runCatching { ctl.close() } }
+                    if (generation == connectGeneration) {
+                        _state.value = CastState.Idle
+                        _events.tryEmit("Prism Connect: another device is active or the server is unavailable")
+                    }
+                    return@launch
+                }
+            }
+            server.newSession()
             session = s
             casting = true
             liveLocal = false
@@ -654,8 +680,16 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         loadGen++
         cleanupJob = scope.launch {
             onWire {
-                runCatching { withTimeoutOrNull(15_000) { s.ctl.stop() } }
+                val stopped = runCatching { withTimeoutOrNull(15_000) { s.ctl.stop(); true } }.getOrNull() == true
                 runCatching { withTimeoutOrNull(4_000) { s.ctl.close() } }
+                if (stopped) {
+                    s.connectLease?.let { lease ->
+                        runCatching { ConnectDeviceClient.release(lease) }
+                            .onFailure { _events.tryEmit("Prism Connect: host release could not be confirmed") }
+                    }
+                } else if (s.connectLease != null) {
+                    _events.tryEmit("Prism Connect: Station stop not confirmed; host remains reserved")
+                }
             }
         }
         val p = player
@@ -670,6 +704,30 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         _state.value = CastState.Idle
         if (message != null) _events.tryEmit(message)
         Log.i(TAG, "stopped casting to ${s.renderer.name}${message?.let { ": $it" } ?: ""}")
+    }
+
+    internal fun stationConnectLease(): ConnectDeviceClient.Lease? = session?.connectLease
+
+    internal fun stationConnectSnapshot(): JsonObject {
+        val s = session ?: return buildJsonObject {}
+        val ctl = s.ctl as? StationRendererLink ?: return buildJsonObject {}
+        val observed = ctl.observed()
+        val owns = ctl.ownsObservedStream()
+        return buildJsonObject {
+            put("station", s.renderer.name.take(256))
+            put("loading", (state.value as? CastState.Casting)?.loading == true)
+            if (observed != null) {
+                observed.volume?.let { put("volume", it) }
+                if (owns) {
+                    observed.title?.let { put("title", it.take(256)) }
+                    observed.playing?.let { put("playing", it) }
+                    observed.position?.let { put("position", it) }
+                    observed.duration?.let { put("duration", it) }
+                } else if (observed.playing == false) {
+                    put("playing", false)
+                }
+            }
+        }
     }
 
     /** The renderer's volume (0–100), for the player's volume bar and the phone's volume keys. */
