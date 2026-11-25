@@ -48,10 +48,15 @@ internal class SongBytes(private val factory: DataSource.Factory, private val id
     private fun open(position: Long) {
         closeSource()
         val s = factory.createDataSource()
-        val n = s.open(DataSpec.Builder().setUri("prism://audio/$id").setKey(id).setPosition(position).build())
-        if (size < 0 && n != C.LENGTH_UNSET.toLong()) size = position + n
-        source = s
-        at = position
+        try {
+            val n = s.open(DataSpec.Builder().setUri("prism://audio/$id").setKey(id).setPosition(position).build())
+            if (size < 0 && n != C.LENGTH_UNSET.toLong()) size = position + n
+            source = s
+            at = position
+        } catch (e: Exception) {
+            runCatching { s.close() }
+            throw e
+        }
     }
 
     private fun closeSource() {
@@ -73,13 +78,16 @@ data class CastProbe(val rate: Int, val frames: Long)
 class CastDecoder(private val setSource: (MediaExtractor) -> Unit) {
     /** The output rate (HE-AAC decodes to twice the rate its track says, so it's read off a decoded piece) and length. */
     fun probe(fallbackMs: Long): CastProbe {
-        Frames(setSource, 0, 0).use { f ->
-            f.read() // the first decoded piece settles the output format
-            val rate = f.rate
-            val us = f.durationUs.takeIf { it > 0 } ?: (fallbackMs * 1000)
-            if (rate <= 0 || us <= 0) throw IOException(tr(R.string.couldn_t_read_the_song_s))
-            return CastProbe(rate, us * rate / 1_000_000)
-        }
+        if (!permits.tryAcquire(20, TimeUnit.SECONDS)) throw IOException(tr(R.string.too_many_decoders_at_once))
+        try {
+            Frames(setSource, 0, 0).use { f ->
+                if (f.read() == null) throw IOException("Audio decoder produced no samples")
+                val rate = f.rate
+                val us = f.durationUs.takeIf { it > 0 } ?: (fallbackMs * 1000)
+                if (rate <= 0 || us <= 0) throw IOException(tr(R.string.couldn_t_read_the_song_s))
+                return CastProbe(rate, us * rate / 1_000_000)
+            }
+        } finally { permits.release() }
     }
 
     /** Frames from [startFrame] at [rate] (the probed rate). */
@@ -89,7 +97,8 @@ class CastDecoder(private val setSource: (MediaExtractor) -> Unit) {
             object : PcmFrames {
                 val f = Frames(setSource, startFrame, rate)
                 override fun read() = f.read()
-                override fun close() { f.close(); permits.release() }
+                private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
+                override fun close() { if (closed.compareAndSet(false, true)) try { f.close() } finally { permits.release() } }
             }
         } catch (e: Exception) {
             permits.release()
@@ -99,7 +108,7 @@ class CastDecoder(private val setSource: (MediaExtractor) -> Unit) {
 
     private class Frames(setSource: (MediaExtractor) -> Unit, private val startFrame: Long, private var expectRate: Int) : PcmFrames {
         private val extractor = MediaExtractor()
-        private val codec: MediaCodec
+        private lateinit var codec: MediaCodec
         private val info = MediaCodec.BufferInfo()
         private var inputDone = false
         private var outputDone = false
@@ -132,13 +141,17 @@ class CastDecoder(private val setSource: (MediaExtractor) -> Unit) {
                     extractor.seekTo((us - PRE_ROLL_US).coerceAtLeast(0), MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
                 }
             } catch (e: Exception) {
+                if (::codec.isInitialized) runCatching { codec.release() }
                 runCatching { extractor.release() }
                 throw e
             }
         }
 
         override fun read(): ShortArray? {
+            var lastProgress = android.os.SystemClock.elapsedRealtime()
             while (!outputDone) {
+                if (Thread.currentThread().isInterrupted) throw IOException("Audio decoding interrupted")
+                if (android.os.SystemClock.elapsedRealtime() - lastProgress >= 10_000L) throw IOException("Audio decoder stalled")
                 if (!inputDone) {
                     val inIdx = codec.dequeueInputBuffer(10_000)
                     if (inIdx >= 0) {
@@ -164,6 +177,7 @@ class CastDecoder(private val setSource: (MediaExtractor) -> Unit) {
                     outIdx >= 0 -> {
                         val end = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
                         val piece = take(outIdx)
+                        if (info.size > 0) lastProgress = android.os.SystemClock.elapsedRealtime()
                         if (end) outputDone = true
                         if (piece != null && piece.isNotEmpty()) return piece
                     }
