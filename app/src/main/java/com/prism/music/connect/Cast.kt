@@ -925,6 +925,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         loadJob?.cancel()
         publish(s, loading = true)
         loadJob = scope.launch {
+            val prepareStarted = SystemClock.elapsedRealtime()
             val loaded = try {
                 withContext(Dispatchers.IO) { prepare(s, song) }
             } catch (e: CancellationException) {
@@ -940,6 +941,9 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 return@launch
             }
             if (gen != loadGen || session !== s) return@launch
+            if (s.renderer.kind == RendererKind.YANDEX_STATION) {
+                Log.i(TAG, "Station stream prepared in ${SystemClock.elapsedRealtime() - prepareStarted} ms")
+            }
             val sent = runCatching {
                 onWire {
                     if (gen != loadGen || session !== s) return@onWire false
@@ -1105,6 +1109,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             ti.playing -> {
                 if (!cur.started) {
                     cur.started = true
+                    if (s.renderer.kind == RendererKind.YANDEX_STATION) Log.i(TAG, "Station playback confirmed in ${now - cur.loadedAt} ms after load")
                     publish(s, loading = false)
                     // Sent mid-song (casting started there): the renderer goes to where the phone is. A song sent from its
                     // start has the phone follow the renderer instead (one step back, as the renderer took a moment).
