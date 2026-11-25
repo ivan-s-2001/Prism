@@ -156,10 +156,10 @@ class Discover(private val c: AppContainer) {
     private val tops = ConcurrentHashMap<String, Set<String>>()
 
     /** What the phone knows of [songs] for [tune]. Whatever it doesn't know stays null, and doesn't move a song. */
-    suspend fun radioSignals(songs: List<Song>, tune: RadioTune): RadioSignals {
+    suspend fun radioSignals(songs: List<Song>, tune: RadioTune, fetchTops: Boolean = true): RadioSignals {
         // Asked from the playback service, where a failed read would close Prism. (A mix being made lets it fail, and keeps last week's.)
         val known = if (tune.newness != 0f) com.prism.music.data.readOrElse<Heard?>("history", null) { heard() } else null
-        if (tune.depth != 0f) learnTops(songs)
+        if (tune.depth != 0f && fetchTops) learnTops(songs)
         return RadioSignals(
             heard = { s -> known?.has(s) },
             onTopList = { s -> s.artists.firstOrNull()?.id?.let { tops[it] }?.let { t -> s.id in t || Heard.key(s.title, s.primaryArtist) in t } },
