@@ -67,9 +67,15 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
         require(length >= 0 && length % 4 == 0)
         if (reader !in readers || !active || !running) return smooth(reader, ByteArray(length), false)
         val oldest = written - size
+        // A stalled room must not resume two seconds behind the other rooms.
+        // Ordinary decoder bursts fit in the reservoir; only recover when the
+        // ring has actually overwritten that receiver's unread samples.
         if (reader.cursor < oldest) {
-            reader.skippedBytes += oldest - reader.cursor
-            reader.cursor = oldest
+            val resume = maxOf(oldest, written - maxOf(reader.targetBytes, length))
+            reader.skippedBytes += resume - reader.cursor
+            reader.cursor = resume
+            reader.recoveries++
+            reader.recovering = true
             reader.fadingIn = true
         }
         val available = written - reader.cursor
