@@ -136,7 +136,7 @@ class ForYou(private val c: AppContainer) {
         }
     }
 
-    private fun ok(s: Song) = !s.isLocal && !s.isEpisode && !s.isLive && !c.library.isDisliked(s.id) && !c.exclusions.blocks(s)
+    private fun ok(s: Song) = !s.isLocal && c.yourMusic.recommendable(s) && !c.library.isDisliked(s.id) && !c.exclusions.blocks(s)
 
     /**
      * The listener as the mix maker sees them: every song they know scored, with how much it's been heard and served
