@@ -1552,6 +1552,8 @@ private fun SpeakersAndTvs(castState: com.prism.music.connect.CastState, casting
     val cast = LocalContainer.current.cast
     val handoff = LocalContainer.current.handoff
     val renderers by cast.renderers.collectAsState()
+    val liveDevices by cast.liveDevices.collectAsState()
+    val ru = java.util.Locale.getDefault().language == "ru"
     val prismTvs by handoff.devices.collectAsState()
     var lookedLong by remember { mutableStateOf(false) }
     DisposableEffect(Unit) {
@@ -1564,14 +1566,15 @@ private fun SpeakersAndTvs(castState: com.prism.music.connect.CastState, casting
         val playing = (castState as? com.prism.music.connect.CastState.Casting)?.renderer ?: (castState as? com.prism.music.connect.CastState.Connecting)?.renderer
         val all = if (playing != null && playing.kind != com.prism.music.connect.RendererKind.PRISM_TV && list.none { it.id == playing.id }) listOf(playing) + list else list
         // A TV whose Prism is listed under Prism devices isn't listed again as its own Cast or DLNA player.
-        all.filter { r -> r.id == castingTo || prismTvs.none { it.tv && rendererHost(r) in it.hosts } }
+        (all + liveDevices.map { it.renderer }).distinctBy { it.id }.filter { r -> r.id == castingTo || liveDevices.any { it.renderer.id == r.id } || prismTvs.none { it.tv && rendererHost(r) in it.hosts } }
     }
     // A TV that had Prism on it, not open now: the TV's own player still works, and Prism plays there once opened.
     val closedPrismTv = shown.firstNotNullOfOrNull { r -> handoff.prismTvAt(rendererHost(r)) }
     OutputGroup(tr(R.string.speakers_tvs)) {
         shown.forEach { r ->
             val selected = r.id == castingTo
-            val liveSelected = selected && cast.isStationLive
+            val liveDevice = liveDevices.firstOrNull { it.renderer.id == r.id }
+            val liveSelected = liveDevice != null
             val connecting = castState is com.prism.music.connect.CastState.Connecting && selected
             val speaker = speakerWords.any { w -> "${r.name} ${r.manufacturer} ${r.model}".lowercase().contains(w) }
             val station = r.kind == com.prism.music.connect.RendererKind.YANDEX_STATION
@@ -1582,14 +1585,27 @@ private fun SpeakersAndTvs(castState: com.prism.music.connect.CastState, casting
                 selected = selected && !connecting && !liveSelected, busy = connecting && !liveSelected,
                 enabled = !cast.isStationLive,
             ) { if (!selected) cast.connect(r) }
-            if (station && com.prism.music.BuildConfig.DEBUG && (castingTo == null || liveSelected)) {
-                val ru = java.util.Locale.getDefault().language == "ru"
+            if (station && com.prism.music.BuildConfig.DEBUG && (castingTo == null || liveDevices.isNotEmpty())) {
                 DeviceRow(PrismIcons.Equalizer,
-                    if (r.name.endsWith(" · Live")) r.name else "${r.name} · Live",
-                    if (ru) "Непрерывная передача музыки по Wi-Fi" else "Continuous Wi-Fi music stream",
-                    selected = liveSelected && !connecting, busy = liveSelected && connecting,
-                    enabled = !liveSelected) {
-                    cast.connectLive(r)
+                    r.name.removeSuffix(" · Live") + " · Live",
+                    if (liveDevice != null) {
+                        if (liveDevice.connected) { if (ru) "Подключена · нажмите для отключения" else "Connected · tap to disconnect" }
+                        else { if (ru) "Подключение…" else "Connecting…" }
+                    } else { if (ru) "Добавить в мультирум" else "Add to multiroom" },
+                    selected = liveDevice?.connected == true, busy = liveDevice != null && !liveDevice.connected,
+                    enabled = true) {
+                    if (liveDevice == null) cast.connectLive(r) else cast.disconnectLive(r.id)
+                }
+                if (liveDevice?.connected == true) {
+                    Column(Modifier.fillMaxWidth().padding(start = 56.dp, end = 16.dp, bottom = 8.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(if (ru) "Громкость" else "Volume", style = MaterialTheme.typography.labelSmall)
+                            Text("${liveDevice.volume}%", style = MaterialTheme.typography.labelSmall)
+                        }
+                        ThinSlider(value = liveDevice.volume / 100f,
+                            onValueChange = { cast.setLiveVolume(r.id, (it * 100).toInt()) },
+                            modifier = Modifier.fillMaxWidth().testTag("live:volume:${r.id}"))
+                    }
                 }
             }
         }
