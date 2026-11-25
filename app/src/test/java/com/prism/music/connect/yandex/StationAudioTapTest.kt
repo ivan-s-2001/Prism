@@ -91,4 +91,54 @@ class StationAudioTapTest {
             tap.stop()
         }
     }
+
+    @Test fun shortUnderrunKeepsMusicAndAvoidsRebuffer() {
+        val tap = StationAudioTap
+        tap.flush(44100, 2, C.ENCODING_PCM_16BIT)
+        tap.start(true)
+        val reader = tap.openReader()
+        try {
+            val frames = 44100 * 350 / 1000
+            val input = ByteBuffer.allocate(frames * 4).order(ByteOrder.LITTLE_ENDIAN)
+            while (input.hasRemaining()) input.putShort(1200).putShort(-600)
+            input.flip()
+            tap.handleBuffer(input)
+            val remainingFrames = 882 - 44
+            reader.read((frames - remainingFrames) * 4)
+            assertFalse(reader.recovering)
+            val output = reader.read(3528)
+            assertEquals(3528, output.size)
+            val samples = ByteBuffer.wrap(output).order(ByteOrder.LITTLE_ENDIAN)
+            while (samples.hasRemaining()) {
+                assertEquals(1200, samples.short.toInt())
+                assertEquals(-600, samples.short.toInt())
+            }
+            assertFalse(reader.recovering)
+            assertEquals(0L, reader.recoveries)
+            assertEquals(176L, reader.underrunBytes)
+            assertEquals(-44L, reader.adjustedFrames)
+        } finally {
+            reader.close()
+            tap.stop()
+        }
+    }
+
+    @Test fun longerUnderrunStillRebuffers() {
+        val tap = StationAudioTap
+        tap.flush(44100, 2, C.ENCODING_PCM_16BIT)
+        tap.start(true)
+        val reader = tap.openReader()
+        try {
+            val frames = 44100 * 350 / 1000
+            tap.handleBuffer(ByteBuffer.allocate(frames * 4))
+            reader.read((frames - 441) * 4)
+            assertFalse(reader.recovering)
+            assertEquals(3528, reader.read(3528).size)
+            assertTrue(reader.recovering)
+            assertEquals(1L, reader.recoveries)
+        } finally {
+            reader.close()
+            tap.stop()
+        }
+    }
 }
