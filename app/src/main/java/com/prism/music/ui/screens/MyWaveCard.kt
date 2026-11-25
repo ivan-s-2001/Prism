@@ -249,6 +249,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
 
     // Feed refresh never blocks starting playback; only actual playback work does.
     val pending = starting || (wave && buffering)
+    val djOn by c.dj.on.collectAsState()
     val ui = LocalUi.current
     val scheme = MaterialTheme.colorScheme
     val liked by c.library.likedIds.collectAsState()
@@ -292,9 +293,13 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     @Composable fun Header() {
         com.prism.music.ui.components.ScreenHeader(title,
             subtitle = status.takeIf { settings.streamShowStatus }) {
+            if (wave) RoundAction(if (djOn) PrismIcons.TurntableFilled else PrismIcons.Turntable,
+                tr(if (djOn) R.string.dj_mode_off else R.string.dj_mode),
+                modifier = Modifier.testTag("wave:dj")) { c.player.setDjMode(!djOn) }
             RoundAction(PrismIcons.Shuffle, tr(R.string.prism_stream_refresh_stream),
                 enabled = !starting, modifier = Modifier.testTag("home:my_wave:refresh")) {
-                if (onRetry != null && !wave) onRetry() else start()
+                if (wave && djOn) c.player.toggleShuffle()
+                else if (onRetry != null && !wave) onRetry() else start()
             }
         }
     }

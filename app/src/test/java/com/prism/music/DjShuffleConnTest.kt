@@ -62,6 +62,23 @@ class DjShuffleConnTest {
         assertTrue(c.dj.onNow)
     }
 
+    @Test fun vibeDjCanDealANewSetWithoutEnablingOrdinaryShuffle() {
+        val vibe = QueueSource(QueueKind.RADIO, "Vibe", originId = com.prism.music.data.foryou.MyWave.style(null).origin)
+        c.player.playQueue(songs(12), 0, vibe)
+        assertFalse(vibe.allowsOrderModes)
+        c.queue.smartShuffle.value = true
+        c.player.setDjMode(true)
+        assertFalse(c.queue.smartShuffle.value)
+        val before = c.dj.newSets.value
+        c.player.toggleShuffle()
+        assertEquals(before + 1, c.dj.newSets.value)
+        assertFalse(player.shuffleModeEnabled)
+        assertTrue(c.dj.onNow)
+        c.player.setDjMode(false)
+        c.player.toggleShuffle()
+        assertFalse(player.shuffleModeEnabled)
+    }
+
     @Test fun withDjModeOffShuffleIsAsBefore() {
         c.player.playQueue(songs(12), 0, playlist)
         val before = c.dj.newSets.value

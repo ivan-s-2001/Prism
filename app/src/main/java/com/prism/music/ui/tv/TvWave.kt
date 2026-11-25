@@ -59,6 +59,7 @@ internal fun TvWavePlace(nav: TvNav) {
     val disliked by c.library.dislikedIds.collectAsState()
     val now = rememberTvNow(c).takeIf { source.isMyWave }
     val current = song.takeIf { source.isMyWave }
+    val djOn by c.dj.on.collectAsState()
 
     val title = tr(R.string.stream)
     fun restored() = MyWave.restore(source.originId, appSettings.streamStyleOrigin, appSettings.streamRussianPercent)
@@ -259,6 +260,9 @@ internal fun TvWavePlace(nav: TvNav) {
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(ui.gap(16.dp))) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(title, Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium)
+                    if (current != null) TvIconButton(if (djOn) PrismIcons.TurntableFilled else PrismIcons.Turntable,
+                        tr(if (djOn) R.string.dj_mode_off else R.string.dj_mode), { c.player.setDjMode(!djOn) },
+                        Modifier.tvItem("tv_wave/dj"), on = djOn)
                     if (appSettings.streamShowStatus) Text(tr(if (starting) R.string.prism_stream_finding_music else if (now?.playing == true) R.string.prism_stream_playing else if (now != null) R.string.prism_stream_paused else R.string.prism_stream_personal_stream), style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
                 }
                 Row(Modifier.weight(1f).fillMaxWidth().then(if (appSettings.streamGlassPanel) Modifier.tvGlass(ui.shape(24.dp)) else Modifier).padding(ui.gap(if (appSettings.streamGlassPanel) 24.dp else 4.dp)),
@@ -302,7 +306,7 @@ internal fun TvWavePlace(nav: TvNav) {
                         TvFitGap(ui.gap(16.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp)), verticalAlignment = Alignment.CenterVertically) {
                             WaveTvButton(if (starting) tr(R.string.prism_stream_finding_music) else tr(R.string.prism_stream_refresh),
-                                { if (!starting) start() }, Modifier.weight(1f).tvItem("tv_wave/refresh"), icon = PrismIcons.Shuffle)
+                                { if (!starting) { if (djOn && current != null) c.player.toggleShuffle() else start() } }, Modifier.weight(1f).tvItem("tv_wave/refresh"), icon = PrismIcons.Shuffle)
                             if (current != null) WaveTvButton(tr(R.string.prism_stream_player), { nav.go(TvRoute.Player) }, Modifier.weight(1f).tvItem("tv_wave/player"))
                         }
                     }

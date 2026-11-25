@@ -1145,7 +1145,7 @@ private fun PlayerButtonGlyph(
         }
         PlayerButton.DJ -> {
             val on by c.dj.on.collectAsState()
-            BottomGlyph(if (on) PrismIcons.TurntableFilled else PrismIcons.Turntable, if (on) tr(R.string.dj_mode_off) else tr(R.string.dj_mode), on, { c.dj.setOn(!on) }, width)
+            BottomGlyph(if (on) PrismIcons.TurntableFilled else PrismIcons.Turntable, if (on) tr(R.string.dj_mode_off) else tr(R.string.dj_mode), on, { pc.setDjMode(!on) }, width)
         }
         PlayerButton.SLEEP -> {
             val at by pc.sleepAt.collectAsState()

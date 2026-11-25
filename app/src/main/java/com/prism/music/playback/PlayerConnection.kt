@@ -676,7 +676,11 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
 
     /** DJ mode on or off for the queue playing (the queue's switch). */
     fun setDjMode(on: Boolean) = withPlayer { p ->
-        if (on && p.shuffleModeEnabled) p.shuffleModeEnabled = false
+        if (on) {
+            c.queue.smartShuffle.value = false
+            c.queue.smartPicks.value = emptySet()
+            if (p.shuffleModeEnabled) p.shuffleModeEnabled = false
+        }
         c.dj.setOn(on)
     }
 
@@ -809,6 +813,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
             c.queue.autoplayStart.value = p.mediaItemCount - songs.size
         } finally { c.queue.filling = false }
         c.recFeedback.served(songs.map { it.id })
+        if (c.dj.onNow) c.dj.rescan()
         service?.maybeAutoplay()
         return true
     }
@@ -1196,13 +1201,14 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
      * (where the queue allows it) → off, or off → on → off with "Shuffle only" (D57): [nextShuffle].
      */
     fun toggleShuffle() = withPlayer {
-        if (!c.queue.source.value.allowsOrderModes) return@withPlayer
+        // DJ's new set is not ordinary shuffle. Continuous recommendations still disallow Media3 shuffle.
         // #374: in DJ mode Shuffle deals a new DJ set; DJ mode stays on and its order stays the order (no Media3 shuffle).
         if (c.dj.onNow) {
             if (it.shuffleModeEnabled) it.shuffleModeEnabled = false
             c.dj.newSet()
             return@withPlayer
         }
+        if (!c.queue.source.value.allowsOrderModes) return@withPlayer
         val now =when { !it.shuffleModeEnabled -> ShuffleMode.OFF; c.queue.smartShuffle.value -> ShuffleMode.SMART; else -> ShuffleMode.SHUFFLE }
         when (nextShuffle(now, c.settings.current.behavior.shuffleButton, c.queue.smartAllowed())) {
             ShuffleMode.SHUFFLE -> { reshuffle(it); it.shuffleModeEnabled = true }
