@@ -9,7 +9,7 @@ internal object MyWave {
     // A short recommendation horizon lets new skips and likes affect the next refill sooner.
     const val HORIZON = 8
 
-    enum class Character(val bias: Float) { BALANCED(0f), FAMILIAR(-0.75f), DISCOVERY(0.75f) }
+    enum class Character(val bias: Float, val percent: Int) { BALANCED(0f, 70), FAMILIAR(-0.75f, 0), DISCOVERY(0.75f, 100) }
     enum class Mood(val energy: Float) { ANY(0f), CALM(-0.8f), ENERGETIC(0.8f) }
     enum class Depth(val bias: Float) { ANY(0f), HITS(-0.65f), DEEP(0.65f) }
     enum class Activity(val energy: Float) {
@@ -21,8 +21,9 @@ internal object MyWave {
         val depth: Depth = Depth.ANY,
         val activity: Activity = Activity.ANY,
         val diversity: Int = 50,
+        val discoveryPercent: Int = character.percent,
     ) {
-        val origin: String get() = "$ORIGIN:${character.name}:${mood.name}:${depth.name}:${activity.name}:${diversity.coerceIn(0, 100)}"
+        val origin: String get() = "$ORIGIN:${character.name}:${mood.name}:${depth.name}:${activity.name}:${diversity.coerceIn(0, 100)}:${discoveryPercent.coerceIn(0, 100)}"
         // An explicit mood takes precedence over the activity's approximate energy target.
         val tune: RadioTune get() = RadioTune(newness = character.bias,
             energy = if (mood == Mood.ANY) activity.energy else mood.energy, depth = depth.bias)
@@ -30,11 +31,13 @@ internal object MyWave {
     fun isOrigin(origin: String?) = origin == ORIGIN || origin?.startsWith("$ORIGIN:") == true
     fun style(origin: String?): Style {
         val parts = origin?.removePrefix("$ORIGIN:")?.split(':').orEmpty()
-        return Style(Character.entries.firstOrNull { it.name == parts.getOrNull(0) } ?: Character.BALANCED,
+        val character = Character.entries.firstOrNull { it.name == parts.getOrNull(0) } ?: Character.BALANCED
+        return Style(character,
             Mood.entries.firstOrNull { it.name == parts.getOrNull(1) } ?: Mood.ANY,
             Depth.entries.firstOrNull { it.name == parts.getOrNull(2) } ?: Depth.ANY,
             Activity.entries.firstOrNull { it.name == parts.getOrNull(3) } ?: Activity.ANY,
-            parts.getOrNull(4)?.toIntOrNull()?.coerceIn(0, 100) ?: 50)
+            parts.getOrNull(4)?.toIntOrNull()?.coerceIn(0, 100) ?: 50,
+            parts.getOrNull(5)?.toIntOrNull()?.coerceIn(0, 100) ?: character.percent)
     }
 
     /** Decayed implicit feedback. Beta prior shrinks a few observations toward neutral.
@@ -85,6 +88,56 @@ internal object MyWave {
             }
         }
         return songs.entries.sortedByDescending { scores[it.key] ?: 0.0 }.take(limit).map { it.value }
+    }
+
+    /** Cumulative quota, rounded to the nearest song. Never reset the fraction at each refill.
+     * Only explicitly liked recordings may fill the liked slots; only unrecognized recordings may fill discoveries.
+     * If a required pool is exhausted, return a shorter prefix rather than silently changing the selected ratio.
+     */
+    fun discoverySlot(index: Int, percent: Int): Boolean {
+        val p = percent.coerceIn(0, 100).toLong()
+        val i = index.coerceAtLeast(0).toLong()
+        return ((i + 1) * p + 50) / 100 > (i * p + 50) / 100
+    }
+
+    fun mix(
+        candidates: List<Song>, likes: List<Song>, isKnown: (Song) -> Boolean,
+        heard: (Song) -> Boolean, allowed: (Song) -> Boolean, seed: Long,
+        style: Style, signals: RadioSignals, profile: Profile, count: Int = HORIZON,
+        offset: Int = 0, previousSong: Song? = null, avoid: Set<String> = emptySet(),
+        artistDoubt: (String) -> Double = { 0.0 }, servedRecently: (Song) -> Boolean = { false },
+        artistEvidence: (String) -> Evidence = { Evidence() },
+    ): List<Song> {
+        val likedKeys = likes.mapTo(hashSetOf(), LocalRadio::sameSong)
+        val likedIds = likes.mapTo(hashSetOf()) { it.id }
+        fun eligible(s: Song) = allowed(s) && !heard(s) && LocalRadio.sameSong(s) !in avoid
+        val fresh = candidates.filter { eligible(it) && it.id !in likedIds &&
+            LocalRadio.sameSong(it) !in likedKeys && !isKnown(it) }
+        fun rank(items: List<Song>, favorite: Boolean): MutableList<Song> =
+            start(if (favorite) emptyList() else items, if (favorite) items else emptyList(), emptyList(),
+                heard, ::eligible, seed, items.size.coerceAtMost(160), style, signals,
+                artistDoubt, servedRecently, profile, previousSong, avoid, artistEvidence).toMutableList()
+        val newPool = rank(fresh, false)
+        val likedPool = rank(likes.filter(::eligible), true)
+        val result = mutableListOf<Song>()
+        val seen = hashSetOf<String>()
+        val artistCounts = hashMapOf<String, Int>()
+        var last = previousSong?.primaryArtist?.lowercase().orEmpty()
+        repeat(count.coerceAtLeast(0)) { slot ->
+            val pool = if (discoverySlot(offset + slot, style.discoveryPercent)) newPool else likedPool
+            val possible = pool.indices.filter { LocalRadio.sameSong(pool[it]) !in seen }
+            val index = possible.firstOrNull {
+                val artist = pool[it].primaryArtist.lowercase()
+                artist != last && (artistCounts[artist] ?: 0) < if (style.diversity >= 75) 2 else 3
+            } ?: possible.firstOrNull { pool[it].primaryArtist.lowercase() != last }
+                ?: possible.firstOrNull() ?: return result
+            val song = pool.removeAt(index)
+            seen += LocalRadio.sameSong(song)
+            last = song.primaryArtist.lowercase()
+            artistCounts[last] = (artistCounts[last] ?: 0) + 1
+            result += song
+        }
+        return result
     }
 
     /**
