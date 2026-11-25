@@ -50,7 +50,7 @@ internal fun TvWavePlace(nav: TvNav) {
     val memory = LocalTvFocusMemory.current
     fun toggleTuning(open: Boolean) {
         if (open) draft = style
-        memory.opening(screen)
+        memory.opening(if (open) "$screen/tune" else screen)
         tuning = open
     }
     BackHandler(tuning) { toggleTuning(false) }
@@ -99,6 +99,7 @@ internal fun TvWavePlace(nav: TvNav) {
         val narrow = maxWidth < 760.dp
         val scheme = MaterialTheme.colorScheme
         if (tuning) {
+            CompositionLocalProvider(LocalTvScreen provides "$screen/tune") {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)) {
                     Text(l("Настроить поток", "Tune Stream"), style = MaterialTheme.typography.headlineMedium)
@@ -148,6 +149,7 @@ internal fun TvWavePlace(nav: TvNav) {
                         Modifier.tvItem("tv_wave/more"))
                 }
             }
+            }
         } else {
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -157,7 +159,7 @@ internal fun TvWavePlace(nav: TvNav) {
                 Row(Modifier.weight(1f).fillMaxWidth().tvGlass(TvShapes.card).padding(24.dp),
                     horizontalArrangement = Arrangement.spacedBy(if (narrow) 20.dp else 36.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    BoxWithConstraints(Modifier.weight(0.85f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    BoxWithConstraints(Modifier.weight(if (narrow) 0.65f else 0.85f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                         Artwork(now?.art, Modifier.size(minOf(maxWidth, maxHeight, 340.dp)),
                             shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp), size = 1080)
                     }
@@ -166,7 +168,10 @@ internal fun TvWavePlace(nav: TvNav) {
                             style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text(now?.artist ?: l("Начни слушать", "Start listening"), style = MaterialTheme.typography.titleMedium,
                             color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        TvProgress(now?.fraction ?: 0f, now?.played ?: "0:00", now?.total ?: "–:–")
+                        if (now != null && now.total.isNotEmpty()) TvSeekLine(now,
+                            onSeek = { c.player.seekBy(it) }, onPlayPause = { c.player.togglePlay() },
+                            modifier = Modifier.fillMaxWidth().tvItem("tv_wave/seek"))
+                        else TvProgress(now?.fraction ?: 0f, now?.played ?: "0:00", now?.total ?: "–:–")
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically) {
                             TvIconButton(if (now?.liked == true) PrismIcons.HeartFilled else PrismIcons.Heart, l("Нравится", "Like"),
