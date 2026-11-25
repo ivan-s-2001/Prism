@@ -10,7 +10,7 @@ import kotlinx.serialization.json.put
 
 /**
  * Experimental local Yandex Station transport message encoder.
- * Protocol reference: https://github.com/volodarskij/yandex-station-local-streaming
+ * Updated directive reference: https://github.com/AlexxIT/YandexStation/pull/802
  * No network calls, credentials, or TLS policy are handled here.
  */
 internal object GlagolProtocol {
@@ -50,13 +50,19 @@ internal object GlagolProtocol {
         require(uri.scheme.equals("http", ignoreCase = true) && uri.host != null)
         require(uri.userInfo == null && uri.fragment == null)
         val params = buildJsonObject {
-            put("streamUrl", url)
-            put("force_restart_player", true)
-            put("title", title)
-            put("subtitle", artist)
+            put("stream", buildJsonObject {
+                put("url", url)
+                // Firmware detects the actual codec; MP3 is the enum for ordinary file streams.
+                put("format", "MP3")
+                put("type", "Track")
+            })
+            put("metadata", buildJsonObject {
+                if (title.isNotBlank()) put("title", title)
+                if (artist.isNotBlank()) put("subtitle", artist)
+            })
         }.toString()
         val message = ByteArrayOutputStream().apply {
-            stringField(1, "radio_play")
+            stringField(1, "audio_play")
             stringField(2, params)
         }.toByteArray()
         return buildJsonObject {
