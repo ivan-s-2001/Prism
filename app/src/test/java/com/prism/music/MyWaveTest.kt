@@ -180,6 +180,60 @@ class MyWaveTest {
         assertEquals(scenarios.forDay(7, false).toSet(), scenarios.forDay(20, true).toSet())
     }
 
+    @Test fun explicitDiscoveryPercentageRoundTripsAndKeepsCumulativeQuota() {
+        val style = MyWave.Style(discoveryPercent = 65)
+        assertEquals(style, MyWave.style(style.origin))
+        assertEquals(70, MyWave.style(MyWave.ORIGIN).discoveryPercent)
+        assertEquals(0, MyWave.style("prism:my-wave:FAMILIAR:CALM").discoveryPercent)
+        for (percent in 0..100 step 5) {
+            assertEquals(percent, (0 until 100).count { MyWave.discoverySlot(it, percent) })
+            val first = (0 until 8).count { MyWave.discoverySlot(it, percent) }
+            val next = (8 until 16).count { MyWave.discoverySlot(it, percent) }
+            assertEquals(kotlin.math.round(16.0 * percent / 100.0 + 0.000001).toInt(), first + next)
+        }
+    }
+
+    @Test fun strictMixHasRequestedCompositionAndNoDuplicateRecordings() {
+        val likes = (1..20).map { song("liked$it", "L$it") }
+        val discoveries = (1..30).map { song("new$it", "N$it") }
+        val alias = song("alias", "L1", "liked1 (Remastered)")
+        val previouslyHeard = song("history", "Other")
+        fun mix(percent: Int) = MyWave.mix(discoveries + likes + alias + previouslyHeard, likes,
+            isKnown = { it == previouslyHeard }, heard = { false }, allowed = { true }, seed = 3L,
+            style = MyWave.Style(discoveryPercent = percent), signals = com.prism.music.data.foryou.RadioSignals(),
+            profile = MyWave.Profile(), count = 10)
+        assertTrue(mix(0).all { it in likes })
+        assertEquals(10, mix(0).size)
+        assertTrue(mix(100).all { it in discoveries })
+        assertEquals(10, mix(100).size)
+        assertEquals(7, mix(70).count { it in discoveries })
+        assertEquals(3, mix(70).count { it in likes })
+    }
+
+    @Test fun exhaustedDiscoveryPoolDoesNotSilentlyPlayLikes() {
+        val likes = listOf(song("l", "A"))
+        val result = MyWave.mix(emptyList(), likes, { false }, { false }, { true }, 1L,
+            MyWave.Style(discoveryPercent = 100), com.prism.music.data.foryou.RadioSignals(), MyWave.Profile())
+        assertTrue(result.isEmpty())
+        val mixed = MyWave.mix(emptyList(), likes, { false }, { false }, { true }, 1L,
+            MyWave.Style(discoveryPercent = 70), com.prism.music.data.foryou.RadioSignals(), MyWave.Profile())
+        assertTrue(mixed.isEmpty())
+    }
+
+    @Test fun refillUsesSameQuotaAndNeverReaddsQueuedSongs() {
+        val likes = (1..20).map { song("l$it", "L$it") }
+        val fresh = (1..40).map { song("n$it", "N$it") }
+        val style = MyWave.Style(discoveryPercent = 70)
+        fun batch(offset: Int, previous: List<Song>) = MyWave.mix(fresh, likes, { false }, { false }, { true }, 2L,
+            style, com.prism.music.data.foryou.RadioSignals(), MyWave.Profile(), count = 8,
+            offset = offset, previousSong = previous.lastOrNull(),
+            avoid = previous.mapTo(hashSetOf(), com.prism.music.data.foryou.LocalRadio::sameSong))
+        val one = batch(0, emptyList())
+        val two = batch(one.size, one)
+        assertEquals(16, (one + two).map { it.id }.distinct().size)
+        assertEquals(11, (one + two).count { it in fresh })
+    }
+
     @Test fun diversifiesArtistsWhenPossible() {
         val songs = listOf(song("a1", "A"), song("a2", "A"), song("b", "B"), song("c", "C"))
         val result = MyWave.start(songs, emptyList(), emptyList(), { false }, { true }, 13L, 4)
