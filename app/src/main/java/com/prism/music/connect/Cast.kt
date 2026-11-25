@@ -505,27 +505,84 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         netBlocked = false
     }
 
-    private var liveJob: Job? = null
-    private var liveSession: com.prism.music.connect.yandex.StationSmokeSession? = null
+    internal data class LiveDevice(val renderer: Renderer, val volume: Int, val connected: Boolean)
+    private class LiveMember(val renderer: Renderer, var level: Int = 20) {
+        var job: Job? = null
+        var control: com.prism.music.connect.yandex.StationSmokeSession? = null
+        var volumeJob: Job? = null
+        var connected = false
+    }
+    private val liveMembers = linkedMapOf<String, LiveMember>()
+    private val liveJob: Job? get() = liveMembers.values.firstOrNull()?.job
+    private val _liveDevices = MutableStateFlow<List<LiveDevice>>(emptyList())
+    internal val liveDevices = _liveDevices.asStateFlow()
     private var liveStreaming = false
-    private var liveLevel = 20
     private var liveKeepPlaying = true
-    internal val isStationLive: Boolean get() = liveJob != null
+    private var liveStopping = false
+    private var livePrepared = false
+    internal val isStationLive: Boolean get() = liveMembers.isNotEmpty()
+    private val liveLevel: Int get() = liveMembers.values.filter { it.connected }.map { it.level }
+        .let { if (it.isEmpty()) 20 else it.average().toInt() }
 
-    /** Experimental single-stream output: the main ExoPlayer remains the only playback clock. */
+    private fun publishLive() {
+        _liveDevices.value = liveMembers.values.map { LiveDevice(it.renderer, it.level, it.connected) }
+        val connected = liveMembers.values.filter { it.connected }
+        liveStreaming = connected.isNotEmpty()
+        casting = liveStreaming
+        applyLocalMode()
+        val first = connected.firstOrNull()?.renderer ?: liveMembers.values.firstOrNull()?.renderer
+        _state.value = when {
+            first == null -> CastState.Idle
+            connected.isEmpty() -> CastState.Connecting(first)
+            else -> CastState.Casting(
+                if (connected.size == 1) first else first.copy(name = if (java.util.Locale.getDefault().language == "ru")
+                    "Мультирум · ${connected.size}" else "Multiroom · ${connected.size}"), liveLevel)
+        }
+        hooks?.remoteChanged()
+    }
+
+    internal fun disconnectLive(id: String) {
+        liveMembers[id]?.job?.cancel()
+    }
+
+    internal fun setLiveVolume(id: String, v: Int) {
+        val member = liveMembers[id] ?: return
+        val active = member.control ?: return
+        if (!member.connected) return
+        val level = v.coerceIn(0, 100)
+        if (member.level == level) return
+        member.level = level
+        publishLive()
+        member.volumeJob?.cancel()
+        member.volumeJob = scope.launch {
+            delay(60)
+            try { withContext(Dispatchers.IO) { active.volume(level / 100.0) } }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { Log.w("PrismLive", "Volume command failed: ${member.renderer.name}: ${e.message}") }
+        }
+    }
+
+    /** One local playback clock; each Station owns its HTTP session and PCM read cursor. */
     internal fun connectLive(r: Renderer) {
-        if (r.kind != RendererKind.YANDEX_STATION || !BuildConfig.DEBUG || liveJob != null ||
-            state.value != CastState.Idle || session != null || tv != null) return
+        if (r.kind != RendererKind.YANDEX_STATION || !BuildConfig.DEBUG || liveStopping ||
+            r.id in liveMembers || session != null || tv != null ||
+            (liveMembers.isEmpty() && state.value != CastState.Idle)) return
         val p = player ?: run { _events.tryEmit(tr(R.string.nothing_s_playing_here)); return }
         if (p.mediaItemCount == 0) { _events.tryEmit(tr(R.string.nothing_s_playing_here)); return }
         val tap = com.prism.music.connect.yandex.StationAudioTap
-        val route = r.copy(name = "${r.name} · Live")
-        liveKeepPlaying = true
-        liveLevel = 20
+        val first = liveMembers.isEmpty()
+        val member = LiveMember(r.copy(name = r.name.removeSuffix(" · Live")))
         val job = scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
-            var prepared = false
+            var reader: com.prism.music.connect.yandex.StationAudioTap.Reader? = null
             var failure: String? = null
             try {
+                if (!livePrepared) {
+                    hooks?.beforeCasting()
+                    livePrepared = true
+                    tap.start(true)
+                    p.play()
+                }
+                holdNetwork()
                 cleanupJob?.join()
                 val device = stationDevices[r.id] ?: error("Station no longer available")
                 val api = StationConnectAccount.api() ?: error("Sign in to Yandex in Settings")
@@ -538,54 +595,40 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 }
                 check(player === p)
                 val active = com.prism.music.connect.yandex.StationSmokeSession(device, identity, api)
-                liveSession = active
-                hooks?.beforeCasting()
-                prepared = true
-                tap.start(true)
-                p.play()
-                holdNetwork()
-                // A cold player can take longer to decode than the Station takes to
-                // acknowledge playback. Do not open the remote stream on padded silence.
-                val captureStarted = android.os.SystemClock.elapsedRealtime()
-                val sourceReady = withTimeoutOrNull(12_000L) {
-                    while (tap.captured == 0L) {
-                        check(player === p && p.playWhenReady) { "Live source stopped before PCM capture" }
-                        delay(20)
-                    }
-                    true
-                } == true
-                if (!sourceReady) error("No PCM from player after 12s: state=${p.playbackState}; format=${tap.formatSummary()}")
-                Log.i("PrismLive", "PCM source ready in ${android.os.SystemClock.elapsedRealtime() - captureStarted} ms; captured=${tap.captured}; ${tap.formatSummary()}")
+                member.control = active
+                if (tap.captured == 0L) {
+                    val sourceReady = withTimeoutOrNull(12_000L) {
+                        while (tap.captured == 0L) {
+                            check(player === p && p.playWhenReady) { "Live source stopped before PCM capture" }
+                            delay(20)
+                        }
+                        true
+                    } == true
+                    if (!sourceReady) error("No PCM from player: ${tap.formatSummary()}")
+                }
+                val input = tap.openReader()
+                reader = input
                 suspend fun awaitStream(timeoutMs: Long): Boolean = withTimeoutOrNull(timeoutMs) {
                     while (!active.liveConfirmed()) {
-                        Log.i("PrismLive", active.liveStatus())
+                        Log.i("PrismLive", "${r.name}: ${active.liveStatus()}")
                         withContext(Dispatchers.IO) { active.ping() }
                         delay(500)
                     }
                     true
                 } == true
-                // Direct PCM first; keep known-working HLS as a one-time fallback.
-                // Never mute the phone merely on command acknowledgement.
                 val directConfirmed = try {
-                    withContext(Dispatchers.IO) { active.playMusicLive(address, direct = true) }
+                    withContext(Dispatchers.IO) { active.playMusicLive(address, direct = true, source = input::read, initialVolume = member.level) }
                     awaitStream(9000L)
                 } catch (e: CancellationException) { throw e }
-                catch (e: Exception) {
-                    Log.w("PrismLive", "Direct PCM start failed: ${e.message}")
-                    false
-                }
+                catch (e: Exception) { Log.w("PrismLive", "Direct PCM start failed: ${e.message}"); false }
                 if (!directConfirmed) {
-                    Log.w("PrismLive", "Direct PCM not confirmed; falling back to HLS: ${active.liveStatus()}")
-                    withContext(Dispatchers.IO) { active.playMusicLive(address, direct = false) }
+                    Log.w("PrismLive", "${r.name}: PCM not confirmed; HLS fallback")
+                    withContext(Dispatchers.IO) { active.playMusicLive(address, direct = false, source = input::read, initialVolume = member.level) }
                     if (!awaitStream(25000L)) error("HLS receiver not confirmed: ${active.liveStatus()}")
                 }
-                Log.i("PrismLive", "Selected transport=${if (directConfirmed) "PCM" else "HLS"}")
-                liveStreaming = true
-                casting = true
-                applyLocalMode()
-                _state.value = CastState.Casting(route, liveLevel)
-                hooks?.remoteChanged()
-                Log.i("PrismLive", "Live connected; captured=${tap.captured}")
+                Log.i("PrismLive", "${r.name}: Selected transport=${if (directConfirmed) "PCM" else "HLS"}")
+                member.connected = true
+                publishLive()
                 var failures = 0
                 var stalled = 0
                 var lastCaptured = tap.captured
@@ -594,52 +637,48 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                     if (!StationConnectAccount.signedIn.value || player !== p) error("Live disconnected")
                     val captured = tap.captured
                     stalled = if (p.isPlaying && captured == lastCaptured) stalled + 1 else 0
-                    Log.i("PrismLive", "Live health playing=${p.isPlaying} state=${p.playbackState} delta=${captured - lastCaptured}; ${tap.formatSummary()}; ${active.liveStatus()}")
+                    Log.i("PrismLive", "${r.name}: Live health delta=${captured - lastCaptured}; ${input.summary()}; ${active.liveStatus()}")
                     lastCaptured = captured
-                    if (stalled >= 3) error("PCM source stalled while playing: ${tap.formatSummary()}")
-                    val ok = active.liveReceiving()
-                    failures = if (ok) 0 else failures + 1
+                    if (stalled >= 3) error("PCM source stalled while playing")
+                    failures = if (active.liveReceiving()) 0 else failures + 1
                     if (failures >= 4) error("Live HTTP stream ended: ${active.liveStatus()}")
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
-                Log.w("PrismLive", "Live failed: ${e.message}")
-                failure = if (java.util.Locale.getDefault().language == "ru")
-                    "Live: Станция не подтвердила поток или соединение прервалось. Звук возвращён на телефон."
-                else "Live: stream not confirmed or disconnected. Audio returned to phone."
+                Log.w("PrismLive", "${r.name}: Live failed: ${e.message}")
+                failure = "${r.name}: " + if (java.util.Locale.getDefault().language == "ru") "Соединение прервано" else "Stream disconnected"
             } finally {
-                // Restore the phone even if the receiver's stop command fails.
-                val active = liveSession
-                liveSession = null
-                volumeJob?.cancel()
-                volumeJob = null
-                tap.stop()
-                liveStreaming = false
-                casting = false
-                if (player === p && !liveKeepPlaying) p.pause()
-                applyLocalMode()
-                if (prepared) hooks?.afterCasting()
-                hooks?.remoteChanged()
-                letGoOfNetwork()
+                member.volumeJob?.cancel()
+                member.connected = false
+                publishLive()
                 try {
-                    withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
-                        active?.let {
-                            try {
-                                if (withTimeoutOrNull(5000L) { it.stop(); true } != true)
-                                    Log.w("PrismLive", "Live stop not confirmed")
-                            } catch (_: Exception) { Log.w("PrismLive", "Live stop not confirmed") }
+                    withContext(NonCancellable + Dispatchers.IO) {
+                        member.control?.let {
+                            try { withTimeoutOrNull(5000L) { it.stop() } }
+                            catch (_: Exception) { Log.w("PrismLive", "Live stop not confirmed") }
                             finally { it.close() }
                         }
                     }
                 } finally {
-                    liveJob = null
-                    _state.value = CastState.Idle
+                    reader?.close()
+                    liveMembers.remove(r.id)
+                    if (liveMembers.isEmpty()) {
+                        tap.stop()
+                        if (player === p && !liveKeepPlaying) p.pause()
+                        if (livePrepared) hooks?.afterCasting()
+                        livePrepared = false
+                        liveStopping = false
+                        letGoOfNetwork()
+                    }
+                    publishLive()
                     failure?.let { _events.tryEmit(it) }
                 }
             }
         }
-        liveJob = job
-        _state.value = CastState.Connecting(route)
+        if (first) liveKeepPlaying = true
+        member.job = job
+        liveMembers[r.id] = member
+        publishLive()
         job.start()
     }
 
@@ -846,9 +885,10 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
      * playing when it's stopped from the phone ([message] null), as when this phone is picked.
      */
     fun disconnect(message: String? = null, keepPlaying: Boolean = false) {
-        liveJob?.let { job ->
+        if (liveMembers.isNotEmpty()) {
             liveKeepPlaying = keepPlaying
-            job.cancel()
+            liveStopping = true
+            liveMembers.values.toList().forEach { it.job?.cancel() }
             return
         }
         connectGeneration++
@@ -960,19 +1000,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
 
     fun setVolume(v: Int) {
         if (liveStreaming) {
-            val active = liveSession ?: return
-            val level = v.coerceIn(0, 100)
-            if (level == liveLevel) return
-            liveLevel = level
-            val current = state.value as? CastState.Casting
-            if (current != null) _state.value = current.copy(volume = level)
-            volumeJob?.cancel()
-            volumeJob = scope.launch {
-                try { withContext(Dispatchers.IO) { active.volume(level / 100.0) } }
-                catch (e: CancellationException) { throw e }
-                catch (_: Exception) { Log.w("PrismLive", "Volume command failed") }
-            }
-            hooks?.remoteChanged()
+            val delta = v.coerceIn(0, 100) - liveLevel
+            liveMembers.values.filter { it.connected }.forEach { setLiveVolume(it.renderer.id, it.level + delta) }
             return
         }
         tv?.let { t ->
