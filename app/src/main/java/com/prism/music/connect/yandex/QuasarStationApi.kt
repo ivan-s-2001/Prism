@@ -19,7 +19,12 @@ import okhttp3.Request
 /**
  * Quasar requests with a user-approved OAuth music token, held in memory.
  */
-internal class QuasarStationApi(private val accessToken: String) : StationTokenSource {
+internal class QuasarStationApi(private val accessToken: suspend (rejected: String?) -> String) : StationTokenSource {
+    constructor(token: String) : this({ rejected ->
+        if (rejected != null) throw YandexAuthException("Sign in again", true)
+        token
+    })
+    private class Unauthorized : IOException("Quasar HTTP 401")
     private val client = OkHttpClient.Builder()
         .followRedirects(false)
         .followSslRedirects(false)
@@ -56,10 +61,20 @@ internal class QuasarStationApi(private val accessToken: String) : StationTokenS
         return token
     }
 
-    private suspend fun get(url: HttpUrl): String = withContext(Dispatchers.IO) {
+    private suspend fun get(url: HttpUrl): String {
+        val token = accessToken(null)
+        return try {
+            getWithToken(url, token)
+        } catch (_: Unauthorized) {
+            getWithToken(url, accessToken(token))
+        }
+    }
+
+    private suspend fun getWithToken(url: HttpUrl, token: String): String = withContext(Dispatchers.IO) {
         require(url.isHttps && url.host == "quasar.yandex.net")
-        val request = Request.Builder().url(url).header("Authorization", "OAuth $accessToken").get().build()
+        val request = Request.Builder().url(url).header("Authorization", "OAuth $token").get().build()
         client.newCall(request).execute().use { response ->
+            if (response.code == 401) throw Unauthorized()
             if (!response.isSuccessful) throw IOException("Quasar HTTP ${response.code}")
             val body = response.body ?: throw IOException("Empty Quasar response")
             val source = body.source()
