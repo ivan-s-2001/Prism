@@ -54,6 +54,7 @@ internal class StationSmokeSession(
         onState(text)
     }
     private var server: StationMp3Server? = null
+    private var liveProbe: StationLiveProbe? = null
 
     suspend fun ping() = send(GlagolProtocol.ping())
 
@@ -63,6 +64,8 @@ internal class StationSmokeSession(
         title: String,
         onDownloaded: (Long) -> Unit = {},
     ) {
+        liveProbe?.close()
+        liveProbe = null
         // A fresh path prevents reuse of the receiver's old HTTP state.
         server?.close()
         server = null
@@ -79,9 +82,37 @@ internal class StationSmokeSession(
         }
     }
 
+    suspend fun playLive(phoneAddress: Inet4Address, log: (String) -> Unit) {
+        server?.close()
+        server = null
+        liveProbe?.close()
+        liveProbe = null
+        send(GlagolProtocol.stop())
+        delay(150)
+        // A quiet starting level. Signal changes below never send Glagol commands.
+        send(GlagolProtocol.volume(0.15))
+        val probe = StationLiveProbe(phoneAddress, station.address, log)
+        liveProbe = probe
+        try {
+            send(GlagolProtocol.playStream(probe.url, "Prism Live · test", "Prism"))
+        } catch (e: Throwable) {
+            probe.close()
+            liveProbe = null
+            throw e
+        }
+    }
+
+    fun liveSignal(signal: StationLiveProbe.Signal) {
+        (liveProbe ?: error("Start Live probe first")).select(signal)
+    }
+
+    fun liveSummary(): String = liveProbe?.summary() ?: "Live probe not running"
+
     suspend fun volume(value: Double) = send(GlagolProtocol.volume(value))
 
     suspend fun stop() {
+        liveProbe?.close()
+        liveProbe = null
         server?.close()
         server = null
         stopControl.stop(socket, tokens.tokenFor(identity))
@@ -93,6 +124,8 @@ internal class StationSmokeSession(
 
     /** Call stop() before close() to request remote playback termination. */
     override fun close() {
+        liveProbe?.close()
+        liveProbe = null
         server?.close()
         server = null
         socket.close()
