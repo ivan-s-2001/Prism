@@ -547,8 +547,8 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
         val cutoutStart = WindowInsets.displayCutout.union(WindowInsets.navigationBars).asPaddingValues().calculateStartPadding(layoutDirection)
         val railInset = if (useRail) cutoutStart + RAIL_MARGIN + RAIL_WIDTH + 4.dp else 0.dp
         // Room the pages leave at the bottom for the bar, the mini player and the system's own bar.
-        val streamQueue by c.queue.source.collectAsState()
-        val streamOwnsPlayer = route == Routes.MY_WAVE && streamQueue.isMyWave
+        // Stream has its own controls: never overlay the global mini player on this route.
+        val streamOwnsPlayer = route == Routes.MY_WAVE
         val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         val bottomPadding = navInset +
             (if (useRail) 16.dp else navHeight(settings.navStyle, settings.navBarSize) + (if (settings.navStyle == NavBarStyle.DOCKED) 0.dp else 16.dp)) +
@@ -905,7 +905,7 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
                             TogetherPill(together, Modifier.padding(bottom = 8.dp)) { navigator.go(Routes.TOGETHER) }
                         }
                         // "Joined to the tab bar" (1.7.6): one piece of glass, the mini player on top of the tabs.
-                        val joined = settings.miniPlayerJoined && settings.navStyle == NavBarStyle.FLOATING
+                        val joined = settings.miniPlayerJoined && settings.navStyle == NavBarStyle.FLOATING && !streamOwnsPlayer
                         if (!joined) AnimatedVisibility(song != null && !streamOwnsPlayer && !playerOpen, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
                             // Spectrum's bar (the Card style over the docked tab bar) sits right on the tab bar, edge to edge.
                             val flush = docked && settings.miniPlayerStyle == MiniPlayerStyle.CARD && !(settings.liquidGlass || settings.frostedGlass)
