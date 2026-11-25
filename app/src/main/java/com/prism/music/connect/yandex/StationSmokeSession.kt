@@ -57,6 +57,9 @@ internal class StationSmokeSession(
     }
     private var server: StationMp3Server? = null
     private var liveProbe: StationLiveProbe? = null
+    private var liveHls: StationLiveHls? = null
+    private var liveRequestedAt = 0L
+    private var liveTitle = "Prism Live"
 
     suspend fun ping() = send(GlagolProtocol.ping())
 
@@ -109,32 +112,49 @@ internal class StationSmokeSession(
         server = null
         liveProbe?.close()
         liveProbe = null
-        send(GlagolProtocol.stop())
-        delay(150)
-        send(GlagolProtocol.volume(0.20))
-        val probe = StationLiveProbe(phoneAddress, station.address,
-            { android.util.Log.i("PrismLive", it) }, StationAudioTap::read)
-        liveProbe = probe
+        liveHls?.close()
+        val stream = StationLiveHls(phoneAddress, station.address, StationAudioTap::read)
+        liveHls = stream
         try {
+            val ready = kotlinx.coroutines.withTimeoutOrNull(8000L) {
+                while (!stream.ready) {
+                    stream.failure?.let { error("AAC encoder: $it") }
+                    delay(100)
+                }
+                true
+            } == true
+            check(ready) { "AAC playlist not ready: ${stream.summary()}" }
+            send(GlagolProtocol.stop())
+            delay(150)
+            send(GlagolProtocol.volume(0.20))
+            liveRequestedAt = android.os.SystemClock.elapsedRealtime()
+            liveTitle = "Prism Live " + java.util.UUID.randomUUID().toString().take(6)
+            android.util.Log.i("PrismLive", "Sending radio_play; ${stream.summary()}; captured=${StationAudioTap.captured}")
             val reply = socket.request(tokens.tokenFor(identity),
-                GlagolProtocol.playStream(probe.url, "Prism Live", "Prism"), 1000L)
-            if (reply != null && !reply.equals("SUCCESS", true)) error("Station rejected Live")
+                GlagolProtocol.playRadio(stream.url, liveTitle, "Prism"), 1500L)
+            android.util.Log.i("PrismLive", "radio_play reply=${if (reply == null) "pending" else if (reply.equals("SUCCESS", true)) "success" else "rejected"}")
+            if (reply != null && !reply.equals("SUCCESS", true)) error("Station rejected radio_play")
         } catch (e: Throwable) {
-            probe.close()
-            liveProbe = null
+            stream.close()
+            liveHls = null
             throw e
         }
     }
 
-    fun liveReceiving(): Boolean {
-        val probe = liveProbe ?: return false
-        return probe.deliveredBytes > StationLiveProbe.RATE * 4 / 5 &&
-            System.nanoTime() / 1_000_000L - probe.lastWriteMs < 4000L
-    }
+    fun liveReceiving(): Boolean = liveHls?.receiving == true
 
     fun liveConfirmed(): Boolean {
-        val probe = liveProbe ?: return false
-        return liveState?.let { it.matches(probe.url) && it.playing == true } == true && liveReceiving()
+        val stream = liveHls ?: return false
+        val state = liveState
+        val matched = state != null && state.at >= liveRequestedAt && state.type != "bluetooth" &&
+            state.playing == true && (state.matches(stream.url) || state.title == liveTitle)
+        return matched && stream.receiving
+    }
+
+    fun liveStatus(): String {
+        val state = liveState
+        return "${liveHls?.summary() ?: "no HLS"}; captured=${StationAudioTap.captured}; " +
+            "stateType=${state?.type}; playing=${state?.playing}; matched=${liveConfirmed()}"
     }
 
     fun liveSignal(signal: StationLiveProbe.Signal) {
@@ -146,6 +166,8 @@ internal class StationSmokeSession(
     suspend fun volume(value: Double) = send(GlagolProtocol.volume(value))
 
     suspend fun stop() {
+        liveHls?.close()
+        liveHls = null
         liveProbe?.close()
         liveProbe = null
         server?.close()
@@ -159,6 +181,8 @@ internal class StationSmokeSession(
 
     /** Call stop() before close() to request remote playback termination. */
     override fun close() {
+        liveHls?.close()
+        liveHls = null
         liveProbe?.close()
         liveProbe = null
         server?.close()
