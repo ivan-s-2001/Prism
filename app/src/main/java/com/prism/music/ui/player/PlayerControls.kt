@@ -1549,6 +1549,8 @@ private fun SpeakersAndTvs(castState: com.prism.music.connect.CastState, casting
     val handoff = LocalContainer.current.handoff
     val renderers by cast.renderers.collectAsState()
     val prismTvs by handoff.devices.collectAsState()
+    var liveFor by remember { mutableStateOf<com.prism.music.connect.Renderer?>(null) }
+    liveFor?.let { renderer -> StationLiveTrialDialog(renderer) { liveFor = null } }
     var lookedLong by remember { mutableStateOf(false) }
     DisposableEffect(Unit) {
         cast.startDiscovery()
@@ -1576,6 +1578,14 @@ private fun SpeakersAndTvs(castState: com.prism.music.connect.CastState, casting
                 r.detail + if (connecting) tr(R.string.connecting) else "",
                 selected = selected && !connecting, busy = connecting,
             ) { if (!selected) cast.connect(r) }
+            if (station && com.prism.music.BuildConfig.DEBUG && castingTo == null) {
+                val ru = java.util.Locale.getDefault().language == "ru"
+                DeviceRow(PrismIcons.Equalizer,
+                    if (ru) "Live · ${r.name}" else "Live · ${r.name}",
+                    if (ru) "Проверить непрерывный Wi-Fi звук" else "Try continuous Wi-Fi audio") {
+                    liveFor = r
+                }
+            }
         }
         // A Prism TV's music comes back to this phone, playing; a speaker's pauses.
         if (castingTo != null) DeviceRow(PrismIcons.Close, tr(R.string.stop_casting), tr(if (cast.toPrismTv) R.string.tv_stop_comes_back else R.string.the_music_pauses_pick_this_phone)) {
@@ -1704,5 +1714,53 @@ fun QualityLabel(modifier: Modifier = Modifier, selected: Boolean = false, onCli
         modifier = modifier.clip(CircleShape)
             .background(Color.White.copy(alpha = if (selected) 0.14f else 0f))
             .clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 2.dp),
+    )
+}
+
+
+/** A bounded experiment opened from the real device picker, with the existing signed-in account.
+ * Closing this dialog cancels the trial and closes its HTTP server. It does not cast the current song yet.
+ */
+@Composable
+private fun StationLiveTrialDialog(renderer: com.prism.music.connect.Renderer, onDismiss: () -> Unit) {
+    val cast = LocalContainer.current.cast
+    val ru = java.util.Locale.getDefault().language == "ru"
+    fun l(r: String, e: String) = if (ru) r else e
+    var trial by remember { mutableStateOf<com.prism.music.connect.yandex.StationSmokeSession?>(null) }
+    var status by remember { mutableStateOf(l("Подключаемся к Станции…", "Connecting to Station…")) }
+    LaunchedEffect(renderer.id) {
+        try {
+            cast.withStationLiveTrial(renderer) { active ->
+                trial = active
+                while (true) {
+                    status = active.liveSummary()
+                    delay(500)
+                }
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (_: Exception) {
+            status = l("Не удалось запустить Live. Проверьте подключение и повторите.", "Could not start Live. Check the connection and retry.")
+        } finally { trial = null }
+    }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Prism Live · ${renderer.name}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(l("Эксперимент: один поток на 10 минут. Проверьте, насколько быстро меняется звук. Музыка пока не транслируется.",
+                    "Experiment: one ten-minute stream. Check how quickly the sound changes. Music is not streamed yet."),
+                    style = MaterialTheme.typography.bodySmall)
+                Text(status, style = MaterialTheme.typography.bodySmall)
+                listOf(
+                    l("Низкий тон", "Low tone") to com.prism.music.connect.yandex.StationLiveProbe.Signal.A,
+                    l("Высокий тон", "High tone") to com.prism.music.connect.yandex.StationLiveProbe.Signal.B,
+                    l("Тишина", "Silence") to com.prism.music.connect.yandex.StationLiveProbe.Signal.SILENCE,
+                ).forEach { (label, value) ->
+                    androidx.compose.material3.OutlinedButton(onClick = { trial?.liveSignal(value) },
+                        enabled = trial != null, modifier = Modifier.fillMaxWidth()) { Text(label) }
+                }
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text(l("Остановить", "Stop")) } },
     )
 }
