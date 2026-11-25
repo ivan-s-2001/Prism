@@ -72,7 +72,7 @@ class YourMusic(private val c: AppContainer) {
 
     private fun ok(s: Song) = !s.isEpisode && !s.isLive && !c.library.isDisliked(s.id) && !c.exclusions.blocks(s) && !c.exclusions.isSongExcluded(s.id)
 
-    internal data class WaveTaste(val profile: MyWave.Profile, val favorites: List<Song>)
+    internal data class WaveTaste(val profile: MyWave.Profile, val favorites: List<Song>, val likedSeeds: List<Song>)
 
     /** Local, recency-weighted taste and listening-context profile, shared by Wave start and refill.
      * Context has a small influence until enough history exists; no guesses about lyrics or activity.
@@ -103,13 +103,33 @@ class YourMusic(private val c: AppContainer) {
                 contextWeight += weight
             }
         }
-        s.liked.forEach { song ->
-            song.primaryArtist.lowercase().takeIf { it.isNotBlank() }?.let { artist.merge(it, 0.6, Double::plus) }
+        // Read explicit likes afresh: the play-history snapshot can be cached for five minutes.
+        val likeRows = withContext(Dispatchers.IO) { c.db.songs().liked() }
+        val nowMs = System.currentTimeMillis()
+        val liked = likeRows.map { row -> row.toSong() to MyWave.likeWeight(row.likedAt, nowMs) }
+            .filter { (song, _) -> ok(song) && !song.isVideo }
+            .sortedByDescending { it.second }.distinctBy { LocalRadio.sameSong(it.first) }
+        val directLikes = liked.associate { LocalRadio.sameSong(it.first) to it.second }
+        val artistLikes = HashMap<String, Double>()
+        val genreLikes = HashMap<String, Double>()
+        liked.forEach { (song, weight) ->
+            song.primaryArtist.lowercase().takeIf { it.isNotBlank() }?.let {
+                artist.merge(it, 1.8 * weight, Double::plus)
+                artistLikes.merge(it, weight, Double::plus)
+            }
+            s.genres[song.id]?.let { genreLikes.merge(it, weight, Double::plus) }
+        }
+        fun likeAffinity(song: Song): Double {
+            val direct = directLikes[LocalRadio.sameSong(song)] ?: 0.0
+            val a = MyWave.likeSaturation(artistLikes[song.primaryArtist.lowercase()] ?: 0.0)
+            val g = MyWave.likeSaturation(s.genres[song.id]?.let { genreLikes[it] } ?: 0.0)
+            return (0.65 * direct + 0.27 * a + 0.08 * g).coerceIn(0.0, 1.0)
         }
         val maxArtist = artist.values.maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
         val maxMoment = moment.values.maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
         val confidence = (contextWeight / 20.0).coerceIn(0.0, 1.0)
         val profile = MyWave.Profile(
+            likedAffinity = ::likeAffinity,
             taste = { song ->
                 val a = artist[song.primaryArtist.lowercase()]?.let { kotlin.math.sqrt(it / maxArtist) }
                 val track = s.songs[song.id]?.let { s.model.score(it).coerceIn(0.0, 1.0) }
@@ -129,10 +149,14 @@ class YourMusic(private val c: AppContainer) {
                 }
             },
         )
-        val favorites = s.songs.values.filter { ok(it) && !it.isVideo }
-            .sortedByDescending { s.model.score(it) * rest(s, it.id) }
+        val favorites = (liked.map { it.first } + s.songs.values).distinctBy { it.id }
+            .filter { ok(it) && !it.isVideo }
+            .sortedByDescending { (0.35 * s.model.score(it) + 0.65 * likeAffinity(it)) * rest(s, it.id) }
             .distinctBy(LocalRadio::sameSong).take(100)
-        WaveTaste(profile, favorites)
+        val seeds = liked.map { it.first }.filter { !it.isLocal && !it.isLive && !it.isEpisode &&
+            !c.recFeedback.turnedDown(it.id, known = true) }
+            .distinctBy { it.primaryArtist.lowercase().ifBlank { it.id } }.take(12)
+        WaveTaste(profile, favorites, seeds)
     }
 
     /**
