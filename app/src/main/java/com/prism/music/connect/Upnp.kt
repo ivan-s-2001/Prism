@@ -41,7 +41,7 @@ data class Renderer(
             return when (kind) {
                 RendererKind.GOOGLE_CAST -> listOf(about, "Google Cast").filter { it.isNotBlank() }.joinToString(" · ")
                 RendererKind.PRISM_TV -> "Prism TV"
-                RendererKind.YANDEX_STATION -> "Яндекс Станция · Experimental"
+                RendererKind.YANDEX_STATION -> ""
                 RendererKind.UPNP -> about.ifBlank { "Speaker or TV" }
             }
         }
