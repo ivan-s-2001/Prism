@@ -521,17 +521,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                             label = l("Тема Prism", "Prism theme"))
                     }
                     WaveChoices(l("Занятие", "Activity"), MyWave.Activity.entries, style.activity, ::activityName) { if (it != style.activity) start(style.copy(activity = it)) }
-                    Text(l("Характер потока", "Discovery mix"), style = MaterialTheme.typography.titleSmall)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column {
-                            Text("${100 - discovery.toInt()}%", style = MaterialTheme.typography.headlineSmall)
-                            Text(l("Лайки", "Liked songs"), style = MaterialTheme.typography.labelMedium)
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("${discovery.toInt()}%", style = MaterialTheme.typography.headlineSmall, color = scheme.primary)
-                            Text(l("Открытия", "Discoveries"), style = MaterialTheme.typography.labelMedium)
-                        }
-                    }
                     fun selectPercent(percent: Int) {
                         if (percent != style.discoveryPercent) start(style.copy(discoveryPercent = percent,
                             character = when (percent) {
@@ -540,57 +529,46 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                                 else -> MyWave.Character.BALANCED
                             }))
                     }
-                    Slider(value = discovery, onValueChange = { discovery = it },
-                        onValueChangeFinished = { selectPercent((kotlin.math.round(discovery / 5f).toInt() * 5).coerceIn(0, 100)) },
-                        valueRange = 0f..100f, steps = 19, modifier = Modifier.testTag("wave:discovery-percent"))
-                    Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        listOf(0 to l("Лайки", "Liked"), 50 to l("Баланс", "Balance"),
-                            70 to l("Для меня", "For me"), 100 to l("Новое", "New")).forEach { (percent, label) ->
-                            PrismChip(selected = discovery.toInt() == percent, onClick = { discovery = percent.toFloat(); selectPercent(percent) },
-                                label = label, modifier = Modifier.height(44.dp))
-                        }
-                    }
-                    Text(l("Открытия — похожие записи, которых нет в известной Prism истории. Лайки не заменяют их при нехватке.",
-                        "Discoveries are related recordings not in Prism's known history. Likes do not replace missing discoveries."),
-                        style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                    WaveScale(
+                        title = l("Характер потока", "Discovery mix"),
+                        value = discovery, onValueChange = { discovery = it },
+                        left = l("Лайки", "Liked songs"), right = l("Открытия", "Discoveries"),
+                        summary = "${100 - discovery.toInt()}% / ${discovery.toInt()}%",
+                        choices = listOf(0 to l("Лайки", "Liked"), 50 to l("Баланс", "Balance"),
+                            70 to l("Для меня", "For me"), 100 to l("Новое", "New")),
+                        selectedChoice = discovery.toInt(), step = 5, tag = "wave:discovery-percent",
+                        onCommit = ::selectPercent,
+                        detail = l("Открытия — записи вне известной Prism истории. Офлайн пропорция зависит от скачанной музыки.",
+                            "Discoveries are recordings outside Prism's known history. Offline proportions depend on downloads.")
+                    )
                     HorizontalDivider(color = scheme.outlineVariant)
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(l("Язык музыки", "Music language"), style = MaterialTheme.typography.titleSmall,
-                            modifier = Modifier.weight(1f))
-                        PrismChip(selected = style.russianPercent < 0,
-                            onClick = { if (style.russianPercent >= 0) start(style.copy(russianPercent = -1)) },
-                            label = l("Авто", "Auto"), modifier = Modifier.height(44.dp))
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column {
-                            Text("${russian.toInt()}%", style = MaterialTheme.typography.headlineSmall,
-                                color = scheme.primary)
-                            Text(l("Русская", "Russian"), style = MaterialTheme.typography.labelMedium)
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("${100 - russian.toInt()}%", style = MaterialTheme.typography.headlineSmall)
-                            Text(l("Иностранная", "Foreign"), style = MaterialTheme.typography.labelMedium)
-                        }
-                    }
-                    Slider(value = russian, onValueChange = { russian = it },
-                        onValueChangeFinished = {
-                            val percent = (kotlin.math.round(russian / 5f).toInt() * 5).coerceIn(0, 100)
-                            if (percent != style.russianPercent) start(style.copy(russianPercent = percent))
-                        }, valueRange = 0f..100f, steps = 19, modifier = Modifier.testTag("wave:language-percent"))
-                    Text(l("Приблизительное соотношение по языку названий. При нехватке подходящих записей баланс может отличаться.",
-                        "Approximate title-language balance. The actual mix may vary when matching tracks are scarce."),
-                        style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                    WaveScale(
+                        title = l("Язык музыки", "Music language"),
+                        value = russian, onValueChange = { russian = it },
+                        left = l("Иностранная", "Foreign"), right = l("Русская", "Russian"),
+                        summary = if (style.russianPercent < 0) l("Авто", "Auto") else "${100 - russian.toInt()}% / ${russian.toInt()}%",
+                        choices = listOf(-1 to l("Авто", "Auto"), 0 to l("Иностранная", "Foreign"),
+                            50 to l("Баланс", "Balance"), 100 to l("Русская", "Russian")),
+                        selectedChoice = if (style.russianPercent < 0) -1 else russian.toInt(),
+                        step = 5, tag = "wave:language-percent",
+                        onCommit = { percent -> if (percent != style.russianPercent) start(style.copy(russianPercent = percent)) },
+                        detail = l("Приблизительное соотношение по языку названий. При нехватке треков баланс может отличаться.",
+                            "Approximate title-language balance. The actual mix may vary when matching tracks are scarce.")
+                    )
                     HorizontalDivider(color = scheme.outlineVariant)
                     WaveChoices(l("Настроение", "Mood"), MyWave.Mood.entries, style.mood, ::moodName) { if (it != style.mood) start(style.copy(mood = it)) }
                     WaveChoices(l("Популярность", "Popularity"), MyWave.Depth.entries, style.depth, ::depthName) { if (it != style.depth) start(style.copy(depth = it)) }
-                    Text(l("Разнообразие", "Variety"), style = MaterialTheme.typography.titleSmall)
-                    Slider(value = diversity, onValueChange = { diversity = it },
-                        onValueChangeFinished = { if (diversity.toInt() != style.diversity) start(style.copy(diversity = diversity.toInt())) },
-                        valueRange = 0f..100f, steps = 9)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(l("Похожее", "Similar"), style = MaterialTheme.typography.labelSmall)
-                        Text(l("Разное", "Varied"), style = MaterialTheme.typography.labelSmall)
-                    }
+                    WaveScale(
+                        title = l("Разнообразие", "Variety"),
+                        value = diversity, onValueChange = { diversity = it },
+                        left = l("Похожее", "Similar"), right = l("Разное", "Varied"),
+                        summary = "${diversity.toInt()}%",
+                        choices = listOf(0 to l("Похожее", "Similar"), 50 to l("Баланс", "Balance"),
+                            70 to l("Разное", "Varied"), 100 to l("Максимум", "Maximum")),
+                        selectedChoice = diversity.toInt(), step = 10, tag = "wave:diversity-percent",
+                        onCommit = { percent -> if (percent != style.diversity) start(style.copy(diversity = percent)) },
+                        detail = l("Уровень разнообразия исполнителей и записей.", "Variety of artists and recordings.")
+                    )
                     if (style.mood != MyWave.Mood.ANY || style.activity != MyWave.Activity.ANY)
                         Text(l("Темп и громкость учитываются, если измерены.", "Uses measured tempo and loudness when available."),
                             color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
@@ -613,6 +591,48 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         revealPresetId = id
         namingPreset = false
         settingsOpen = false
+    }
+}
+
+/** Shared layout for all numeric Stream controls. Ratio summaries follow the
+ * same left-to-right order as the slider; variety is a level, not a track quota. */
+@Composable
+private fun WaveScale(
+    title: String, value: Float, onValueChange: (Float) -> Unit,
+    left: String, right: String, summary: String,
+    choices: List<Pair<Int, String>>, selectedChoice: Int, step: Int, tag: String,
+    onCommit: (Int) -> Unit, detail: String,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            Text(summary, style = MaterialTheme.typography.titleMedium, color = scheme.primary)
+        }
+        Column {
+            Slider(value = value, onValueChange = onValueChange,
+                onValueChangeFinished = {
+                    onCommit((kotlin.math.round(value / step).toInt() * step).coerceIn(0, 100))
+                }, valueRange = 0f..100f, steps = 100 / step - 1,
+                modifier = Modifier.fillMaxWidth().testTag(tag))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(left, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+                Text(right, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+            }
+        }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            choices.forEach { (percent, label) ->
+                PrismChip(selected = selectedChoice == percent, label = label,
+                    modifier = Modifier.height(44.dp),
+                    onClick = {
+                        if (percent >= 0) onValueChange(percent.toFloat())
+                        onCommit(percent)
+                    })
+            }
+        }
+        Text(detail, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
     }
 }
 
