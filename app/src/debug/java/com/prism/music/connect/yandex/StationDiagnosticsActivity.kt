@@ -85,6 +85,11 @@ class StationDiagnosticsActivity : ComponentActivity() {
             })
         }
         button("Sign in with Yandex device code") { showLogin() }
+        button("Configure Alice voice bridge") { showVoiceBridge() }
+        button("Disable Alice voice bridge") {
+            VoiceBridgeClient.clear()
+            report("Voice bridge disabled.")
+        }
         button("Open normal Prism player") {
             if (operation?.isActive == true) return@button
             if (group.size > 0) { report("Stop and disconnect the test group first."); return@button }
@@ -245,6 +250,36 @@ class StationDiagnosticsActivity : ComponentActivity() {
             next.close()
             throw e
         }
+    }
+
+    private fun showVoiceBridge() {
+        val fields = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 16, 32, 0)
+        }
+        val url = android.widget.EditText(this).apply {
+            hint = "https://your-domain/prism-voice/"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+        }
+        val token = android.widget.EditText(this).apply {
+            hint = "PRISM_PHONE_TOKEN"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        fields.addView(url)
+        fields.addView(token)
+        AlertDialog.Builder(this)
+            .setTitle("Private Alice voice bridge")
+            .setView(fields)
+            .setPositiveButton("Enable") { _, _ ->
+                try {
+                    VoiceBridgeClient.configure(url.text.toString(), token.text.toString().trim())
+                    report("Voice bridge configured for this process. Connect a Station in normal Prism.")
+                } catch (_: Exception) {
+                    report("Invalid HTTPS URL or phone token.")
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun showLogin() {
