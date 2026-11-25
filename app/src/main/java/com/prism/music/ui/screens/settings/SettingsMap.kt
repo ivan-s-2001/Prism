@@ -80,6 +80,7 @@ enum class SettingsPageId(
         listOf(tr(R.string.devices_connections), tr(R.string.discord), LAST_FM, tr(R.string.spotify)).joinToString(" "),
         tr(R.string.rich_presence_status) + " " + tr(R.string.lastfm_last_fm_scrobble_scrobbling),
     ),
+    YANDEX("yandex", SettingsRootGroup.CONNECTIONS, "Яндекс", PrismIcons.Speaker, "Yandex", "Яндекс ID Яндекс Музыка Станции перенос импорт"),
     LANGUAGE_REGION("language_region", SettingsRootGroup.APP, tr(R.string.language_and_region), PrismIcons.Globe, tr(R.string.language)),
     BACKUP_ABOUT("backup_about", SettingsRootGroup.APP, tr(R.string.backup_about), PrismIcons.Info, "");
 
@@ -105,7 +106,7 @@ data class SettingsTarget(val page: SettingsPageId, val find: String? = null, va
 object SettingsMap {
     /** The root, top to bottom: each group with its pages. */
     val groups: List<Pair<SettingsRootGroup, List<SettingsPageId>>> =
-        SettingsRootGroup.entries.map { g -> g to SettingsPageId.entries.filter { it.group == g } }
+        SettingsRootGroup.entries.map { g -> g to SettingsPageId.entries.filter { it.group == g && (it != SettingsPageId.YANDEX || com.prism.music.BuildConfig.DEBUG) } }
 
     /** An old key's new home: the [page], and the group it opens at when the link names none (what the old page began with). */
     class Alias(val page: SettingsPageId, val find: String? = null, val licenses: Boolean = false)
@@ -207,6 +208,7 @@ val SettingsPageId.index: List<SettingEntry>
         SettingsPageId.CAR -> carIndex
         SettingsPageId.SPEAKERS_TVS_BROWSER -> speakersTvsBrowserIndex
         SettingsPageId.ACCOUNTS_SHARING -> accountsSharingIndex
+        SettingsPageId.YANDEX -> yandexIndex
         SettingsPageId.LANGUAGE_REGION -> languageRegionIndex
         SettingsPageId.BACKUP_ABOUT -> backupAboutIndex
     }
@@ -229,6 +231,7 @@ val SettingsPageId.lookKeys: List<String>
         SettingsPageId.CAR -> carLookKeys
         SettingsPageId.SPEAKERS_TVS_BROWSER -> speakersTvsBrowserLookKeys
         SettingsPageId.ACCOUNTS_SHARING -> accountsSharingLookKeys
+        SettingsPageId.YANDEX -> emptyList()
         SettingsPageId.LANGUAGE_REGION -> languageRegionLookKeys
         SettingsPageId.BACKUP_ABOUT -> backupAboutLookKeys
     }
@@ -254,6 +257,7 @@ val SettingsPageId.oldGroups: Map<String, String>
         SettingsPageId.CAR -> carOldGroups
         SettingsPageId.SPEAKERS_TVS_BROWSER -> speakersTvsBrowserOldGroups
         SettingsPageId.ACCOUNTS_SHARING -> accountsSharingOldGroups
+        SettingsPageId.YANDEX -> emptyMap()
         SettingsPageId.LANGUAGE_REGION -> languageRegionOldGroups
         SettingsPageId.BACKUP_ABOUT -> backupAboutOldGroups
     }
@@ -275,6 +279,7 @@ fun SettingsPageId.value(s: AppSettings, dark: Boolean = true): String = when (t
     SettingsPageId.CAR -> carValue(s, dark)
     SettingsPageId.SPEAKERS_TVS_BROWSER -> speakersTvsBrowserValue(s, dark)
     SettingsPageId.ACCOUNTS_SHARING -> accountsSharingValue(s, dark)
+    SettingsPageId.YANDEX -> if (java.util.Locale.getDefault().language == "ru") "ID, музыка, Станции" else "ID, music, Stations"
     SettingsPageId.LANGUAGE_REGION -> languageRegionValue(s, dark)
     SettingsPageId.BACKUP_ABOUT -> backupAboutValue(s, dark)
 }
@@ -302,6 +307,7 @@ fun SettingsPageContent(page: SettingsPageId, bottomPadding: Dp, find: String? =
         SettingsPageId.SPEAKERS_TVS_BROWSER -> SpeakersTvsBrowserPage(bottomPadding, find, showBack, onSearch)
         SettingsPageId.ACCOUNTS_SHARING -> AccountsSharingPage(bottomPadding, find, showBack, onSearch)
         // One untitled card: there is no group to open it at.
+        SettingsPageId.YANDEX -> YandexPage(bottomPadding, find, showBack, onSearch)
         SettingsPageId.LANGUAGE_REGION -> LanguageRegionPage(bottomPadding, showBack, onSearch)
         SettingsPageId.BACKUP_ABOUT -> BackupAboutPage(bottomPadding, find, showBack, onSearch)
     }
