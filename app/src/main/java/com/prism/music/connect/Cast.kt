@@ -546,14 +546,16 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 holdNetwork()
                 withContext(Dispatchers.IO) { active.playMusicLive(address) }
                 // Do not mute the phone on a command acknowledgement alone.
-                val confirmed = withTimeoutOrNull(12_000L) {
+                val confirmed = withTimeoutOrNull(25_000L) {
                     while (!active.liveConfirmed()) {
+                        Log.i("PrismLive", active.liveStatus())
                         withContext(Dispatchers.IO) { active.ping() }
-                        delay(1000)
+                        delay(1500)
                     }
                     true
                 } == true
-                if (!confirmed || tap.captured == 0L) error("No confirmed Live audio (receiver or PCM tap)")
+                if (!confirmed) error("HLS receiver not confirmed: ${active.liveStatus()}")
+                if (tap.captured == 0L) error("No PCM from player: ${active.liveStatus()}")
                 liveStreaming = true
                 casting = true
                 applyLocalMode()
@@ -567,7 +569,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                     // No remote seek/next/pause commands. Monitor only connection health.
                     val ok = active.liveReceiving()
                     failures = if (ok) 0 else failures + 1
-                    if (failures >= 4) error("Live HTTP stream ended")
+                    if (failures >= 4) error("Live HTTP stream ended: ${active.liveStatus()}")
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
