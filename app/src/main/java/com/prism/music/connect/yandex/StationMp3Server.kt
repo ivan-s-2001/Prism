@@ -76,7 +76,7 @@ internal class StationMp3Server(
         if (request[0] != "GET" && request[0] != "HEAD") return error("405 Method Not Allowed")
         var range: String? = null
         var headersEnded = false
-        repeat(64) {
+        for (i in 0 until 64) {
             val header = readLine(input)
             if (header.isEmpty()) { headersEnded = true; break }
             if (header.startsWith("Range:", ignoreCase = true)) range = header.substringAfter(':').trim()
