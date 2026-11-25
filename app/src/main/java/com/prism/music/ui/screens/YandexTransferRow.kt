@@ -30,6 +30,15 @@ internal fun YandexTransferRow(ink: Color) {
     var done by remember { mutableStateOf(false) }
     var work by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val likeOnAccount by c.imports.likeOnAccount.collectAsState()
+    val nav = com.prism.music.ui.LocalNavigator.current
+    val status by produceState<com.prism.music.data.imports.HistoryImports.YandexProgress?>(null) {
+        while (true) {
+            try { value = c.imports.yandexProgress() }
+            catch (e: CancellationException) { throw e }
+            catch (_: Exception) { }
+            kotlinx.coroutines.delay(1500)
+        }
+    }
 
     fun close() {
         work?.cancel()
@@ -37,10 +46,38 @@ internal fun YandexTransferRow(ink: Color) {
         opened = false
     }
 
-    TextButton(onClick = {
-        preview = null; message = null; done = false; busy = false; opened = true
-    }, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).testTag("account:yandex:transfer")) {
-        Text(l("Перенести музыку из Яндекс Музыки", "Import from Yandex Music"), color = ink)
+    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        val p = status
+        if (p == null) {
+            Text(l("Перенос медиатеки", "Library transfer"), style = MaterialTheme.typography.titleMedium)
+        } else if (p.lastRead > 0) {
+            val complete = p.total > 0 && p.matched == p.total && p.pending == 0
+            Text(when {
+                p.pending > 0 -> l("Сопоставление треков", "Matching tracks")
+                complete -> l("✓ Сопоставление завершено", "✓ Matching complete")
+                p.matched == 0 && p.total > 0 -> l("Нет подтверждённых совпадений", "No confirmed matches")
+                else -> l("Последний перенос на этом устройстве", "Last transfer on this device")
+            }, style = MaterialTheme.typography.titleMedium)
+            if (p.total > 0) {
+                LinearProgressIndicator(progress = { ((p.total - p.pending).toFloat() / p.total).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                Text(l("Совпадения: ${p.matched} из ${p.total}", "Matched: ${p.matched} of ${p.total}"), style = MaterialTheme.typography.bodyLarge)
+            }
+            Text(l("Любимые добавлены: ${p.likesPlaced} · Плейлисты: ${p.playlistsPlaced}", "Likes added: ${p.likesPlaced} · Playlists: ${p.playlistsPlaced}"), style = MaterialTheme.typography.bodySmall)
+            if (p.pending > 0) Text(l("Ожидают поиска: ${p.pending}. Поиск продолжится в фоне при наличии сети.", "Pending: ${p.pending}. Matching continues in the background with network access."), style = MaterialTheme.typography.bodySmall)
+            if (p.review + p.missing + p.skipped > 0) Text(l("На проверку: ${p.review} · Не найдено: ${p.missing} · Пропущено: ${p.skipped}", "Review: ${p.review} · Not found: ${p.missing} · Skipped: ${p.skipped}"), style = MaterialTheme.typography.bodySmall)
+            Text(l("Последнее чтение: ", "Last read: ") + java.text.DateFormat.getDateTimeInstance().format(java.util.Date(p.lastRead)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (p.review > 0) {
+                TextButton(onClick = { nav.go("bring") }) { Text(l("Проверить совпадения", "Review matches")) }
+            }
+        } else {
+            Text(l("Перенос медиатеки", "Library transfer"), style = MaterialTheme.typography.titleMedium)
+            Text(l("Любимые треки и собственные плейлисты из Яндекс Музыки.", "Liked songs and your playlists from Yandex Music."), style = MaterialTheme.typography.bodyMedium)
+        }
+        Button(onClick = {
+            preview = null; message = null; done = false; busy = false; opened = true
+        }, modifier = Modifier.fillMaxWidth().testTag("account:yandex:transfer")) {
+            Text(if ((p?.lastRead ?: 0L) > 0L) l("Обновить библиотеку", "Refresh library") else l("Перенести музыку", "Import music"))
+        }
     }
     if (opened) AlertDialog(
         onDismissRequest = { if (!busy) close() },
@@ -48,8 +85,8 @@ internal fun YandexTransferRow(ink: Color) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (!done) {
-                    Text(l("Prism найдёт соответствующие треки в YouTube Music. Медиатека Яндекса останется без изменений.",
-                        "Prism matches tracks in YouTube Music. Your Yandex library stays unchanged."))
+                    Text(l("Prism найдёт соответствующие треки в YouTube Music. Медиатека Яндекса останется без изменений. Поиск может использовать мобильную сеть.",
+                        "Prism matches tracks in YouTube Music. Your Yandex library stays unchanged. Matching may use mobile data."))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(liked, { liked = it; preview = null }, enabled = !busy)
                         Text(l("Любимые треки", "Liked songs"))
