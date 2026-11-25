@@ -381,6 +381,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
 
     private class Session(val renderer: Renderer, val ctl: RendererLink, val host: String, val sink: Set<String>) {
         var connectLease: ConnectDeviceClient.Lease? = null
+        var connectResult: JsonObject? = null
         var current: Loaded? = null
         var next: Loaded? = null
         var nextSupported = true
@@ -709,6 +710,13 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
 
     internal fun stationConnectLease(): ConnectDeviceClient.Lease? = session?.connectLease
 
+    internal fun stationConnectResult(id: String, status: String) {
+        session?.connectResult = buildJsonObject {
+            put("id", id.take(256))
+            put("status", status)
+        }
+    }
+
     internal fun stationConnectSnapshot(): JsonObject {
         val s = session ?: return buildJsonObject {}
         val ctl = s.ctl as? StationRendererLink ?: return buildJsonObject {}
@@ -716,6 +724,29 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         val owns = ctl.ownsObservedStream()
         return buildJsonObject {
             put("station", s.renderer.name.take(256))
+            s.connectResult?.let { put("result", it) }
+            player?.let { p ->
+                val count = p.mediaItemCount
+                val index = p.currentMediaItemIndex
+                put("queue_count", count.coerceIn(0, 100000))
+                if (index in 0 until count && index <= 100000) {
+                    put("current_index", index)
+                    put("track_id", p.currentMediaItem?.mediaId.orEmpty().take(256))
+                    val from = (index - 10).coerceAtLeast(0)
+                    val end = minOf(count, from + 40, 100001)
+                    put("queue", buildJsonArray {
+                        for (i in from until end) {
+                            val item = p.getMediaItemAt(i)
+                            add(buildJsonObject {
+                                put("index", i)
+                                put("id", item.mediaId.take(256))
+                                put("title", item.mediaMetadata.title?.toString().orEmpty().take(256))
+                                put("artist", item.mediaMetadata.artist?.toString().orEmpty().take(256))
+                            })
+                        }
+                    })
+                }
+            }
             put("loading", (state.value as? CastState.Casting)?.loading == true)
             if (observed != null) {
                 observed.volume?.let { put("volume", it) }
