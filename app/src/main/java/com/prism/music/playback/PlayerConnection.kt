@@ -1244,10 +1244,12 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     @Volatile private var lastBuffered = 0L
 
     val position: Long get() {
+        if (c.castingNow) c.cast.stationClock.value?.let { return it.positionMs }
         val p = player ?: return 0
         return if (android.os.Looper.myLooper() == p.applicationLooper) p.currentPosition.also { lastPosition = it } else lastPosition
     }
     val duration: Long get() {
+        if (c.castingNow) c.cast.stationClock.value?.durationMs?.let { return it }
         val p = player
         val d = when {
             p == null -> 0L
@@ -1257,6 +1259,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         return d.takeIf { it > 0 } ?: ((_current.value?.durationSec ?: 0) * 1000L)
     }
     val bufferedPosition: Long get() {
+        if (c.castingNow) c.cast.stationClock.value?.let { return it.positionMs }
         val p = player ?: return 0
         return if (android.os.Looper.myLooper() == p.applicationLooper) p.bufferedPosition.also { lastBuffered = it } else lastBuffered
     }
