@@ -505,8 +505,51 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         netBlocked = false
     }
 
+    private var liveTrial = false
+
+    /** Short hardware trial from the ordinary output picker. Never overlap with a normal Cast session. */
+    internal suspend fun withStationLiveTrial(r: Renderer, action: suspend (com.prism.music.connect.yandex.StationSmokeSession) -> Unit) {
+        check(r.kind == RendererKind.YANDEX_STATION && BuildConfig.DEBUG)
+        check(!liveTrial && state.value == CastState.Idle && session == null && tv == null)
+        liveTrial = true
+        var trial: com.prism.music.connect.yandex.StationSmokeSession? = null
+        try {
+            cleanupJob?.join()
+            val device = stationDevices[r.id] ?: error("Station no longer available")
+            val api = StationConnectAccount.api() ?: error("Sign in to Yandex in Settings")
+            player?.pause()
+            val identity = withContext(Dispatchers.IO) { api.verify(device) }
+            val address = withContext(Dispatchers.IO) {
+                java.net.DatagramSocket().use {
+                    it.connect(device.address, device.port)
+                    it.localAddress as? java.net.Inet4Address ?: error("No IPv4 route")
+                }
+            }
+            val active = com.prism.music.connect.yandex.StationSmokeSession(device, identity, api)
+            trial = active
+            withContext(Dispatchers.IO) {
+                active.playLive(address) { android.util.Log.i("PrismLive", it) }
+            }
+            action(active)
+        } finally {
+            try {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+                    trial?.let {
+                        try {
+                            if (kotlinx.coroutines.withTimeoutOrNull(5000L) { it.stop(); true } != true)
+                                android.util.Log.w("PrismLive", "Remote stop was not confirmed")
+                        } catch (_: Exception) {
+                            android.util.Log.w("PrismLive", "Remote stop was not confirmed")
+                        } finally { it.close() }
+                    }
+                }
+            } finally { liveTrial = false }
+        }
+    }
+
     /** Sends what's playing to [r] from now on. */
     fun connect(r: Renderer) {
+        if (liveTrial) return
         if (r.kind == RendererKind.PRISM_TV) return
         val now = state.value
         if (now is CastState.Casting && now.renderer.id == r.id) return
@@ -631,6 +674,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
      * here ([TvCast]). Pairs first if they aren't yet.
      */
     fun connectTv(d: PrismDevice) {
+        if (liveTrial) return
         val r = Renderer("prism:${d.id ?: d.key}", d.name, "Prism", "", "prism://${d.host}:${d.port}", null, kind = RendererKind.PRISM_TV)
         when (val now = state.value) {
             is CastState.Casting -> if (now.renderer.id == r.id) return
