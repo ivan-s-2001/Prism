@@ -1,6 +1,7 @@
 package com.prism.music.connect.yandex
 
 import java.io.Closeable
+import java.io.IOException
 import java.net.Proxy
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -18,7 +19,6 @@ import kotlinx.serialization.json.contentOrNull
 import javax.net.ssl.SSLContext
 import javax.net.ssl.X509TrustManager
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonObject
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -102,7 +102,7 @@ internal class GlagolSocket(
 
     /** Only queues a frame. A successful return does not prove audible playback. */
     suspend fun send(conversationToken: String, payload: JsonObject) {
-        withTimeout(10_000) { opened.await() }
+        if (withTimeoutOrNull(10_000) { opened.await(); true } != true) throw IOException("Station socket open timed out")
         check(socket.send(GlagolProtocol.envelope(conversationToken, payload))) {
             "Station connection closed"
         }
@@ -110,7 +110,7 @@ internal class GlagolSocket(
 
     /** Wait for the reply carrying our requestId; do not confuse a queued frame with a reply. */
     suspend fun request(conversationToken: String, payload: JsonObject): String? {
-        withTimeout(10_000) { opened.await() }
+        if (withTimeoutOrNull(10_000) { opened.await(); true } != true) throw IOException("Station socket open timed out")
         val id = UUID.randomUUID().toString()
         val reply = CompletableDeferred<String>()
         replies[id] = reply
