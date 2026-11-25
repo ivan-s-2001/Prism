@@ -68,6 +68,7 @@ import com.prism.music.ui.components.pane
 import com.prism.music.ui.theme.Backdrop
 import com.prism.music.ui.theme.BackdropLayer
 import com.prism.music.ui.theme.BackdropScreen
+import com.prism.music.ui.theme.forScreen
 import com.prism.music.ui.theme.screensOnly
 import com.prism.music.ui.theme.LocalContainer
 import kotlinx.coroutines.Dispatchers
@@ -89,10 +90,10 @@ fun BackgroundsScreen(bottomPadding: Dp, forPlayer: Boolean = false) {
     // What the listener picked, also while Performance mode draws plain pages.
     val s by c.settings.stored.collectAsState()
     var screen by rememberSaveable { mutableStateOf(BackdropScreen.HOME) }
-    var everywhere by rememberSaveable { mutableStateOf(!forPlayer && s.backdrops.screensOnly.values.toSet().size <= 1) }
+    var everywhere by rememberSaveable { mutableStateOf(!forPlayer && BackdropScreen.entries.map { s.backdrops.forScreen(it) ?: Backdrop.DEFAULT.name }.distinct().size <= 1) }
     var dim by remember { mutableFloatStateOf(s.backdropDim) }
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    val current = if (forPlayer) s.backdrops[com.prism.music.ui.theme.PLAYER_BACKDROP] ?: s.backdrops[BackdropScreen.HOME.name] else s.backdrops[screen.name]
+    val current = if (forPlayer) s.backdrops[com.prism.music.ui.theme.PLAYER_BACKDROP] ?: s.backdrops[BackdropScreen.HOME.name] else s.backdrops.forScreen(screen)
     val (currentStyle, currentPhoto) = Backdrop.parse(current)
     val today = remember { com.prism.music.data.looks.Seasons.today() }
     // #413 (1.8.4), Solid color: the color this screen has, else one picked for another screen, else the accent to start from.
@@ -109,7 +110,11 @@ fun BackgroundsScreen(bottomPadding: Dp, forPlayer: Boolean = false) {
             map[com.prism.music.ui.theme.PLAYER_BACKDROP] = value ?: Backdrop.DEFAULT.name
         } else {
             val targets = if (everywhere) BackdropScreen.entries else listOf(screen)
-            targets.forEach { t -> if (value == null) map.remove(t.name) else map[t.name] = value }
+            targets.forEach { t ->
+                if (value != null) map[t.name] = value
+                else if (t == BackdropScreen.VIBE && !everywhere) map[t.name] = Backdrop.DEFAULT.name
+                else map.remove(t.name)
+            }
         }
         c.settings.setBackdrops(map)
     }
@@ -154,16 +159,28 @@ fun BackgroundsScreen(bottomPadding: Dp, forPlayer: Boolean = false) {
                     Row(Modifier.fillMaxWidth().clickable { everywhere = !everywhere }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(tr(R.string.same_on_every_screen), style = MaterialTheme.typography.bodyLarge)
-                            Text(tr(R.string.home_search_library_replay_and_settings), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(tr(R.string.home_search_library_replay_and_settings) + " · " + tr(R.string.stream), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         PrismSwitch(everywhere, { everywhere = it })
                     }
                     if (!everywhere) LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         rowItems(BackdropScreen.entries) { sc ->
-                            val (st, _) = Backdrop.parse(s.backdrops[sc.name])
+                            val (st, _) = Backdrop.parse(s.backdrops.forScreen(sc))
                             com.prism.music.ui.components.PrismChip(sc == screen, { screen = sc }, if (st == Backdrop.DEFAULT) sc.label else "${sc.label} · ${st.label}")
                         }
                     }
+                }
+            }
+            if (!forPlayer && !everywhere && screen == BackdropScreen.VIBE) item(key = "vibe-inherit") {
+                val own = s.backdrops[screen.name]
+                Row(Modifier.fillMaxWidth().pane(ui.card, MaterialTheme.colorScheme.surfaceContainer).clickable {
+                    val map = s.backdrops.toMutableMap()
+                    if (own == null) map[screen.name] = s.backdrops.forScreen(screen) ?: Backdrop.DEFAULT.name
+                    else map.remove(screen.name)
+                    c.settings.setBackdrops(map)
+                }.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(tr(R.string.same_as_home), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    PrismSwitch(own == null, null)
                 }
             }
             item {

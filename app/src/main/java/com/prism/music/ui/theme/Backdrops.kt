@@ -52,13 +52,17 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /** The screens whose background can be changed. */
-enum class BackdropScreen(val label: String) { HOME(tr(R.string.home)), SEARCH(tr(R.string.search)), LIBRARY(tr(R.string.library)), REPLAY(tr(R.string.replay_2)), SETTINGS(tr(R.string.settings)) }
+enum class BackdropScreen(val label: String) { HOME(tr(R.string.home)), SEARCH(tr(R.string.search)), LIBRARY(tr(R.string.library)), REPLAY(tr(R.string.replay_2)), SETTINGS(tr(R.string.settings)), VIBE(tr(R.string.stream)) }
 
 /**
  * The player's own background (1.7.4), kept in the same map as the screens' (so Looks keep its photo too), but not a
  * screen: "Same on every screen" leaves it alone. Missing, the player's "A background" shows Home's.
  */
 const val PLAYER_BACKDROP = "PLAYER"
+
+/** Existing Looks keep their Home background on Vibe until Vibe gets its own. */
+fun Map<String, String>.forScreen(screen: BackdropScreen): String? =
+    this[screen.name] ?: if (screen == BackdropScreen.VIBE) this[BackdropScreen.HOME.name] else null
 
 /** The screens' backgrounds alone, without the player's. */
 val Map<String, String>.screensOnly: Map<String, String> get() = filterKeys { it != PLAYER_BACKDROP }
@@ -308,7 +312,7 @@ fun StatusBarIcons(lightBar: Boolean) {
 fun ScreenBackdrop(screen: BackdropScreen, content: @Composable BoxScope.() -> Unit) {
     val c = LocalContainer.current
     val s by c.settings.flow.collectAsState()
-    val (style, photo) = Backdrop.parse(s.backdrops[screen.name])
+    val (style, photo) = Backdrop.parse(s.backdrops.forScreen(screen))
     // #413: a solid color is that color exactly, with nothing over it (no wash, no blur, nothing moving): one fill.
     val solid = if (style == Backdrop.COLOR) Backdrop.solidColor(photo) else null
     val motion = s.backdropMotion && !s.reduceMotion

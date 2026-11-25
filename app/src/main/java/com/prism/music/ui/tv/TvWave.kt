@@ -259,11 +259,11 @@ internal fun TvWavePlace(nav: TvNav) {
                     Text(title, Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium)
                     if (appSettings.streamShowStatus) Text(tr(if (starting) R.string.prism_stream_finding_music else if (now?.playing == true) R.string.prism_stream_playing else if (now != null) R.string.prism_stream_paused else R.string.prism_stream_personal_stream), style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
                 }
-                Row(Modifier.weight(1f).fillMaxWidth().tvGlass(com.prism.music.ui.theme.LocalUi.current.shape(24.dp)).padding(ui.gap(24.dp)),
+                Row(Modifier.weight(1f).fillMaxWidth().then(if (appSettings.streamGlassPanel) Modifier.tvGlass(ui.shape(24.dp)) else Modifier).padding(ui.gap(24.dp)),
                     horizontalArrangement = Arrangement.spacedBy(if (narrow) 20.dp else 36.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     if (appSettings.streamShowCover) BoxWithConstraints(Modifier.weight(if (narrow) 0.65f else 0.85f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                        Artwork(now?.art, Modifier.size(minOf(maxWidth, maxHeight, 340.dp)),
+                        Artwork(now?.art, Modifier.size(minOf(maxWidth, maxHeight, 340.dp) * appSettings.streamCoverSize.fraction),
                             shape = com.prism.music.ui.theme.CoverShapes.of(appSettings.shapes.player, appSettings.player.artCorners.dp), size = 1080)
                     }
                     Column(Modifier.weight(1.15f), verticalArrangement = Arrangement.spacedBy(if (narrow) 8.dp else 16.dp)) {

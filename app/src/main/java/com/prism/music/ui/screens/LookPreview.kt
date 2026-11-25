@@ -7,6 +7,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -65,6 +67,7 @@ import com.prism.music.ui.theme.PrismIcons
 import com.prism.music.ui.theme.PrismUi
 import com.prism.music.ui.theme.ThemeColors
 import com.prism.music.ui.theme.isAppDark
+import com.prism.music.ui.theme.forScreen
 import com.prism.music.ui.theme.prismTypography
 
 /*
@@ -124,6 +127,61 @@ fun LookPhones(s: AppSettings, width: Dp, modifier: Modifier = Modifier, gap: Dp
         // The player is always white on dark, whatever the theme.
         PreviewPhone(width) { LookTheme(s, true) { c -> MiniPlayerScreen(c, song) } }
         PreviewPhone(width) { LookTheme(s, true) { c -> MiniLyrics(c, song) } }
+    }
+}
+
+/** A read-only Vibe preview: same layout flags, cover geometry, and page colors, without starting playback. */
+@Composable
+internal fun VibeLookPreview(s: AppSettings) {
+    val song by LocalContainer.current.player.currentSong.collectAsState()
+    val dark = isAppDark(s)
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        PreviewPhone(126.dp) { LookTheme(s, dark) { c -> MiniVibe(c, song) } }
+    }
+}
+
+@Composable
+private fun MiniVibe(c: ThemeColors, song: Song?) {
+    val s = LocalAppSettings.current
+    val ui = LocalUi.current
+    val scheme = c.scheme
+    val (backdrop, photo) = com.prism.music.ui.theme.Backdrop.parse(s.backdrops.forScreen(com.prism.music.ui.theme.BackdropScreen.VIBE))
+    Box(Modifier.fillMaxSize().background(scheme.background)) {
+        if (backdrop != com.prism.music.ui.theme.Backdrop.DEFAULT) {
+            com.prism.music.ui.theme.BackdropLayer(backdrop, photo, s.backdropDim, false, Modifier.fillMaxSize())
+        }
+        Column(Modifier.fillMaxSize().padding(ui.gap(16.dp)), verticalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
+            Text(tr(R.string.stream), style = pageTitleStyle(), color = scheme.onBackground)
+            if (s.streamShowStatus) Text(tr(R.string.prism_stream_personal_stream), style = MaterialTheme.typography.bodySmall)
+            val panel = Modifier.weight(1f).fillMaxWidth()
+            Column(panel.then(if (s.streamGlassPanel) Modifier.clip(ui.shape(24.dp)).background(scheme.surfaceContainerHigh.copy(alpha = 0.80f)) else Modifier).padding(ui.gap(16.dp)),
+                verticalArrangement = if (s.streamShowCover) Arrangement.spacedBy(ui.gap(12.dp)) else Arrangement.spacedBy(ui.gap(12.dp), Alignment.CenterVertically),
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                if (s.streamShowCover) BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    StandIn(song, Modifier.size(minOf(maxWidth, maxHeight) * s.streamCoverSize.fraction),
+                        com.prism.music.ui.theme.CoverShapes.of(s.shapes.player, s.player.artCorners.dp), standIns.first())
+                }
+                Text(song?.title ?: tr(R.string.prism_stream_music_in_your_rhythm), style = com.prism.music.ui.player.playerTitleStyle(MaterialTheme.typography, s), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(song?.primaryArtist ?: tr(R.string.prism_stream_start_listening), style = com.prism.music.ui.player.playerArtistStyle(MaterialTheme.typography, s), color = scheme.onSurfaceVariant, maxLines = 1)
+                if (s.streamShowProgress) Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(scheme.outlineVariant)) {
+                    Box(Modifier.fillMaxWidth(0.35f).height(4.dp).background(scheme.primary))
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                    if (s.streamShowReactions) Icon(PrismIcons.Heart, null)
+                    Icon(PrismIcons.Previous, null)
+                    Icon(PrismIcons.Play, null, Modifier.size(38.dp))
+                    Icon(PrismIcons.Next, null)
+                    if (s.streamShowReactions) Icon(PrismIcons.ThumbDown, null)
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp))) {
+                listOf(PrismIcons.Customize, PrismIcons.Stream, PrismIcons.Bookmark).forEach { icon ->
+                    Box(Modifier.weight(1f).height(if (s.streamCompactScenarios) 36.dp else 62.dp).clip(if (s.streamCompactScenarios) ui.button else ui.card).background(scheme.surfaceContainer), contentAlignment = Alignment.Center) {
+                        Icon(icon, null, Modifier.size(24.dp))
+                    }
+                }
+            }
+        }
     }
 }
 

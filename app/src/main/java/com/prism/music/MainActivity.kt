@@ -748,7 +748,7 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
                             Beside { CollectionScreen(CollectionType.MIX, it.arguments?.getString("id")!!, null, bottomPadding) }
                         }
                         composable(Routes.HOME) { ScreenBackdrop(BackdropScreen.HOME) { HomeScreen(bottomPadding) } }
-                        composable(Routes.MY_WAVE) { ScreenBackdrop(BackdropScreen.HOME) { com.prism.music.ui.screens.MyWaveScreen(bottomPadding, onOpenPlayer = { playerOpen = true }) } }
+                        composable(Routes.MY_WAVE) { ScreenBackdrop(BackdropScreen.VIBE) { com.prism.music.ui.screens.MyWaveScreen(bottomPadding, onOpenPlayer = { playerOpen = true }) } }
                         composable(Routes.SEARCH) { ScreenBackdrop(BackdropScreen.SEARCH) { SearchScreen(bottomPadding) } }
                         composable(Routes.LIBRARY) { ScreenBackdrop(BackdropScreen.LIBRARY) { LibraryScreen(bottomPadding) } }
                         composable(Routes.REPLAY) { ScreenBackdrop(BackdropScreen.REPLAY) { ReplayScreen(bottomPadding) } }

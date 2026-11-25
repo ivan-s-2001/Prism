@@ -144,6 +144,8 @@ fun TvSettingsPlace(nav: TvNav) {
             ),
         ),
         TvSettingGroup(tr(R.string.stream), PrismIcons.Stream, emptyList()) to listOf(
+            TvSettingRow(TvSetting(tr(R.string.prism_stream_appearance_panel), on = settings.streamGlassPanel), TvSettingAction.Flip({ c.settings.setStreamGlassPanel(it) }, settings.streamGlassPanel)),
+            TvSettingRow(TvSetting(tr(R.string.cover_size), settings.streamCoverSize.label), TvSettingAction.Choose(com.prism.music.data.prefs.StreamCoverSize.entries.map { size -> size.label to { c.settings.setStreamCoverSize(size) } })),
             TvSettingRow(TvSetting(tr(R.string.artwork), on = settings.streamShowCover), TvSettingAction.Flip({ c.settings.setStreamShowCover(it) }, settings.streamShowCover)),
             TvSettingRow(TvSetting(tr(R.string.progress_bar), on = settings.streamShowProgress), TvSettingAction.Flip({ c.settings.setStreamShowProgress(it) }, settings.streamShowProgress)),
             TvSettingRow(TvSetting(tr(R.string.prism_stream_appearance_reactions), on = settings.streamShowReactions), TvSettingAction.Flip({ c.settings.setStreamShowReactions(it) }, settings.streamShowReactions)),

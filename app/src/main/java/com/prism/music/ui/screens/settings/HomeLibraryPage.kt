@@ -19,6 +19,8 @@ import com.prism.music.data.prefs.LibraryView
 import com.prism.music.data.prefs.RecentShows
 import com.prism.music.data.prefs.ReplayGraph
 import com.prism.music.data.prefs.SearchSection
+import com.prism.music.data.prefs.StreamCoverSize
+import com.prism.music.ui.screens.VibeLookPreview
 import com.prism.music.tr
 import com.prism.music.ui.LocalNavigator
 import com.prism.music.ui.Routes
@@ -76,6 +78,8 @@ fun HomeLibraryPage(bottomPadding: Dp, find: String? = null, showBack: Boolean =
     val d = remember { AppSettings() }
     val reset = ListeningResets()
     val onOff: (Boolean) -> String = { ListeningResets.onOff(it) }
+    val streamSizeChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.cover_size), s.streamCoverSize, d.streamCoverSize, { it.label }) { prefs.setStreamCoverSize(it) }
+    val streamPanelChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_panel), s.streamGlassPanel, d.streamGlassPanel, onOff) { prefs.setStreamGlassPanel(it) }
     val streamShowCoverChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.artwork), s.streamShowCover, d.streamShowCover, onOff) { prefs.setStreamShowCover(it) }
     val streamShowProgressChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.progress_bar), s.streamShowProgress, d.streamShowProgress, onOff) { prefs.setStreamShowProgress(it) }
     val streamShowReactionsChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_reactions), s.streamShowReactions, d.streamShowReactions, onOff) { prefs.setStreamShowReactions(it) }
@@ -144,8 +148,11 @@ fun HomeLibraryPage(bottomPadding: Dp, find: String? = null, showBack: Boolean =
                 info = tr(R.string.off_podcasts_opens_from_library_playlists), changed = topButtonsChanged,
             ) { HomeChoices.setTopButtons(prefs, it) }
         }
+        item("vibe-preview") { VibeLookPreview(s) }
         group(HlGroups.stream) {
+            SwitchRow(tr(R.string.prism_stream_appearance_panel), s.streamGlassPanel, changed = streamPanelChanged) { prefs.setStreamGlassPanel(it) }
             SwitchRow(tr(R.string.artwork), s.streamShowCover, changed = streamShowCoverChanged) { prefs.setStreamShowCover(it) }
+            if (s.streamShowCover) ChoiceRow(tr(R.string.cover_size), StreamCoverSize.entries, s.streamCoverSize, { it.label }, changed = streamSizeChanged) { prefs.setStreamCoverSize(it) }
             SwitchRow(tr(R.string.progress_bar), s.streamShowProgress, changed = streamShowProgressChanged) { prefs.setStreamShowProgress(it) }
             SwitchRow(tr(R.string.prism_stream_appearance_reactions), s.streamShowReactions, changed = streamShowReactionsChanged) { prefs.setStreamShowReactions(it) }
             SwitchRow(tr(R.string.prism_stream_appearance_status), s.streamShowStatus, changed = streamShowStatusChanged) { prefs.setStreamShowStatus(it) }
@@ -331,7 +338,7 @@ fun homeLibraryValue(s: AppSettings, dark: Boolean): String {
 val homeLibraryLookKeys: List<String> = listOf(
     "replay_card", "replay_card_graph", "library_view", "library_views", "library_columns", "library_subtitles",
     "playlist_hero_cover", "album_hero_cover", "downloads_albums",
-    "stream_show_cover", "stream_show_progress", "stream_show_reactions", "stream_show_status", "stream_compact_scenarios",
+    "stream_show_cover", "stream_cover_size", "stream_glass_panel", "stream_show_progress", "stream_show_reactions", "stream_show_status", "stream_compact_scenarios",
 )
 
 /** Old group titles → this page's groups: "Liked songs" (on Recommendations before 1.8.4) held what is in Library now. */
@@ -365,6 +372,8 @@ val homeLibraryIndex: List<SettingEntry> by lazy {
         SettingEntry(page, g.home, tr(R.string.recently_played_shows), tr(R.string.recently_played_albums_playlists_songs_home)),
         SettingEntry(page, g.home, tr(R.string.buttons_at_the_top_of_home), words(R.string.podcasts_button, R.string.customize_button_at_the_top)),
         // Vibe appearance
+        SettingEntry(page, g.stream, tr(R.string.prism_stream_appearance_panel), tr(R.string.stream)),
+        SettingEntry(page, g.stream, tr(R.string.cover_size), tr(R.string.stream)),
         SettingEntry(page, g.stream, tr(R.string.artwork), tr(R.string.stream)),
         SettingEntry(page, g.stream, tr(R.string.progress_bar), tr(R.string.stream)),
         SettingEntry(page, g.stream, tr(R.string.prism_stream_appearance_reactions), tr(R.string.stream)),

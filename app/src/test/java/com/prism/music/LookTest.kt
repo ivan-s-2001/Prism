@@ -48,6 +48,20 @@ class LookTest {
     }
 
     @Test
+    fun vibeAppearanceIsPartOfALook() {
+        val r = repo()
+        val values = mapOf("stream_show_cover" to "b:0", "stream_cover_size" to "s:COMPACT",
+            "stream_glass_panel" to "b:0", "stream_show_progress" to "b:0", "stream_compact_scenarios" to "b:1")
+        val s = r.previewLook(values)
+        assertEquals(false, s.streamShowCover)
+        assertEquals(com.prism.music.data.prefs.StreamCoverSize.COMPACT, s.streamCoverSize)
+        assertEquals(false, s.streamGlassPanel)
+        assertEquals(false, s.streamShowProgress)
+        assertTrue(s.streamCompactScenarios)
+        assertTrue(values.keys.all(LookLabels::named))
+    }
+
+    @Test
     fun aLookGoesInAndComesBackWhole(): Unit = runBlocking {
         val r = repo()
         val values = r.lookKinds.mapValues { (_, kind) ->

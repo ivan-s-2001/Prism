@@ -269,6 +269,15 @@ object BuiltInLooks {
 /** How a look setting and its value read in the undo bar and History ("Corners → Sharp"). */
 object LookLabels {
     private val titles = mapOf(
+        "stream_theme_colors" to (tr(R.string.stream) + " · " + tr(R.string.theme)),
+        "stream_russian_percent" to (tr(R.string.stream) + " · " + tr(R.string.prism_stream_music_language)),
+        "stream_show_cover" to (tr(R.string.stream) + " · " + tr(R.string.artwork)),
+        "stream_show_progress" to (tr(R.string.stream) + " · " + tr(R.string.progress_bar)),
+        "stream_show_reactions" to (tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_reactions)),
+        "stream_show_status" to (tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_status)),
+        "stream_compact_scenarios" to (tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_compact_scenarios)),
+        "stream_cover_size" to (tr(R.string.stream) + " · " + tr(R.string.cover_size)),
+        "stream_glass_panel" to (tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_panel)),
         "glass_blur" to tr(R.string.glass_blur), "glass_frost" to tr(R.string.glass_frost), "glass_more" to tr(R.string.glass_on_more_of_the_screen), "player_gradient_depth" to tr(R.string.gradient_depth),
         "theme_mode" to tr(R.string.theme), "pure_black" to tr(R.string.pure_black), "color_source" to tr(R.string.accent_from), "accent" to tr(R.string.accent_color),
         "light_style" to tr(R.string.light), "accent_exact" to tr(R.string.exactly_as_picked), "accent_light" to tr(R.string.light_mode_accent), "spectrum_preset" to tr(R.string.spectrum),
@@ -439,6 +448,7 @@ object LookLabels {
             } ?: v
             'i' -> v.toIntOrNull()?.let { if (name in colors) "#%06X".format(it and 0xFFFFFF) else if (name == "player_art_corners") tr(R.string.dp, it) else v } ?: v
             else -> when (name) {
+                "stream_cover_size" -> com.prism.music.data.prefs.StreamCoverSize.entries.firstOrNull { it.name == v }?.label ?: v
                 "backdrops" -> tr(R.string.changed)
                 "nav_tabs" -> v.split(',').joinToString(", ") { t -> choices["start_tab"]?.get(t) ?: t }
                 "library_views" -> com.prism.music.data.prefs.parseLibraryViews(v).entries.joinToString(", ") { (t, view) ->
@@ -471,6 +481,7 @@ object LookLabels {
             "replay_card_graph", "replay_story_font",
             "hide_status_bar", "hide_status_bar_player", "tab_names", "nav_bar_size", "nav_bar_fill", "mini_player_joined", "controls_classic",
             "downloads_albums", "album_hero_cover",
+            "stream_theme_colors", "stream_russian_percent", "stream_show_cover", "stream_show_progress", "stream_show_reactions", "stream_show_status", "stream_compact_scenarios", "stream_cover_size", "stream_glass_panel",
         ),
         "player" to setOf(
             "player_background", "player_backdrop_show", "player_art_corners", "transport_style", "cover_size", "scrubber_style", "art_shrink_on_pause",

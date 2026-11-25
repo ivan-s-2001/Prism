@@ -302,9 +302,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
     // One player card, not a decorative hero followed by a second mini player.
     @Composable fun Hero(modifier: Modifier) {
-        // The surrounding route keeps Home's ScreenBackdrop. All media effects are clipped to this one panel.
-        GlassSurface(modifier.testTag("home:my_wave"), shape = ui.shape(24.dp),
-            onMedia = false, inPage = true) {
+        @Composable fun Body() {
             CompositionLocalProvider(com.prism.music.ui.player.LocalEmbeddedPlayerInk provides scheme.onSurface,
                 LocalContentColor provides scheme.onSurface) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -408,7 +406,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 Row(Modifier.fillMaxSize().padding(inset), horizontalArrangement = Arrangement.spacedBy(ui.gap(24.dp)),
                     verticalAlignment = Alignment.CenterVertically) {
                     if (settings.streamShowCover) BoxWithConstraints(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                        CoverArt(Modifier.size(minOf(maxWidth, maxHeight)))
+                        CoverArt(Modifier.size(minOf(maxWidth, maxHeight) * settings.streamCoverSize.fraction))
                     }
                     Column(Modifier.weight(1.3f), verticalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
                         Metadata(reactions = true)
@@ -419,7 +417,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             } else {
                 Column(Modifier.fillMaxSize().padding(inset), verticalArrangement = if (settings.streamShowCover) Arrangement.spacedBy(ui.gap(12.dp)) else Arrangement.spacedBy(ui.gap(12.dp), Alignment.CenterVertically)) {
                     if (settings.streamShowCover) BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        CoverArt(Modifier.size(minOf(maxWidth, maxHeight)))
+                        CoverArt(Modifier.size(minOf(maxWidth, maxHeight) * settings.streamCoverSize.fraction))
                     }
                     Metadata(reactions = true)
                     if (settings.streamShowProgress) Progress()
@@ -429,6 +427,9 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         }
             }
         }
+        val panel = modifier.testTag("home:my_wave")
+        if (settings.streamGlassPanel) GlassSurface(panel, shape = ui.shape(24.dp), onMedia = false, inPage = true) { Body() }
+        else Box(panel) { Body() }
     }
 
     @Composable fun ScenarioTile(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
