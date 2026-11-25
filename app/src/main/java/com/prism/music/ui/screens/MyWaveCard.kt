@@ -284,9 +284,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 enabled = !starting, modifier = Modifier.testTag("home:my_wave:refresh")) {
                 if (onRetry != null && !wave) onRetry() else start()
             }
-            Spacer(Modifier.width(8.dp))
-            RoundAction(PrismIcons.Equalizer, l("Настроить поток", "Tune Stream"),
-                modifier = Modifier.testTag("home:my_wave:settings")) { settingsOpen = true }
+
         }
     }
     // One player card, not a decorative hero followed by a second mini player.
@@ -421,52 +419,30 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         }
     }
 
-    @Composable fun Controls(compact: Boolean) {
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(l("Сценарии", "Scenarios"), style = MaterialTheme.typography.titleMedium,
-                    color = scheme.onBackground, modifier = Modifier.weight(1f))
-                TextButton(onClick = { scenariosOpen = true }) { Text(l("Все", "All")) }
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val choices = (listOfNotNull(activeScenario) + quickScenarios).distinctBy { it.id }.take(if (compact) 2 else 3)
+    @Composable fun Controls() {
+        val choices = (listOfNotNull(activeScenario) + quickScenarios + WaveScenarios.all).distinctBy { it.id }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            RoundAction(PrismIcons.Equalizer, l("Настроить поток", "Tune Stream"),
+                modifier = Modifier.testTag("home:my_wave:settings")) { settingsOpen = true }
+            Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(vertical = 3.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 choices.forEach { scenario ->
                     PrismChip(selected = style.copy(russianPercent = -1) == scenario.style,
                         onClick = { start(scenario.style.copy(russianPercent = style.russianPercent)) },
                         label = if (ru) scenario.ru else scenario.en,
-                        modifier = Modifier.weight(1f).testTag("wave:scenario:${scenario.id}"))
+                        modifier = Modifier.testTag("wave:scenario:${scenario.id}"))
                 }
-            }
-            // Keep the controls themselves in the existing tuning sheet. The summary
-            // is the only extra entry on the main page, not another decorative card.
-            val language = if (style.russianPercent < 0) l("Язык: авто", "Language: auto")
-                else l("${style.russianPercent}% рус. · ${100 - style.russianPercent}% иностр.",
-                    "${style.russianPercent}% Russian · ${100 - style.russianPercent}% foreign")
-            Column(Modifier.fillMaxWidth().clickable { settingsOpen = true }.padding(vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(l("${100 - style.discoveryPercent}% лайки · ${style.discoveryPercent}% открытия",
-                    "${100 - style.discoveryPercent}% liked · ${style.discoveryPercent}% discoveries"),
-                    style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1)
-                Text(language, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1)
             }
         }
     }
 
-    // Same page inset and navigation as the rest of Prism. No nested scroll or mini-player.
+    // The same bottom strip in portrait and landscape; only scenarios scroll.
     BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        val wide = maxWidth >= 600.dp || maxWidth > maxHeight * 1.25f
-        val compact = maxWidth < 350.dp
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Header()
-            if (wide) {
-                Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Hero(Modifier.weight(1.55f).fillMaxHeight())
-                    Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) { Controls(false) }
-                }
-            } else {
-                Hero(Modifier.weight(1f).fillMaxWidth())
-                Controls(compact)
-            }
+            Hero(Modifier.weight(1f).fillMaxWidth())
+            Controls()
         }
     }
     if (scenariosOpen) {
