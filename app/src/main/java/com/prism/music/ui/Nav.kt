@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 object Routes {
     const val WELCOME = "welcome"
     const val HOME = "home"
+    const val MY_WAVE = "my-wave"
     const val SEARCH = "search"
     const val LIBRARY = "library"
     const val REPLAY = "replay"
