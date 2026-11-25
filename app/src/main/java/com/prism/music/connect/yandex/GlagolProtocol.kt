@@ -76,15 +76,21 @@ internal object GlagolProtocol {
     /** Modern firmware: HLS is explicitly a radio-format audio_play stream.
      * Keep ordinary file playback unchanged. Reference: AlexxIT/YandexStation#802.
      */
-    fun playHls(url: String, title: String, artist: String): JsonObject {
+    fun playHls(url: String, title: String, artist: String): JsonObject =
+        playLiveAudio(url, title, artist, true)
+
+    fun playDirectLive(url: String, title: String, artist: String): JsonObject =
+        playLiveAudio(url, title, artist, false)
+
+    private fun playLiveAudio(url: String, title: String, artist: String, hls: Boolean): JsonObject {
         val uri = URI(url)
         require(uri.scheme.equals("http", true) && uri.host != null && uri.userInfo == null && uri.fragment == null)
-        require(uri.path.endsWith(".m3u8", true))
+        require(uri.path.endsWith(if (hls) ".m3u8" else ".wav", true))
         val params = buildJsonObject {
             put("stream", buildJsonObject {
                 put("url", url)
-                put("format", "HLS")
-                put("type", "FmRadio")
+                put("format", if (hls) "HLS" else "MP3")
+                put("type", if (hls) "FmRadio" else "Track")
                 put("offset_ms", 0)
             })
             put("set_pause", false)
