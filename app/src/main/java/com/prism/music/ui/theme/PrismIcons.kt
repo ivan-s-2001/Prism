@@ -34,7 +34,7 @@ enum class IconWeight(val label: String, val scale: Float) { THIN(tr(R.string.th
  */
 /** Sets of icons to pick from (Settings → Appearance → Icons): Prism's own, or Cupertino, drawn after Apple's style. */
 enum class IconPack(val label: String, val detail: String) {
-    PRISM(tr(R.string.prism_s_own), tr(R.string.prism_s_own_icons)),
+    PRISM("Tabler", tr(R.string.prism_s_own_icons)),
     CUPERTINO(tr(R.string.cupertino), tr(R.string.in_the_style_of_apple_s)),
     /** Every icon with its curves cut into straight facets and sharp corners (1.7.7, generated from Prism's drawings). */
     FACET(tr(R.string.facet), tr(R.string.straight_lines_and_sharp_corners_every)),
@@ -168,7 +168,9 @@ object PrismIcons {
     private fun drawn(name: String, filled: Boolean = false, style: IconFill = IconStyle.fill, pack: IconPack = IconStyle.pack): ImageVector {
         // Classic (1.7.8, #155): 1.6.9's own drawing where it had one; Lyrics stays today's (the one #155 didn't miss).
         if (pack == IconPack.CLASSIC && name != "Lyrics") ClassicIcons.find(if (filled) "${name}Filled" else name)?.let { return it }
-        val s = PrismIconData.spec(name)
+        val selectedName = "${name}Filled"
+        val useSelected = (filled || style == IconFill.FILLED) && selectedName in PrismIconData.names
+        val s = PrismIconData.spec(if (useSelected) selectedName else name)
         val ink = SolidColor(Color.Black)
         // Icons Classic has no drawing for: today's, at its line (1.8 units against today's 1.5).
         val classicLine = if (pack == IconPack.CLASSIC) CLASSIC_LINE else 1f

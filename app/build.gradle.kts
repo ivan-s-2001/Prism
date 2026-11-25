@@ -637,14 +637,123 @@ abstract class GeneratePrismIcons : DefaultTask() {
 
         val res = resDir.get().asFile.resolve("drawable").apply { deleteRecursively(); mkdirs() }
         for ((file, dr) in drawables) {
-            val spec = generated[dr.icon] ?: error("$file needs design/icons/${dr.icon}.svg")
+            val spec = (if (dr.filled) generated["${dr.icon}Filled"] else null)
+                ?: generated[dr.icon] ?: error("$file needs Tabler mapping for ${dr.icon}")
             res.resolve("$file.xml").writeText(vector(file, spec, dr))
         }
     }
 }
 
+
+/** Convert a verified Tabler source archive to Prism's existing semantic SVG catalog. */
+@CacheableTask
+abstract class PrepareTablerIcons : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val archive: RegularFileProperty
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val mapping: RegularFileProperty
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val legacyDrawings: DirectoryProperty
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    private fun blobSha(bytes: ByteArray): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-1")
+        digest.update(("blob " + bytes.size + "\u0000").toByteArray(Charsets.UTF_8))
+        return digest.digest(bytes).joinToString("") { "%02x".format(it.toInt() and 255) }
+    }
+
+    @TaskAction
+    fun prepare() {
+        val source = legacyDrawings.get().asFile
+        val target = outputDir.get().asFile
+        target.deleteRecursively()
+        target.mkdirs()
+        val parser = javax.xml.parsers.DocumentBuilderFactory.newInstance().apply {
+            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+        }.newDocumentBuilder()
+        val rows = mapping.get().asFile.readLines().filter { it.isNotBlank() && !it.startsWith("#") }
+        val expected = source.listFiles { f -> f.extension == "svg" }!!.map { it.nameWithoutExtension }.toSet()
+        val mapped = rows.map { it.substringBefore('\t') }.toSet()
+        require(expected.all { it in mapped }) { "Missing Tabler mapping: " + (expected - mapped) }
+        require(mapped.size == rows.size) { "Duplicate Tabler mappings" }
+        ZipFile(archive.get().asFile).use { zip ->
+            val entries = zip.entries().asSequence().filterNot { it.isDirectory }.associateBy { it.name.substringAfter('/') }
+            for (row in rows) {
+                val (name, relative, sha) = row.split('\t')
+                require(Regex("[A-Z][A-Za-z0-9]*").matches(name))
+                val entry = entries["icons/$relative"] ?: error("Tabler icon missing: $relative")
+                val bytes = zip.getInputStream(entry).use { it.readBytes() }
+                require(blobSha(bytes) == sha) { "Tabler source checksum mismatch: $relative" }
+                val root = parser.parse(bytes.inputStream()).documentElement
+                require(root.getAttribute("viewBox") == "0 0 24 24") { "Unexpected viewport: $relative" }
+                val baseName = name.removeSuffix("Filled")
+                val legacy = source.resolve("$baseName.svg").takeIf { it.isFile }?.let { parser.parse(it).documentElement }
+                val filled = relative.startsWith("filled/")
+                val tint = !filled && legacy?.getAttribute("data-filled")?.isNotBlank() == true
+                val paths = mutableListOf<String>()
+                var hasTint = false
+                val children = root.childNodes
+                for (i in 0 until children.length) {
+                    val node = children.item(i) as? org.w3c.dom.Element ?: continue
+                    fun attr(key: String) = node.getAttribute(key)
+                    val shape = when (node.tagName) {
+                        "path" -> "d=\"${attr("d")}\""
+                        "circle" -> "cx=\"${attr("cx")}\" cy=\"${attr("cy")}\" r=\"${attr("r")}\""
+                        "rect" -> "x=\"${attr("x")}\" y=\"${attr("y")}\" width=\"${attr("width")}\" height=\"${attr("height")}\" rx=\"${attr("rx")}\""
+                        "line" -> "d=\"M ${attr("x1")} ${attr("y1")} L ${attr("x2")} ${attr("y2")}\""
+                        "polyline", "polygon" -> {
+                            val numbers = Regex("[-+]?(?:\\d+\\.?\\d*|\\.\\d+)").findAll(attr("points")).map { it.value }.toList()
+                            require(numbers.size >= 4 && numbers.size % 2 == 0)
+                            "d=\"M " + numbers.chunked(2).joinToString(" L ") { it.joinToString(" ") } +
+                                (if (node.tagName == "polygon") " Z\"" else "\"")
+                        }
+                        "title", "desc" -> continue
+                        else -> error("Unsupported Tabler element ${node.tagName}: $relative")
+                    }
+                    val tag = if (node.tagName in listOf("line", "polyline", "polygon")) "path" else node.tagName
+                    val closed = tag != "path" || attr("d").trim().endsWith("z", ignoreCase = true) ||
+                        node.tagName == "polygon" || baseName == "Heart"
+                    val kind = when {
+                        filled && attr("fill") != "none" -> "f"
+                        tint && closed -> "o"
+                        else -> ""
+                    }
+                    if (kind == "o") hasTint = true
+                    paths += "  <$tag" + (if (kind.isBlank()) "" else " class=\"$kind\"") + " $shape />"
+                }
+                require(paths.isNotEmpty()) { "Empty Tabler icon: $relative" }
+                val mirror = legacy?.getAttribute("data-mirror") == "true"
+                val width = if (name == "SearchBold") "2.6" else "2"
+                target.resolve("$name.svg").writeText(
+                    "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"$width\" stroke-linecap=\"round\" stroke-linejoin=\"round\"" +
+                        (if (mirror) " data-mirror=\"true\"" else "") +
+                        (if (hasTint) " data-filled=\"tint\"" else "") + ">\n" +
+                        paths.joinToString("\n") + "\n</svg>\n"
+                )
+            }
+        }
+    }
+}
+
+val tablerIconArchive = configurations.create("tablerIconArchive") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+}
+dependencies.add(tablerIconArchive.name, "com.tabler:tabler-icons:e8fcec66034d15fa893d4d3c740e584f8518ed44@zip")
+val prepareTablerIcons = tasks.register<PrepareTablerIcons>("prepareTablerIcons") {
+    archive.set(layout.file(tablerIconArchive.elements.map { it.single().asFile }))
+    mapping.set(rootProject.layout.projectDirectory.file("design/tabler-icons.tsv"))
+    legacyDrawings.set(rootProject.layout.projectDirectory.dir("design/icons"))
+    outputDir.set(layout.buildDirectory.dir("generated/tablerIcons/svg"))
+}
+
 val generatePrismIcons = tasks.register<GeneratePrismIcons>("generatePrismIcons") {
-    drawings.set(rootProject.layout.projectDirectory.dir("design/icons"))
+    drawings.set(prepareTablerIcons.flatMap { it.outputDir })
     outputDir.set(layout.buildDirectory.dir("generated/prismIcons/kotlin"))
     resDir.set(layout.buildDirectory.dir("generated/prismIcons/res"))
 }

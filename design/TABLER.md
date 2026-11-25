@@ -1,0 +1,3 @@
+# Tabler Icons for Prism
+
+Prism's default icon catalog uses Tabler Icons v3.34.1 (e8fcec66034d15fa893d4d3c740e584f8518ed44), MIT licensed. See [upstream](https://github.com/tabler/tabler-icons/tree/e8fcec66034d15fa893d4d3c740e584f8518ed44) and TABLER-LICENSE.txt. The mapping in tabler-icons.tsv covers every existing Prism semantic SVG name, including Stream scenarios, widgets and Android Auto controls. The source archive is resolved and cached by Gradle. Each used SVG is checked against its upstream Git blob hash. Generated files are build outputs; no icon network requests are made by the app. Legacy pack preferences and semantic IDs remain compatible. Update the pinned revision, mappings and hashes together.
