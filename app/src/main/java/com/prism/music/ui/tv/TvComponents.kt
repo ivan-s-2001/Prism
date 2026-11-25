@@ -157,6 +157,33 @@ fun TvIconButton(icon: ImageVector, label: String, onClick: () -> Unit, modifier
     }
 }
 
+/** TV scenario tile: large circular focus target with caption below, matching TV's
+ * existing icon buttons and spectrum focus border. */
+@Composable
+fun TvScenarioDisc(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val scheme = MaterialTheme.colorScheme
+    Column(Modifier.width(112.dp), horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        IconButton(onClick = onClick, modifier = modifier.size(64.dp)
+            .then(if (selected) Modifier.border(TV_RING_THIN, tvRing(), CircleShape) else Modifier),
+            scale = IconButtonDefaults.scale(focusedScale = 1.08f),
+            colors = IconButtonDefaults.colors(
+                containerColor = TvGlassFill,
+                contentColor = if (selected) scheme.primary else scheme.onSurface,
+                focusedContainerColor = scheme.onSurface, focusedContentColor = scheme.surface,
+            ),
+            border = IconButtonDefaults.border(focusedBorder = tvFocusBorder(CircleShape, TV_RING_THIN))) {
+            Icon(icon, label, Modifier.size(28.dp))
+        }
+        Box(Modifier.fillMaxWidth().height(36.dp), contentAlignment = Alignment.TopCenter) {
+            Text(label, style = MaterialTheme.typography.labelMedium,
+                color = if (selected) scheme.onSurface else scheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
 /**
  * One song in a list (an album, a playlist, the queue, search results): number or picture, title, artist, length. The
  * song playing has its number turned into the playing mark and its title in the split light, as on the phone.
