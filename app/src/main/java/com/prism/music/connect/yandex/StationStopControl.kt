@@ -18,7 +18,7 @@ internal class StationStopControl {
         state.set(Reading(playing))
     }
 
-    suspend fun stop(socket: GlagolSocket, token: String) {
+    suspend fun stop(socket: GlagolSocket, token: String, allowTextFallback: Boolean = true) {
         suspend fun attempt(payload: JsonObject): Boolean {
             val before = state.get()
             socket.request(token, payload)
@@ -34,7 +34,7 @@ internal class StationStopControl {
         }
         if (attempt(GlagolProtocol.stop())) return
         // Explicit user stop only, never used for automatic track changes.
-        if (attempt(buildJsonObject {
+        if (allowTextFallback && attempt(buildJsonObject {
             put("command", "sendText")
             put("text", "останови музыку")
         })) return
