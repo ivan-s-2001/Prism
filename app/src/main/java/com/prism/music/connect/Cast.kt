@@ -544,17 +544,24 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 tap.start(true)
                 p.play()
                 holdNetwork()
-                withContext(Dispatchers.IO) { active.playMusicLive(address) }
-                // Do not mute the phone on a command acknowledgement alone.
-                val confirmed = withTimeoutOrNull(25_000L) {
+                suspend fun awaitStream(timeoutMs: Long): Boolean = withTimeoutOrNull(timeoutMs) {
                     while (!active.liveConfirmed()) {
                         Log.i("PrismLive", active.liveStatus())
                         withContext(Dispatchers.IO) { active.ping() }
-                        delay(1500)
+                        delay(500)
                     }
                     true
                 } == true
-                if (!confirmed) error("HLS receiver not confirmed: ${active.liveStatus()}")
+                // Direct PCM first; keep known-working HLS as a one-time fallback.
+                // Never mute the phone merely on command acknowledgement.
+                withContext(Dispatchers.IO) { active.playMusicLive(address, direct = true) }
+                val directConfirmed = awaitStream(9000L)
+                if (!directConfirmed) {
+                    Log.w("PrismLive", "Direct PCM not confirmed; falling back to HLS: ${active.liveStatus()}")
+                    withContext(Dispatchers.IO) { active.playMusicLive(address, direct = false) }
+                    if (!awaitStream(25000L)) error("HLS receiver not confirmed: ${active.liveStatus()}")
+                }
+                Log.i("PrismLive", "Selected transport=${if (directConfirmed) "PCM" else "HLS"}")
                 if (tap.captured == 0L) error("No PCM from player: ${active.liveStatus()}")
                 liveStreaming = true
                 casting = true
