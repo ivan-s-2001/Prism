@@ -544,6 +544,18 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 tap.start(true)
                 p.play()
                 holdNetwork()
+                // A cold player can take longer to decode than the Station takes to
+                // acknowledge playback. Do not open the remote stream on padded silence.
+                val captureStarted = android.os.SystemClock.elapsedRealtime()
+                val sourceReady = withTimeoutOrNull(12_000L) {
+                    while (tap.captured == 0L) {
+                        check(player === p && p.playWhenReady) { "Live source stopped before PCM capture" }
+                        delay(20)
+                    }
+                    true
+                } == true
+                if (!sourceReady) error("No PCM from player after 12s: state=${p.playbackState}; format=${tap.formatSummary()}")
+                Log.i("PrismLive", "PCM source ready in ${android.os.SystemClock.elapsedRealtime() - captureStarted} ms; captured=${tap.captured}; ${tap.formatSummary()}")
                 suspend fun awaitStream(timeoutMs: Long): Boolean = withTimeoutOrNull(timeoutMs) {
                     while (!active.liveConfirmed()) {
                         Log.i("PrismLive", active.liveStatus())
@@ -562,7 +574,6 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                     if (!awaitStream(25000L)) error("HLS receiver not confirmed: ${active.liveStatus()}")
                 }
                 Log.i("PrismLive", "Selected transport=${if (directConfirmed) "PCM" else "HLS"}")
-                if (tap.captured == 0L) error("No PCM from player: ${active.liveStatus()}")
                 liveStreaming = true
                 casting = true
                 applyLocalMode()
