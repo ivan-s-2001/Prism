@@ -1,5 +1,8 @@
 package com.prism.music.ui.components
 
+import com.prism.music.R
+import com.prism.music.tr
+
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
@@ -15,23 +18,23 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
 
 @Composable
-internal fun WavePresetNameDialog(ru: Boolean, names: List<String>, onDismiss: () -> Unit, onSave: (String) -> Unit) {
-    fun l(a: String, b: String) = if (ru) a else b
+internal fun WavePresetNameDialog(names: List<String>, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+
     var name by rememberSaveable { mutableStateOf("") }
     val cleaned = name.trim()
     val duplicate = names.any { it.equals(cleaned, ignoreCase = true) }
     val focus = remember { FocusRequester() }
     AlertDialog(onDismissRequest = onDismiss,
-        title = { Text(l("Новый пресет", "New preset")) },
+        title = { Text(tr(R.string.prism_stream_new_preset)) },
         text = {
             OutlinedTextField(value = name, onValueChange = { name = it.take(40) },
-                label = { Text(l("Название", "Name")) }, singleLine = true,
-                isError = duplicate, supportingText = { if (duplicate) Text(l("Название уже занято", "Name already used")) },
+                label = { Text(tr(R.string.prism_stream_name)) }, singleLine = true,
+                isError = duplicate, supportingText = { if (duplicate) Text(tr(R.string.prism_stream_name_already_used)) },
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { if (cleaned.isNotEmpty() && !duplicate) onSave(cleaned) }))
             LaunchedEffect(Unit) { focus.requestFocus() }
         },
-        confirmButton = { TextButton(enabled = cleaned.isNotEmpty() && !duplicate, onClick = { onSave(cleaned) }) { Text(l("Сохранить", "Save")) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(l("Отмена", "Cancel")) } })
+        confirmButton = { TextButton(enabled = cleaned.isNotEmpty() && !duplicate, onClick = { onSave(cleaned) }) { Text(tr(R.string.prism_stream_save)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr(R.string.prism_stream_cancel)) } })
 }

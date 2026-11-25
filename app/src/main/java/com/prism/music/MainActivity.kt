@@ -380,7 +380,7 @@ private fun NavTab.tab(name: String? = null): Tab {
     val label = name ?: label
     return when (this) {
         NavTab.HOME -> Tab(Routes.HOME, label, PrismIcons.Home, PrismIcons.HomeFilled)
-        NavTab.MY_WAVE -> Tab(Routes.MY_WAVE, label, PrismIcons.Equalizer, PrismIcons.Equalizer)
+        NavTab.MY_WAVE -> Tab(Routes.MY_WAVE, label, PrismIcons.Stream, PrismIcons.StreamFilled)
         NavTab.SEARCH -> Tab(Routes.SEARCH, label, PrismIcons.Search, PrismIcons.SearchBold)
         NavTab.LIBRARY -> Tab(Routes.LIBRARY, label, PrismIcons.Library, PrismIcons.LibraryFilled)
         NavTab.REPLAY -> Tab(Routes.REPLAY, label, PrismIcons.Replay, PrismIcons.ReplayFilled)
@@ -470,6 +470,7 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
     val c = LocalContainer.current
     val settings by c.settings.flow.collectAsState()
     val song by c.player.currentSong.collectAsState()
+    val queueSource by c.queue.source.collectAsState()
     val artColor = rememberArtworkColor(song, settings)
     val context = LocalContext.current
 
@@ -548,7 +549,7 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
         val railInset = if (useRail) cutoutStart + RAIL_MARGIN + RAIL_WIDTH + 4.dp else 0.dp
         // Room the pages leave at the bottom for the bar, the mini player and the system's own bar.
         // Stream has its own controls: never overlay the global mini player on this route.
-        val streamOwnsPlayer = route == Routes.MY_WAVE
+        val streamOwnsPlayer = route == Routes.MY_WAVE && queueSource.isMyWave && song != null
         val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         val bottomPadding = navInset +
             (if (useRail) 16.dp else navHeight(settings.navStyle, settings.navBarSize) + (if (settings.navStyle == NavBarStyle.DOCKED) 0.dp else 16.dp)) +

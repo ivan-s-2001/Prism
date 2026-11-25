@@ -1,5 +1,8 @@
 package com.prism.music.ui.screens
 
+import com.prism.music.R
+import com.prism.music.tr
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,8 +21,7 @@ import kotlinx.coroutines.launch
 internal fun YandexTransferRow(ink: Color) {
     val c = LocalContainer.current
     val scope = rememberCoroutineScope()
-    val russian = java.util.Locale.getDefault().language == "ru"
-    fun l(ru: String, en: String) = if (russian) ru else en
+
     var opened by remember { mutableStateOf(false) }
     var liked by remember { mutableStateOf(true) }
     var playlists by remember { mutableStateOf(true) }
@@ -51,60 +53,58 @@ internal fun YandexTransferRow(ink: Color) {
     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         val p = status
         if (p == null) {
-            Text(l("Перенос медиатеки", "Library transfer"), style = MaterialTheme.typography.titleMedium)
+            Text(tr(R.string.prism_yandex_library_transfer), style = MaterialTheme.typography.titleMedium)
         } else if (p.lastRead > 0) {
             val complete = p.total > 0 && p.matched == p.total && p.pending == 0 && p.placementComplete && p.missingMetadata == 0
             Text(when {
-                p.pending > 0 -> l("Сопоставление треков", "Matching tracks")
-                complete -> l("✓ Медиатека перенесена", "✓ Library transferred")
-                p.total > 0 && p.matched == p.total && !p.placementComplete -> l("Добавление в медиатеку", "Adding to library")
-                p.matched == 0 && p.total > 0 -> l("Нет подтверждённых совпадений", "No confirmed matches")
-                else -> l("Последний перенос на этом устройстве", "Last transfer on this device")
+                p.pending > 0 -> tr(R.string.prism_yandex_matching_tracks)
+                complete -> tr(R.string.prism_yandex_library_transferred)
+                p.total > 0 && p.matched == p.total && !p.placementComplete -> tr(R.string.prism_yandex_adding_to_library)
+                p.matched == 0 && p.total > 0 -> tr(R.string.prism_yandex_no_confirmed_matches)
+                else -> tr(R.string.prism_yandex_last_transfer_on_this_device)
             }, style = MaterialTheme.typography.titleMedium)
             if (p.total > 0) {
                 LinearProgressIndicator(progress = { ((p.total - p.pending).toFloat() / p.total).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
-                Text(l("Совпадения: ${p.matched} из ${p.total}", "Matched: ${p.matched} of ${p.total}"), style = MaterialTheme.typography.bodyLarge)
+                Text(tr(R.string.prism_yandex_matched_value_of_value, p.matched, p.total), style = MaterialTheme.typography.bodyLarge)
             }
-            Text(l("Любимые добавлены: ${p.likesPlaced} · Плейлисты: ${p.playlistsPlaced}", "Likes added: ${p.likesPlaced} · Playlists: ${p.playlistsPlaced}"), style = MaterialTheme.typography.bodySmall)
-            if (p.pending > 0) Text(l("Ожидают поиска: ${p.pending}. Поиск продолжится в фоне при наличии сети.", "Pending: ${p.pending}. Matching continues in the background with network access."), style = MaterialTheme.typography.bodySmall)
-            if (p.review + p.missing + p.skipped > 0) Text(l("На проверку: ${p.review} · Не найдено: ${p.missing} · Пропущено: ${p.skipped}", "Review: ${p.review} · Not found: ${p.missing} · Skipped: ${p.skipped}"), style = MaterialTheme.typography.bodySmall)
-            if (p.missingMetadata > 0) Text(l("Нет метаданных: ${p.missingMetadata}", "Missing source metadata: ${p.missingMetadata}"), style = MaterialTheme.typography.bodySmall)
-            Text(l("Последнее чтение: ", "Last read: ") + java.text.DateFormat.getDateTimeInstance().format(java.util.Date(p.lastRead)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tr(R.string.prism_yandex_likes_added_value_playlists_value, p.likesPlaced, p.playlistsPlaced), style = MaterialTheme.typography.bodySmall)
+            if (p.pending > 0) Text(tr(R.string.prism_yandex_pending_value_matching_continues_in_the_background_with_network_access, p.pending), style = MaterialTheme.typography.bodySmall)
+            if (p.review + p.missing + p.skipped > 0) Text(tr(R.string.prism_yandex_review_value_not_found_value_skipped_value, p.review, p.missing, p.skipped), style = MaterialTheme.typography.bodySmall)
+            if (p.missingMetadata > 0) Text(tr(R.string.prism_yandex_missing_source_metadata_value, p.missingMetadata), style = MaterialTheme.typography.bodySmall)
+            Text(tr(R.string.prism_yandex_last_read) + java.text.DateFormat.getDateTimeInstance().format(java.util.Date(p.lastRead)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (p.review > 0) {
-                TextButton(onClick = { nav.go("bring") }) { Text(l("Проверить совпадения", "Review matches")) }
+                TextButton(onClick = { nav.go("bring") }) { Text(tr(R.string.prism_yandex_review_matches)) }
             }
         } else {
-            Text(l("Перенос медиатеки", "Library transfer"), style = MaterialTheme.typography.titleMedium)
-            Text(l("Любимые треки и собственные плейлисты из Яндекс Музыки.", "Liked songs and your playlists from Yandex Music."), style = MaterialTheme.typography.bodyMedium)
+            Text(tr(R.string.prism_yandex_library_transfer), style = MaterialTheme.typography.titleMedium)
+            Text(tr(R.string.prism_yandex_liked_songs_and_your_playlists_from_yandex_music), style = MaterialTheme.typography.bodyMedium)
         }
         Button(enabled = signedIn, onClick = {
             preview = null; previewSession = null; message = null; done = false; busy = false; opened = true
         }, modifier = Modifier.fillMaxWidth().testTag("account:yandex:transfer")) {
-            Text(if ((p?.lastRead ?: 0L) > 0L) l("Обновить библиотеку", "Refresh library") else l("Перенести музыку", "Import music"))
+            Text(if ((p?.lastRead ?: 0L) > 0L) tr(R.string.prism_yandex_refresh_library) else tr(R.string.prism_yandex_import_music))
         }
     }
     if (opened) AlertDialog(
         onDismissRequest = { if (!busy || preview == null) close() },
-        title = { Text(l("Перенос музыки", "Import music")) },
+        title = { Text(tr(R.string.prism_yandex_import_music_2)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (!done) {
-                    Text(l("Prism найдёт соответствующие треки в YouTube Music. Медиатека Яндекса останется без изменений. Поиск может использовать мобильную сеть.",
-                        "Prism matches tracks in YouTube Music. Your Yandex library stays unchanged. Matching may use mobile data."))
+                    Text(tr(R.string.prism_yandex_prism_matches_tracks_in_youtube_music_your_yandex_library_stays_unchan))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(liked, { liked = it; preview = null }, enabled = !busy)
-                        Text(l("Любимые треки", "Liked songs"))
+                        Text(tr(R.string.prism_yandex_liked_songs))
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(playlists, { playlists = it; preview = null }, enabled = !busy)
-                        Text(l("Мои плейлисты", "My playlists"))
+                        Text(tr(R.string.prism_yandex_my_playlists))
                     }
-                    if (likeOnAccount && liked) Text(l("Включена настройка добавления импортированных лайков в аккаунт YouTube Music.",
-                        "Your setting to copy imported likes to YouTube Music is enabled."))
+                    if (likeOnAccount && liked) Text(tr(R.string.prism_yandex_your_setting_to_copy_imported_likes_to_youtube_music_is_enabled))
                     preview?.let { p ->
-                        Text(l("Любимые: ${p.library.liked.size} · Плейлисты: ${p.library.playlists.size}", "Liked: ${p.library.liked.size} · Playlists: ${p.library.playlists.size}"))
-                        Text(l("Треков в плейлистах: ${p.library.playlists.sumOf { it.tracks.size }}", "Playlist tracks: ${p.library.playlists.sumOf { it.tracks.size }}"))
-                        if (p.missing > 0) Text(l("Без метаданных: ${p.missing}", "Missing metadata: ${p.missing}"))
+                        Text(tr(R.string.prism_yandex_liked_value_playlists_value, p.library.liked.size, p.library.playlists.size))
+                        Text(tr(R.string.prism_yandex_playlist_tracks_value, p.library.playlists.sumOf { it.tracks.size ))
+                        if (p.missing > 0) Text(tr(R.string.prism_yandex_missing_metadata_value, p.missing))
                     }
                 }
                 if (busy) {
@@ -115,12 +115,12 @@ internal fun YandexTransferRow(ink: Color) {
             }
         },
         confirmButton = {
-            if (done) TextButton(onClick = { close() }) { Text(l("Готово", "Done")) }
+            if (done) TextButton(onClick = { close() }) { Text(tr(R.string.prism_yandex_done)) }
             else TextButton(enabled = !busy && (liked || playlists), onClick = {
                 busy = true
                 message = null
                 val selected = preview
-                progress = l("Читаем медиатеку…", "Reading library…")
+                progress = tr(R.string.prism_yandex_reading_library)
                 work = scope.launch {
                     try {
                         if (selected == null) {
@@ -134,21 +134,20 @@ internal fun YandexTransferRow(ink: Color) {
                             if (previewSession == null || StationConnectAccount.sessionId() != previewSession) {
                                 preview = null
                                 previewSession = null
-                                message = l("Аккаунт изменился. Проверьте медиатеку заново.", "Account changed. Preview the library again.")
+                                message = tr(R.string.prism_yandex_account_changed_preview_the_library_again)
                                 return@launch
                             }
-                            progress = l("Добавляем в очередь импорта…", "Queuing import…")
+                            progress = tr(R.string.prism_yandex_queuing_import)
                             val news = c.imports.bringYandexLibrary(selected.library, selected.missing)
                             done = true
-                            message = l("Поставлено на сопоставление. Новых любимых: ${news.liked}, плейлистов: ${news.playlists}, новых треков в ранее перенесённых плейлистах: ${news.playlistSongs}. Неоднозначные совпадения можно проверить в разделе импорта.",
-                                "Matching queued. New likes: ${news.liked}, playlists: ${news.playlists}, additions to imported playlists: ${news.playlistSongs}. Review uncertain matches in Imports.")
+                            message = tr(R.string.prism_yandex_matching_queued_new_likes_value_playlists_value_additions_to_imported, news.liked, news.playlists, news.playlistSongs)
                         }
                     } catch (e: CancellationException) { throw e }
-                    catch (_: Exception) { message = l("Не удалось прочитать или перенести медиатеку. Проверьте авторизацию и сеть.", "Library import failed. Check account access and network.") }
+                    catch (_: Exception) { message = tr(R.string.prism_yandex_library_import_failed_check_account_access_and_network) }
                     finally { busy = false }
                 }
-            }) { Text(if (preview == null) l("Проверить медиатеку", "Preview library") else l("Перенести", "Import")) }
+            }) { Text(if (preview == null) tr(R.string.prism_yandex_preview_library) else tr(R.string.prism_yandex_import)) }
         },
-        dismissButton = { if (!done) TextButton(enabled = !busy || preview == null, onClick = { close() }) { Text(l("Отмена", "Cancel")) } },
+        dismissButton = { if (!done) TextButton(enabled = !busy || preview == null, onClick = { close() }) { Text(tr(R.string.prism_yandex_cancel)) } },
     )
 }

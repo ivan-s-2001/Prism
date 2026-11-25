@@ -237,6 +237,8 @@ object PrismIcons {
     val SearchBold = drawn("SearchBold")
     val Library = drawn("Library").or { Cupertino.Library }
     val LibraryFilled = drawn("Library", filled = true).or { Cupertino.LibraryFilled }
+    val Stream = drawn("Stream")
+    val StreamFilled = drawn("Stream", filled = true)
     val Replay = drawn("Replay")
     val ReplayFilled = drawn("Replay", filled = true)
     val Settings = drawn("Settings").or { Cupertino.Settings }

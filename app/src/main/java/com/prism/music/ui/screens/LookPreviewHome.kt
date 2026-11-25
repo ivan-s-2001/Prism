@@ -127,7 +127,7 @@ private fun MiniBar(c: ThemeColors, song: Song?) {
 
 private fun NavTab.icon(): ImageVector = when (this) {
     NavTab.HOME -> PrismIcons.Home
-    NavTab.MY_WAVE -> PrismIcons.Equalizer
+    NavTab.MY_WAVE -> PrismIcons.Stream
     NavTab.SEARCH -> PrismIcons.Search
     NavTab.LIBRARY -> PrismIcons.Library
     NavTab.REPLAY -> PrismIcons.Replay

@@ -1,5 +1,8 @@
 package com.prism.music.ui.screens
 
+import com.prism.music.R
+import com.prism.music.tr
+
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -137,9 +140,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val playing by c.player.isPlaying.collectAsState()
     val buffering by c.player.buffering.collectAsState()
     val wave = source.isMyWave && song != null
-    val title = if (java.util.Locale.getDefault().language == "ru") "Поток" else "Stream"
-    val ru = java.util.Locale.getDefault().language == "ru"
-    fun l(a: String, b: String) = if (ru) a else b
+    val title = tr(R.string.stream)
+
     var starting by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
     val settings = LocalAppSettings.current
@@ -183,18 +185,18 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     var selectionJob by remember { mutableStateOf<Job?>(null) }
     var requestVersion by remember { mutableIntStateOf(0) }
     fun moodName(v: MyWave.Mood) = when (v) {
-        MyWave.Mood.ANY -> l("Любое", "Any")
-        MyWave.Mood.CALM -> l("Спокойное", "Calm")
-        MyWave.Mood.ENERGETIC -> l("Бодрое", "Energetic")
+        MyWave.Mood.ANY -> tr(R.string.prism_stream_any)
+        MyWave.Mood.CALM -> tr(R.string.prism_stream_calm)
+        MyWave.Mood.ENERGETIC -> tr(R.string.prism_stream_energetic)
     }
 
     fun activityName(v: MyWave.Activity) = when (v) {
-        MyWave.Activity.ANY -> l("Любое", "Any")
-        MyWave.Activity.WAKE -> l("Просыпаюсь", "Waking up")
-        MyWave.Activity.ROAD -> l("В дороге", "On the road")
-        MyWave.Activity.WORK -> l("Работаю", "Focus")
-        MyWave.Activity.TRAIN -> l("Тренируюсь", "Workout")
-        MyWave.Activity.SLEEP -> l("Засыпаю", "Sleep")
+        MyWave.Activity.ANY -> tr(R.string.prism_stream_any)
+        MyWave.Activity.WAKE -> tr(R.string.prism_stream_waking_up)
+        MyWave.Activity.ROAD -> tr(R.string.prism_stream_on_the_road)
+        MyWave.Activity.WORK -> tr(R.string.prism_stream_focus)
+        MyWave.Activity.TRAIN -> tr(R.string.prism_stream_workout)
+        MyWave.Activity.SLEEP -> tr(R.string.prism_stream_sleep)
     }
 
     fun start(selected: MyWave.Style = style) {
@@ -215,7 +217,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 val nextSongs = MyWave.initialPicks(songs, now, offline = !c.network.isOnline())
                 if (nextSongs.isEmpty()) {
                     style = restoredStyle(previous.originId)
-                    c.player.reportError(if (!c.network.isOnline()) l("Нет подходящих скачанных треков", "No matching downloaded tracks") else l("Недостаточно подходящих треков для выбранной пропорции. Измени процент или проверь подключение.", "Not enough tracks for the selected mix. Change the percentage or check your connection."))
+                    c.player.reportError(if (!c.network.isOnline()) tr(R.string.prism_stream_no_matching_downloaded_tracks) else tr(R.string.prism_stream_not_enough_tracks_for_the_selected_mix_change_the_percentage_or_check))
                 } else {
                     val next = QueueSource(QueueKind.RADIO, title, seedId = nextSongs.first().id, originId = selected.origin)
                     c.recFeedback.served(nextSongs.map { it.id })
@@ -226,7 +228,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             catch (_: Exception) {
                 if (version == requestVersion && c.queue.source.value === previous) {
                     style = restoredStyle(previous.originId)
-                    c.player.reportError(l("Не удалось обновить поток", "Could not update Stream"))
+                    c.player.reportError(tr(R.string.prism_stream_could_not_update_stream))
                 }
             } finally {
                 if (version == requestVersion) starting = false
@@ -269,26 +271,19 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
     val fadeMs = if (settings.reduceMotion) 0 else 320
     fun depthName(v: MyWave.Depth) = when (v) {
-        MyWave.Depth.ANY -> l("Всё", "All")
-        MyWave.Depth.HITS -> l("Хиты", "Hits")
-        MyWave.Depth.DEEP -> l("Редкое", "Deep cuts")
+        MyWave.Depth.ANY -> tr(R.string.prism_stream_all)
+        MyWave.Depth.HITS -> tr(R.string.prism_stream_hits)
+        MyWave.Depth.DEEP -> tr(R.string.prism_stream_deep_cuts)
     }
-    val activeFilters = listOfNotNull(
-        activityName(style.activity).takeIf { style.activity != MyWave.Activity.ANY },
-        l("${style.discoveryPercent}% открытий", "${style.discoveryPercent}% discoveries"),
-        moodName(style.mood).takeIf { style.mood != MyWave.Mood.ANY },
-        depthName(style.depth).takeIf { style.depth != MyWave.Depth.ANY },
-        l("Разнообразие", "Variety").takeIf { style.diversity != 50 },
-    )
     val status = when {
-        !online && wave && playing -> l("Офлайн · скачанная музыка", "Offline · downloaded music")
-        starting && wave -> l("Обновляем подбор", "Updating your mix")
-        starting -> l("Подбираем музыку", "Finding your music")
-        wave && buffering -> l("Загрузка", "Buffering")
-        wave && playing -> l("Играет", "Playing")
-        wave -> l("На паузе", "Paused")
-        !online -> l("Офлайн", "Offline")
-        else -> l("Персональный поток", "Personal stream")
+        !online && wave && playing -> tr(R.string.prism_stream_offline_downloaded_music)
+        starting && wave -> tr(R.string.prism_stream_updating_your_mix)
+        starting -> tr(R.string.prism_stream_finding_your_music)
+        wave && buffering -> tr(R.string.prism_stream_buffering)
+        wave && playing -> tr(R.string.prism_stream_playing)
+        wave -> tr(R.string.prism_stream_paused)
+        !online -> tr(R.string.prism_stream_offline)
+        else -> tr(R.string.prism_stream_personal_stream)
     }
     @Composable fun Header() {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -296,7 +291,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 Text(title, style = pageTitleStyle(), color = scheme.onBackground, maxLines = 1)
                 Text(status, color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1)
             }
-            RoundAction(PrismIcons.Refresh, l("Встряхнуть", "Refresh Stream"),
+            RoundAction(PrismIcons.Refresh, tr(R.string.prism_stream_refresh_stream),
                 enabled = !starting, modifier = Modifier.testTag("home:my_wave:refresh")) {
                 if (onRetry != null && !wave) onRetry() else start()
             }
@@ -323,7 +318,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 Box(modifier.graphicsLayer { scaleX = scale; scaleY = scale }
                     .shadow(10.dp, shape).clip(shape).background(Color.Black.copy(alpha = 0.25f))
                     .clickable(enabled = current != null, onClick = onOpenPlayer), contentAlignment = Alignment.Center) {
-                    if (shownCover == null) Icon(PrismIcons.Song, null, Modifier.fillMaxSize(0.32f), tint = Color.White.copy(alpha = 0.35f))
+                    if (shownCover == null) Icon(if (current == null) PrismIcons.Stream else PrismIcons.Song, null, Modifier.fillMaxSize(0.32f), tint = Color.White.copy(alpha = 0.35f))
                     Crossfade(targetState = shownCover, animationSpec = tween(fadeMs), label = "streamArtwork",
                         modifier = Modifier.matchParentSize()) { image ->
                         if (image != null) AsyncImage(image, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -344,7 +339,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 val glyph = if (like) {
                     if (on) PrismIcons.HeartFilled else PrismIcons.Heart
                 } else if (on) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown
-                val label = if (like) l("Нравится", "Like") else l("Не моё", "Not for me")
+                val label = if (like) tr(R.string.prism_stream_like) else tr(R.string.prism_stream_not_for_me)
                 Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                     if (item == null) Icon(glyph, label, tint = Color.White.copy(alpha = 0.3f), modifier = Modifier.size(20.dp))
                     else CircleGlyph(glyph, label, active = on) {
@@ -360,9 +355,9 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f).then(if (current != null) Modifier.clickable(onClick = onOpenPlayer) else Modifier),
                         verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(current?.title ?: l("Музыка в твоём ритме", "Music in your rhythm"),
+                        Text(current?.title ?: tr(R.string.prism_stream_music_in_your_rhythm),
                             style = playerTitleStyle(MaterialTheme.typography, settings), color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text(current?.primaryArtist ?: l("Начни слушать", "Start listening"),
+                        Text(current?.primaryArtist ?: tr(R.string.prism_stream_start_listening),
                             style = playerArtistStyle(MaterialTheme.typography, settings), color = Color.White.copy(alpha = 0.72f),
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
@@ -440,7 +435,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     @Composable fun Controls() {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            PrismScenarioDisc(l("Настройки", "Tune"), PrismIcons.Equalizer, selected = false,
+            PrismScenarioDisc(tr(R.string.prism_stream_tune), PrismIcons.Customize, selected = false,
                 onClick = { openSettings() }, modifier = Modifier.testTag("home:my_wave:settings"))
             LazyRow(Modifier.weight(1f).scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward }),
                 state = scenarioScroll,
@@ -455,7 +450,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 }
                 items(scenarioOrder, key = { it.id }) { scenario ->
                     PrismScenarioDisc(
-                        label = if (ru) scenario.ru else scenario.en,
+                        label = scenario.label,
                         icon = PrismIcons.waveScenario(scenario.glyph),
                         selected = activeSaved == null && style.copy(russianPercent = -1) == scenario.style,
                         onClick = { chosenPresetId = scenario.id; start(scenario.style.copy(russianPercent = style.russianPercent)) },
@@ -496,20 +491,20 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         ModalBottomSheet(onDismissRequest = { closeSettings() },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = scheme.surfaceContainerHigh) {
-            Column(Modifier.fillMaxWidth().heightIn(max = 640.dp).padding(horizontal = 20.dp)) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 640.dp).padding(horizontal = 20.dp).navigationBarsPadding().imePadding()) {
                 Row(Modifier.fillMaxWidth().padding(bottom = 18.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(l("Настроить поток", "Tune your Stream"), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-                    PrismChip(selected = false, onClick = { change { it.reset() } }, label = l("Сбросить", "Reset"), icon = PrismIcons.Refresh, modifier = Modifier.height(44.dp))
+                    Text(tr(R.string.prism_stream_tune_your_stream), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                    PrismChip(selected = false, onClick = { change { it.reset() } }, label = tr(R.string.prism_stream_reset), icon = PrismIcons.Refresh, modifier = Modifier.height(44.dp))
                 }
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(l("Мои пресеты", "My presets"), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                        Text(tr(R.string.prism_stream_my_presets), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
                         PrismChip(selected = false, onClick = { namingPreset = true }, icon = PrismIcons.Add,
-                            label = l("Сохранить", "Save"), modifier = Modifier.height(44.dp).testTag("wave:preset:save"))
+                            label = tr(R.string.prism_stream_save), modifier = Modifier.height(44.dp).testTag("wave:preset:save"))
                     }
-                    if (editing.presets.isEmpty()) Text(l("Сохрани текущие настройки как отдельный сценарий.", "Save the current settings as your own scenario."),
+                    if (editing.presets.isEmpty()) Text(tr(R.string.prism_stream_save_the_current_settings_as_your_own_scenario),
                         style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                     editing.presets.forEach { preset ->
                         key(preset.id) {
@@ -517,77 +512,76 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                                 PrismChip(selected = editing.presetId == preset.id && preset.origin == draftStyle.origin, label = preset.name, icon = PrismIcons.Bookmark,
                                     modifier = Modifier.weight(1f).height(44.dp),
                                     onClick = { change { it.choose(preset) } })
-                                RoundAction(PrismIcons.Delete, l("Удалить ", "Delete ") + preset.name, glass = true) { change { it.delete(preset.id) } }
+                                RoundAction(PrismIcons.Delete, tr(R.string.prism_stream_delete) + preset.name, glass = true) { change { it.delete(preset.id) } }
                             }
                         }
                     }
                     HorizontalDivider(color = scheme.outlineVariant)
-                    Text(l("Оформление плеера", "Player card backdrop"), style = MaterialTheme.typography.titleSmall)
+                    Text(tr(R.string.prism_stream_player_card_backdrop), style = MaterialTheme.typography.titleSmall)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         PrismChip(selected = !editing.themeColors,
                             onClick = { change { it.copy(themeColors = false) } },
                             modifier = Modifier.weight(1f).height(44.dp).testTag("stream:color:artwork"),
-                            label = l("Обложка трека", "Track artwork"))
+                            label = tr(R.string.prism_stream_track_artwork))
                         PrismChip(selected = editing.themeColors,
                             onClick = { change { it.copy(themeColors = true) } },
                             modifier = Modifier.weight(1f).height(44.dp).testTag("stream:color:theme"),
-                            label = l("Тема Prism", "Prism theme"))
+                            label = tr(R.string.prism_stream_prism_theme))
                     }
-                    WaveChoices(l("Занятие", "Activity"), MyWave.Activity.entries, draftStyle.activity, ::activityName) { value -> change { it.tune(it.style.copy(activity = value)) } }
+                    WaveChoices(tr(R.string.prism_stream_activity), MyWave.Activity.entries, draftStyle.activity, ::activityName) { value -> change { it.tune(it.style.copy(activity = value)) } }
                     WaveScale(
-                        title = l("Характер потока", "Discovery mix"),
+                        title = tr(R.string.prism_stream_discovery_mix),
                         value = discovery, onValueChange = { percent -> change { it.discovery(percent) } },
-                        left = l("Лайки", "Liked songs"), right = l("Открытия", "Discoveries"),
-                        choices = listOf(0 to l("Лайки", "Liked"), 50 to l("Баланс", "Balance"),
-                            70 to l("Для меня", "For me"), 100 to l("Новое", "New")),
+                        left = tr(R.string.prism_stream_liked_songs), right = tr(R.string.prism_stream_discoveries),
+                        choices = listOf(0 to tr(R.string.prism_stream_liked), 50 to tr(R.string.prism_stream_balance),
+                            70 to tr(R.string.prism_stream_for_me), 100 to tr(R.string.prism_stream_new)),
                         selectedChoice = discovery.toInt(), step = 5, tag = "wave:discovery-percent",
-                        detail = l("Открытия — записи вне известной Prism истории. Офлайн пропорция зависит от скачанной музыки.",
-                            "Discoveries are recordings outside Prism's known history. Offline proportions depend on downloads.")
+                        detail = tr(R.string.prism_stream_discoveries_are_recordings_outside_prism_s_known_history_offline_propo)
                     )
                     HorizontalDivider(color = scheme.outlineVariant)
                     WaveScale(
-                        title = l("Язык музыки", "Music language"),
+                        title = tr(R.string.prism_stream_music_language),
                         value = russian, onValueChange = { percent -> change { it.tune(it.style.copy(russianPercent = percent)) } },
-                        left = l("Иностранная", "Foreign"), right = l("Русская", "Russian"),
-                        automaticLabel = l("Авто", "Auto").takeIf { draftStyle.russianPercent < 0 },
-                        choices = listOf(-1 to l("Авто", "Auto"), 0 to l("Иностранная", "Foreign"),
-                            50 to l("Баланс", "Balance"), 100 to l("Русская", "Russian")),
+                        left = tr(R.string.prism_stream_foreign), right = tr(R.string.prism_stream_russian),
+                        automaticLabel = tr(R.string.prism_stream_auto).takeIf { draftStyle.russianPercent < 0 },
+                        choices = listOf(-1 to tr(R.string.prism_stream_auto), 0 to tr(R.string.prism_stream_foreign),
+                            50 to tr(R.string.prism_stream_balance), 100 to tr(R.string.prism_stream_russian)),
                         selectedChoice = if (draftStyle.russianPercent < 0) -1 else russian.toInt(),
                         step = 5, tag = "wave:language-percent",
-                        detail = l("Приблизительное соотношение по языку названий. При нехватке треков баланс может отличаться.",
-                            "Approximate title-language balance. The actual mix may vary when matching tracks are scarce.")
+                        detail = tr(R.string.prism_stream_approximate_title_language_balance_the_actual_mix_may_vary_when_matchi)
                     )
                     HorizontalDivider(color = scheme.outlineVariant)
-                    WaveChoices(l("Настроение", "Mood"), MyWave.Mood.entries, draftStyle.mood, ::moodName) { value -> change { it.tune(it.style.copy(mood = value)) } }
-                    WaveChoices(l("Популярность", "Popularity"), MyWave.Depth.entries, draftStyle.depth, ::depthName) { value -> change { it.tune(it.style.copy(depth = value)) } }
+                    WaveChoices(tr(R.string.prism_stream_mood), MyWave.Mood.entries, draftStyle.mood, ::moodName) { value -> change { it.tune(it.style.copy(mood = value)) } }
+                    WaveChoices(tr(R.string.prism_stream_popularity), MyWave.Depth.entries, draftStyle.depth, ::depthName) { value -> change { it.tune(it.style.copy(depth = value)) } }
                     WaveScale(
-                        title = l("Разнообразие", "Variety"),
+                        title = tr(R.string.prism_stream_variety),
                         value = diversity, onValueChange = { percent -> change { it.tune(it.style.copy(diversity = percent)) } },
-                        left = l("Меньше", "Less"), right = l("Больше", "More"),
+                        left = tr(R.string.prism_stream_less), right = tr(R.string.prism_stream_more),
                         ratio = false,
-                        choices = listOf(0 to l("Низкое", "Low"), 50 to l("Среднее", "Medium"),
-                            70 to l("Высокое", "High"), 100 to l("Максимум", "Maximum")),
+                        choices = listOf(0 to tr(R.string.prism_stream_low), 50 to tr(R.string.prism_stream_medium),
+                            70 to tr(R.string.prism_stream_high), 100 to tr(R.string.prism_stream_maximum)),
                         selectedChoice = diversity.toInt(), step = 10, tag = "wave:diversity-percent",
-                        detail = l("Уровень разнообразия исполнителей и записей.", "Variety of artists and recordings.")
+                        detail = tr(R.string.prism_stream_variety_of_artists_and_recordings)
                     )
                     if (draftStyle.mood != MyWave.Mood.ANY || draftStyle.activity != MyWave.Activity.ANY)
-                        Text(l("Темп и громкость учитываются, если измерены.", "Uses measured tempo and loudness when available."),
+                        Text(tr(R.string.prism_stream_uses_measured_tempo_and_loudness_when_available),
                             color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     if (draftStyle.depth != MyWave.Depth.ANY)
-                        Text(l("По топ-трекам исполнителей, если доступны.", "Based on artist top songs when available."),
+                        Text(tr(R.string.prism_stream_based_on_artist_top_songs_when_available),
                             color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
-                Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(l("Изменения вступят в силу после подтверждения", "Changes apply after confirmation"),
-                        Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-                    PrismChip(selected = false, onClick = { closeSettings() }, label = l("Отмена", "Cancel"), modifier = Modifier.height(44.dp))
-                    PrismChip(selected = true, onClick = { applySettings() }, label = l("Готово", "Done"),
-                        icon = PrismIcons.Check, modifier = Modifier.height(44.dp).testTag("wave:settings:done"))
+                Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(tr(R.string.prism_stream_changes_apply_after_confirmation),
+                        style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        PrismChip(selected = false, onClick = { closeSettings() }, label = tr(R.string.prism_stream_cancel), modifier = Modifier.weight(1f).height(48.dp))
+                        PrismChip(selected = true, onClick = { applySettings() }, label = tr(R.string.prism_stream_done),
+                            icon = PrismIcons.Check, modifier = Modifier.weight(1f).height(48.dp).testTag("wave:settings:done"))
+                    }
                 }
             }
         }
-        if (namingPreset) WavePresetNameDialog(ru, editing.presets.map { it.name }, { namingPreset = false }) { name ->
+        if (namingPreset) WavePresetNameDialog( editing.presets.map { it.name }, { namingPreset = false }) { name ->
             change { it.save(name) }
             namingPreset = false
         }
@@ -654,11 +648,11 @@ private fun WaveScale(
 private fun <T> WaveChoices(label: String, values: List<T>, selected: T, name: (T) -> String, onSelect: (T) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(label, style = MaterialTheme.typography.titleSmall)
-        values.chunked(if (values.size > 3) 2 else 3).forEach { row ->
+        values.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 row.forEach { value ->
                     PrismChip(selected = value == selected, onClick = { onSelect(value) },
-                        label = name(value), modifier = Modifier.weight(1f).height(44.dp))
+                        label = name(value), modifier = Modifier.weight(1f).height(48.dp))
                 }
             }
         }

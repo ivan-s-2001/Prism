@@ -1,5 +1,8 @@
 package com.prism.music.data.foryou
 
+import com.prism.music.R
+import com.prism.music.tr
+
 /** Presets combine actual ranking controls. The clock orders suggestions, never switches playback. */
 internal object WaveScenarios {
     enum class Group { DAY, ACTIVITY, DISCOVERY }
@@ -26,7 +29,31 @@ internal object WaveScenarios {
         CALM_NEW("WaveCalmNew"),
     }
     data class Scenario(val id: String, val ru: String, val en: String, val group: Group,
-        val glyph: Glyph, val style: MyWave.Style)
+        val glyph: Glyph, val style: MyWave.Style) {
+        val label: String get() = when (id) {
+            "wake" -> tr(R.string.prism_scenario_gentle_morning)
+            "morning" -> tr(R.string.prism_scenario_morning_boost)
+            "day" -> tr(R.string.prism_scenario_daytime_rhythm)
+            "evening" -> tr(R.string.prism_scenario_evening_unwind)
+            "night" -> tr(R.string.prism_scenario_before_sleep)
+            "weekend" -> tr(R.string.prism_scenario_weekend)
+            "commute" -> tr(R.string.prism_scenario_on_the_road)
+            "drive" -> tr(R.string.prism_scenario_long_drive)
+            "focus" -> tr(R.string.prism_scenario_focus)
+            "work" -> tr(R.string.prism_scenario_work_rhythm)
+            "train" -> tr(R.string.prism_scenario_workout)
+            "walk" -> tr(R.string.prism_scenario_for_a_walk)
+            "rest" -> tr(R.string.prism_scenario_take_a_break)
+            "favorites" -> tr(R.string.prism_scenario_trusted_favorites)
+            "hits" -> tr(R.string.prism_scenario_favorite_hits)
+            "new" -> tr(R.string.prism_scenario_new_discoveries)
+            "deep" -> tr(R.string.prism_scenario_hidden_gems)
+            "familiar_deep" -> tr(R.string.prism_scenario_favorite_deep_cuts)
+            "energy" -> tr(R.string.prism_scenario_full_energy)
+            "calm_new" -> tr(R.string.prism_scenario_quiet_discoveries)
+            else -> en
+        }
+    }
 
     private fun preset(id: String, ru: String, en: String, group: Group, glyph: Glyph,
         activity: MyWave.Activity = MyWave.Activity.ANY,

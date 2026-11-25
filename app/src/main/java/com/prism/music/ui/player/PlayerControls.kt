@@ -1,5 +1,6 @@
 package com.prism.music.ui.player
 
+
 import com.prism.music.R
 import com.prism.music.tr
 import com.prism.music.trp
@@ -1557,7 +1558,7 @@ private fun SpeakersAndTvs(castState: com.prism.music.connect.CastState, casting
     val handoff = LocalContainer.current.handoff
     val renderers by cast.renderers.collectAsState()
     val liveDevices by cast.liveDevices.collectAsState()
-    val ru = java.util.Locale.getDefault().language == "ru"
+
     val prismTvs by handoff.devices.collectAsState()
     var lookedLong by remember { mutableStateOf(false) }
     DisposableEffect(Unit) {
@@ -1593,9 +1594,9 @@ private fun SpeakersAndTvs(castState: com.prism.music.connect.CastState, casting
                 DeviceRow(PrismIcons.Equalizer,
                     r.name.removeSuffix(" · Live") + " · Live",
                     if (liveDevice != null) {
-                        if (liveDevice.connected) { if (ru) "Подключена · нажмите для отключения" else "Connected · tap to disconnect" }
-                        else { if (ru) "Подключение…" else "Connecting…" }
-                    } else { if (ru) "Добавить в мультирум" else "Add to multiroom" },
+                        if (liveDevice.connected) { tr(R.string.prism_yandex_connected_tap_to_disconnect) }
+                        else { tr(R.string.prism_yandex_connecting) }
+                    } else { tr(R.string.prism_yandex_add_to_multiroom) },
                     selected = liveDevice?.connected == true, busy = liveDevice != null && !liveDevice.connected,
                     enabled = true) {
                     if (liveDevice == null) cast.connectLive(r) else cast.disconnectLive(r.id)
@@ -1603,7 +1604,7 @@ private fun SpeakersAndTvs(castState: com.prism.music.connect.CastState, casting
                 if (liveDevice?.connected == true) {
                     Column(Modifier.fillMaxWidth().padding(start = 56.dp, end = 16.dp, bottom = 8.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(if (ru) "Громкость" else "Volume", style = MaterialTheme.typography.labelSmall)
+                            Text(tr(R.string.prism_yandex_volume), style = MaterialTheme.typography.labelSmall)
                             Text("${liveDevice.volume}%", style = MaterialTheme.typography.labelSmall)
                         }
                         ThinSlider(value = liveDevice.volume / 100f,

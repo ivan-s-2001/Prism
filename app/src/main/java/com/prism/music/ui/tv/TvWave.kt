@@ -1,5 +1,8 @@
 package com.prism.music.ui.tv
 
+import com.prism.music.R
+import com.prism.music.tr
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
@@ -51,9 +54,8 @@ internal fun TvWavePlace(nav: TvNav) {
     val disliked by c.library.dislikedIds.collectAsState()
     val now = rememberTvNow(c).takeIf { source.isMyWave }
     val current = song.takeIf { source.isMyWave }
-    val ru = java.util.Locale.getDefault().language == "ru"
-    fun l(a: String, b: String) = if (ru) a else b
-    val title = l("Поток", "Stream")
+
+    val title = tr(R.string.stream)
     fun restored() = MyWave.restore(source.originId, appSettings.streamStyleOrigin, appSettings.streamRussianPercent)
     var style by remember(source.originId) { mutableStateOf(restored()) }
     var editor by remember { mutableStateOf(WaveSettingsDraft(style, appSettings.streamThemeColors, savedPresets, chosenPresetId)) }
@@ -107,7 +109,7 @@ internal fun TvWavePlace(nav: TvNav) {
                 if (version != request || c.queue.source.value !== old) return@launch
                 val current = c.player.currentSong.value.takeIf { old.isMyWave }
                 val picks = MyWave.initialPicks(candidates, current, offline = !c.network.isOnline())
-                if (picks.isEmpty()) c.player.reportError(if (!c.network.isOnline()) l("Нет подходящих скачанных треков", "No matching downloaded tracks") else l("Недостаточно подходящих треков", "Not enough matching tracks"))
+                if (picks.isEmpty()) c.player.reportError(if (!c.network.isOnline()) tr(R.string.prism_stream_no_matching_downloaded_tracks) else tr(R.string.prism_stream_not_enough_matching_tracks))
                 else {
                     style = selected
                     c.recFeedback.served(picks.map { it.id })
@@ -117,7 +119,7 @@ internal fun TvWavePlace(nav: TvNav) {
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) {
                 if (version == request && c.queue.source.value === old)
-                    c.player.reportError(l("Не удалось обновить поток", "Could not update Stream"))
+                    c.player.reportError(tr(R.string.prism_stream_could_not_update_stream))
             }
             finally { if (version == request) starting = false }
         }
@@ -130,54 +132,54 @@ internal fun TvWavePlace(nav: TvNav) {
             CompositionLocalProvider(LocalTvScreen provides "$screen/tune") {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(l("Настроить поток", "Tune Stream"), style = MaterialTheme.typography.headlineMedium)
+                    Text(tr(R.string.prism_stream_tune_stream), style = MaterialTheme.typography.headlineMedium)
                     Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    TvWaveScale(l("Характер потока", "Discovery mix"), draft.discoveryPercent,
-                        l("Лайки", "Liked songs"), l("Открытия", "Discoveries"), "discovery",
+                    TvWaveScale(tr(R.string.prism_stream_discovery_mix), draft.discoveryPercent,
+                        tr(R.string.prism_stream_liked_songs), tr(R.string.prism_stream_discoveries), "discovery",
                         { editor = editor.discovery(it) })
                     val language = draft.russianPercent.takeIf { it >= 0 } ?: 50
-                    TvWaveScale(l("Язык музыки", "Music language"), language,
-                        l("Иностранная", "Foreign"), l("Русская", "Russian"), "language",
+                    TvWaveScale(tr(R.string.prism_stream_music_language), language,
+                        tr(R.string.prism_stream_foreign), tr(R.string.prism_stream_russian), "language",
                         { editor = editor.tune(draft.copy(russianPercent = it)) },
-                        automaticLabel = l("Авто", "Auto").takeIf { draft.russianPercent < 0 })
-                    TvButton(l("Авто", "Auto"), { editor = editor.tune(draft.copy(russianPercent = -1)) },
+                        automaticLabel = tr(R.string.prism_stream_auto).takeIf { draft.russianPercent < 0 })
+                    TvButton(tr(R.string.prism_stream_auto), { editor = editor.tune(draft.copy(russianPercent = -1)) },
                         Modifier.tvItem("tv_wave/auto"), primary = draft.russianPercent < 0)
-                    TvWaveScale(l("Разнообразие", "Variety"), draft.diversity,
-                        l("Меньше", "Less"), l("Больше", "More"), "diversity",
+                    TvWaveScale(tr(R.string.prism_stream_variety), draft.diversity,
+                        tr(R.string.prism_stream_less), tr(R.string.prism_stream_more), "diversity",
                         { editor = editor.tune(draft.copy(diversity = it)) }, step = 10, ratio = false)
-                    TvWaveChoices(l("Настроение", "Mood"), MyWave.Mood.entries, draft.mood, "mood",
+                    TvWaveChoices(tr(R.string.prism_stream_mood), MyWave.Mood.entries, draft.mood, "mood",
                         { when (it) {
-                            MyWave.Mood.ANY -> l("Любое", "Any")
-                            MyWave.Mood.CALM -> l("Спокойное", "Calm")
-                            MyWave.Mood.ENERGETIC -> l("Бодрое", "Energetic")
+                            MyWave.Mood.ANY -> tr(R.string.prism_stream_any)
+                            MyWave.Mood.CALM -> tr(R.string.prism_stream_calm)
+                            MyWave.Mood.ENERGETIC -> tr(R.string.prism_stream_energetic)
                         } }, { editor = editor.tune(draft.copy(mood = it)) })
-                    TvWaveChoices(l("Занятие", "Activity"), MyWave.Activity.entries, draft.activity, "activity",
+                    TvWaveChoices(tr(R.string.prism_stream_activity), MyWave.Activity.entries, draft.activity, "activity",
                         { when (it) {
-                            MyWave.Activity.ANY -> l("Любое", "Any")
-                            MyWave.Activity.WAKE -> l("Просыпаюсь", "Waking up")
-                            MyWave.Activity.ROAD -> l("В дороге", "On the road")
-                            MyWave.Activity.WORK -> l("Работаю", "Focus")
-                            MyWave.Activity.TRAIN -> l("Тренируюсь", "Workout")
-                            MyWave.Activity.SLEEP -> l("Засыпаю", "Sleep")
+                            MyWave.Activity.ANY -> tr(R.string.prism_stream_any)
+                            MyWave.Activity.WAKE -> tr(R.string.prism_stream_waking_up)
+                            MyWave.Activity.ROAD -> tr(R.string.prism_stream_on_the_road)
+                            MyWave.Activity.WORK -> tr(R.string.prism_stream_focus)
+                            MyWave.Activity.TRAIN -> tr(R.string.prism_stream_workout)
+                            MyWave.Activity.SLEEP -> tr(R.string.prism_stream_sleep)
                         } }, { editor = editor.tune(draft.copy(activity = it)) })
-                    TvWaveChoices(l("Популярность", "Popularity"), MyWave.Depth.entries, draft.depth, "depth",
+                    TvWaveChoices(tr(R.string.prism_stream_popularity), MyWave.Depth.entries, draft.depth, "depth",
                         { when (it) {
-                            MyWave.Depth.ANY -> l("Любая", "Any")
-                            MyWave.Depth.HITS -> l("Хиты", "Hits")
-                            MyWave.Depth.DEEP -> l("Редкое", "Deep cuts")
+                            MyWave.Depth.ANY -> tr(R.string.prism_stream_all)
+                            MyWave.Depth.HITS -> tr(R.string.prism_stream_hits)
+                            MyWave.Depth.DEEP -> tr(R.string.prism_stream_deep_cuts)
                         } }, { editor = editor.tune(draft.copy(depth = it)) })
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TvButton(l("Сохранить пресет", "Save preset"), { namingPreset = true },
+                        TvButton(tr(R.string.prism_stream_save_preset), { namingPreset = true },
                             Modifier.weight(1f).tvItem("tv_wave/save"), icon = PrismIcons.Add)
-                        TvButton(l("Сбросить", "Reset"), { editor = editor.reset() },
+                        TvButton(tr(R.string.prism_stream_reset), { editor = editor.reset() },
                             Modifier.tvItem("tv_wave/reset"), icon = PrismIcons.Refresh)
                     }
                     }
-                    Text(l("Изменения вступят в силу после подтверждения", "Changes apply after confirmation"),
+                    Text(tr(R.string.prism_stream_changes_apply_after_confirmation),
                         style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TvButton(l("Отмена", "Cancel"), { toggleTuning(false) }, Modifier.weight(1f).tvItem("tv_wave/cancel"))
-                        TvButton(l("Готово", "Done"), {
+                        TvButton(tr(R.string.prism_stream_cancel), { toggleTuning(false) }, Modifier.weight(1f).tvItem("tv_wave/cancel"))
+                        TvButton(tr(R.string.prism_stream_done), {
                             val final = editor
                             c.settings.applyStreamTuning(final.themeColors.takeIf { it != baseline.themeColors }, baseline.presets, final.presets)
                             chosenPresetId = final.presetId
@@ -196,35 +198,35 @@ internal fun TvWavePlace(nav: TvNav) {
                 val customPages = editor.presets.chunked(3)
                 val pageCount = if (group == null) customPages.size else pages.size
                 val visiblePage = page.coerceAtMost((pageCount - 1).coerceAtLeast(0))
-                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)) {
-                    Text(l("Сценарии", "Scenarios"), style = MaterialTheme.typography.headlineSmall)
+                Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)) {
+                    Text(tr(R.string.prism_stream_scenarios), style = MaterialTheme.typography.headlineSmall)
                     TvButton(when(group) {
-                        WaveScenarios.Group.DAY -> l("Время дня", "Time of day")
-                        WaveScenarios.Group.ACTIVITY -> l("Занятие", "Activity")
-                        WaveScenarios.Group.DISCOVERY -> l("Вкус", "Taste")
-                        null -> l("Мои пресеты", "My presets")
+                        WaveScenarios.Group.DAY -> tr(R.string.prism_stream_time_of_day)
+                        WaveScenarios.Group.ACTIVITY -> tr(R.string.prism_stream_activity)
+                        WaveScenarios.Group.DISCOVERY -> tr(R.string.prism_stream_taste)
+                        null -> tr(R.string.prism_stream_my_presets)
                     }, { groupIndex = (groupIndex + 1) % (WaveScenarios.Group.entries.size + 1) },
                         Modifier.fillMaxWidth().tvItem("tv_wave/group"))
                     if (group == null) {
-                        if (editor.presets.isEmpty()) Text(l("Нет сохранённых пресетов", "No saved presets"), color = scheme.onSurfaceVariant)
+                        if (editor.presets.isEmpty()) Text(tr(R.string.prism_stream_no_saved_presets), color = scheme.onSurfaceVariant)
                         customPages.getOrElse(visiblePage) { emptyList() }.forEach { preset ->
                             key(preset.id) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                     TvButton(preset.name, { editor = editor.choose(preset) },
                                         Modifier.weight(1f).tvItem("tv_wave/custom/${preset.id}"), icon = PrismIcons.Bookmark,
                                         primary = editor.presetId == preset.id && draft.origin == preset.origin)
-                                    TvIconButton(PrismIcons.Delete, l("Удалить ", "Delete ") + preset.name,
+                                    TvIconButton(PrismIcons.Delete, tr(R.string.prism_stream_delete) + preset.name,
                                         { editor = editor.delete(preset.id) }, Modifier.tvItem("tv_wave/delete/${preset.id}"))
                                 }
                             }
                         }
                     } else pages.getOrElse(visiblePage) { emptyList() }.forEach { preset ->
-                        TvButton(if (ru) preset.ru else preset.en,
+                        TvButton(preset.label,
                             { editor = editor.choose(preset) },
                             Modifier.fillMaxWidth().tvItem("tv_wave/preset/${preset.id}"),
                             primary = draft.copy(russianPercent = -1) == preset.style, icon = PrismIcons.waveScenario(preset.glyph))
                     }
-                    if (pageCount > 1) TvButton(l("Ещё", "More"), { page = (visiblePage + 1) % pageCount },
+                    if (pageCount > 1) TvButton(tr(R.string.prism_stream_more_2), { page = (visiblePage + 1) % pageCount },
                         Modifier.tvItem("tv_wave/more"))
                 }
             }
@@ -242,9 +244,9 @@ internal fun TvWavePlace(nav: TvNav) {
                             shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp), size = 1080)
                     }
                     Column(Modifier.weight(1.15f), verticalArrangement = Arrangement.spacedBy(if (narrow) 8.dp else 16.dp)) {
-                        Text(now?.title ?: l("Музыка в твоём ритме", "Music in your rhythm"),
+                        Text(now?.title ?: tr(R.string.prism_stream_music_in_your_rhythm),
                             style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text(now?.artist ?: l("Начни слушать", "Start listening"), style = MaterialTheme.typography.titleMedium,
+                        Text(now?.artist ?: tr(R.string.prism_stream_start_listening), style = MaterialTheme.typography.titleMedium,
                             color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         if (now != null && now.total.isNotEmpty()) TvSeekLine(now,
                             onSeek = { c.player.seekBy(it) }, onPlayPause = { c.player.togglePlay() },
@@ -252,28 +254,28 @@ internal fun TvWavePlace(nav: TvNav) {
                         else TvProgress(now?.fraction ?: 0f, now?.played ?: "0:00", now?.total ?: "–:–")
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically) {
-                            TvIconButton(if (now?.liked == true) PrismIcons.HeartFilled else PrismIcons.Heart, l("Нравится", "Like"),
+                            TvIconButton(if (now?.liked == true) PrismIcons.HeartFilled else PrismIcons.Heart, tr(R.string.prism_stream_like),
                                 { current?.let { c.library.toggleLike(it) } }, Modifier.tvItem("tv_wave/like"), on = now?.liked == true)
-                            TvIconButton(PrismIcons.Previous, l("Предыдущий", "Previous"),
+                            TvIconButton(PrismIcons.Previous, tr(R.string.prism_stream_previous),
                                 { if (current != null) c.player.previous() }, Modifier.tvItem("tv_wave/previous"))
-                            TvIconButton(if (now?.playing == true) PrismIcons.Pause else PrismIcons.Play, l("Играть / пауза", "Play / pause"),
+                            TvIconButton(if (now?.playing == true) PrismIcons.Pause else PrismIcons.Play, tr(R.string.prism_stream_play_pause),
                                 { if (current != null) c.player.togglePlay() else if (!starting) start() },
                                 Modifier.tvItem("tv_wave/play", entry = true), big = true)
-                            TvIconButton(PrismIcons.Next, l("Следующий", "Next"),
+                            TvIconButton(PrismIcons.Next, tr(R.string.prism_stream_next),
                                 { if (current != null) c.player.next() }, Modifier.tvItem("tv_wave/next"))
-                            TvIconButton(if (current?.id in disliked) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown, l("Не моё", "Not for me"),
+                            TvIconButton(if (current?.id in disliked) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown, tr(R.string.prism_stream_not_for_me),
                                 { current?.let { val on = it.id in disliked; c.library.setDisliked(it, !on); if (!on && c.player.hasNext.value) c.player.next() } },
                                 Modifier.tvItem("tv_wave/dislike"), on = current?.id in disliked)
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            TvButton(if (starting) l("Подбираем…", "Finding music…") else l("Встряхнуть", "Refresh"),
-                                { if (!starting) start() }, Modifier.tvItem("tv_wave/refresh"), icon = PrismIcons.Refresh)
-                            if (current != null) TvButton(l("Плеер", "Player"), { nav.go(TvRoute.Player) }, Modifier.tvItem("tv_wave/player"))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            TvButton(if (starting) tr(R.string.prism_stream_finding_music) else tr(R.string.prism_stream_refresh),
+                                { if (!starting) start() }, Modifier.weight(1f).tvItem("tv_wave/refresh"), icon = PrismIcons.Refresh)
+                            if (current != null) TvButton(tr(R.string.prism_stream_player), { nav.go(TvRoute.Player) }, Modifier.weight(1f).tvItem("tv_wave/player"))
                         }
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TvScenarioDisc(l("Настройки", "Tune"), PrismIcons.Equalizer, selected = false,
+                    TvScenarioDisc(tr(R.string.prism_stream_tune), PrismIcons.Customize, selected = false,
                         onClick = { toggleTuning(true) }, modifier = Modifier.tvItem("tv_wave/tune"))
                     val active = WaveScenarios.all.firstOrNull { it.style == style.copy(russianPercent = -1) }
                     Row(Modifier.weight(1f).scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward })
@@ -287,7 +289,7 @@ internal fun TvWavePlace(nav: TvNav) {
                             }
                         }
                         scenarioOrder.forEach { preset ->
-                            TvScenarioDisc(label = if (ru) preset.ru else preset.en,
+                            TvScenarioDisc(label = preset.label,
                                 icon = PrismIcons.waveScenario(preset.glyph), selected = activeSaved == null && active?.id == preset.id,
                                 onClick = { chosenPresetId = preset.id; start(preset.style.copy(russianPercent = style.russianPercent)) },
                                 modifier = Modifier.tvItem("tv_wave/quick/${preset.id}"))
@@ -297,7 +299,7 @@ internal fun TvWavePlace(nav: TvNav) {
             }
         }
     }
-    if (tuning && namingPreset) WavePresetNameDialog(ru, editor.presets.map { it.name }, { namingPreset = false }) { name ->
+    if (tuning && namingPreset) WavePresetNameDialog( editor.presets.map { it.name }, { namingPreset = false }) { name ->
         editor = editor.save(name)
         namingPreset = false
     }

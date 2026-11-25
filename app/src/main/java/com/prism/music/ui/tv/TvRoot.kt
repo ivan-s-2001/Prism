@@ -43,7 +43,7 @@ import kotlinx.coroutines.launch
 /** Prism TV's top-level places, in the side navigation's order. */
 enum class TvSection(val label: () -> String, val icon: () -> ImageVector) {
     HOME({ tr(R.string.home) }, { PrismIcons.Home }),
-    STREAM({ if (java.util.Locale.getDefault().language == "ru") "Поток" else "Stream" }, { PrismIcons.Equalizer }),
+    STREAM({ tr(R.string.stream) }, { PrismIcons.Stream }),
     SEARCH({ tr(R.string.search) }, { PrismIcons.Search }),
     LIBRARY({ tr(R.string.library) }, { PrismIcons.Library }),
     SETTINGS({ tr(R.string.settings) }, { PrismIcons.Settings }),
@@ -226,7 +226,7 @@ fun TvNavFrame(
                             NavigationDrawerItem(
                                 selected = section == s,
                                 onClick = { onSection(s) },
-                                leadingContent = { Icon(s.icon(), contentDescription = null) },
+                                leadingContent = { Icon(if (s == TvSection.STREAM && s == section) PrismIcons.StreamFilled else s.icon(), contentDescription = null) },
                                 colors = itemColors,
                                 border = itemBorder,
                                 // Where you are: the split light's mark at its edge (as the phone's tab bar).
