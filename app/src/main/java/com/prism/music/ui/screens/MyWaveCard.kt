@@ -155,7 +155,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                                 !c.exclusions.isSongExcluded(s.id) &&
                                 !c.recFeedback.turnedDown(s.id, known = s.id in known) &&
                                 ExplicitFilter.plays(c.settings.current.behavior.explicitContent, s)
-                        }, seed = seed, style = selected, signals = signals,
+                        }, seed = seed, count = MyWave.HORIZON, style = selected, signals = signals,
                         artistDoubt = c.recFeedback::artistDoubt,
                         servedRecently = { c.recFeedback.servedDaysAgo(it.id)?.let { days -> days <= 1 } == true },
                         profile = taste.profile, previousSong = current,
@@ -163,7 +163,10 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 }
                 // If the listener chose another queue while this was being prepared, it wins.
                 if (c.queue.source.value !== previous) return@launch
-                if (songs.isEmpty()) c.player.reportError(l("Нет доступных треков для волны. Попробуйте после загрузки рекомендаций.", "No tracks available for Wave. Try after recommendations load."))
+                if (songs.isEmpty()) {
+                    if (previous.isMyWave) style = MyWave.style(previous.originId)
+                    c.player.reportError(l("Нет доступных треков для волны. Попробуйте после загрузки рекомендаций.", "No tracks available for Wave. Try after recommendations load."))
+                }
                 else {
                     val next = QueueSource(QueueKind.RADIO, title, seedId = current?.id ?: songs.first().id, originId = selected.origin)
                     if (previous.isMyWave && current != null) {
