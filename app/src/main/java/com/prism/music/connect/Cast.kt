@@ -513,7 +513,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                         StationConnectAccount.initialize(app)
                         val api = StationConnectAccount.api() ?: error("Sign in to Yandex in Settings")
                         val identity = api.verify(device)
-                        StationRendererLink(device, identity, api, server::deliverySequence)
+                        StationRendererLink(device, identity, api, server::deliverySequence, server::stationSlice)
                     }
                     RendererKind.GOOGLE_CAST -> GoogleCastLink(r)
                     else -> RendererControl(c.http, r)
@@ -881,7 +881,14 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         val refusedPcm = s.refused.contains(CastFormat.WAV) && !s.refused.contains(CastFormat.L16)
         val body: CastBody
         val format: CastFormat
-        if (song.isLocal) {
+        if (s.renderer.kind == RendererKind.YANDEX_STATION) {
+            format = CastFormat.WAV
+            val decoder = if (song.isLocal) {
+                val uri = c.localMusic.uriFor(song.id) ?: throw IOException(tr(R.string.isn_t_on_the_phone_any, song.title))
+                CastDecoder.forUri(app, uri)
+            } else CastDecoder.forSong(c.playbackDataSourceFactory(), song.id)
+            body = pcmBody(s, decoder, durationMs, format)
+        } else if (song.isLocal) {
             val uri = c.localMusic.uriFor(song.id) ?: throw IOException(tr(R.string.isn_t_on_the_phone_any, song.title))
             val mime = app.contentResolver.getType(uri)
             val (fmt, announce) = ProtocolInfo.choose(s.sink, mime, decodedFallback = CastFormat.ORIGINAL in s.refused)
@@ -992,11 +999,16 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             if (s.renderer.kind == RendererKind.YANDEX_STATION) {
                 Log.i(TAG, "Station stream prepared in ${SystemClock.elapsedRealtime() - prepareStarted} ms")
             }
+            var appliedPosition = 0L
             val sent = runCatching {
                 onWire {
                     if (gen != loadGen || session !== s) return@onWire false
                     s.ctl.load(loaded.url, loaded.meta, loaded.media)
                     if (gen != loadGen || session !== s) return@onWire false
+                    (s.ctl as? StationRendererLink)?.let {
+                        appliedPosition = s.preparingPosition
+                        it.setStartPosition(appliedPosition)
+                    }
                     if (s.wantPlaying) {
                         s.ctl.play()
                         if (gen == loadGen && session === s && !s.wantPlaying) s.ctl.pause()
@@ -1012,7 +1024,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             }
             if (sent.getOrNull() != true) return@launch
             loaded.loadedAt = SystemClock.elapsedRealtime()
-            loaded.startMs = s.preparingPosition
+            val latestPosition = s.preparingPosition
+            loaded.startMs = if (s.ctl is StationRendererLink) 0L else latestPosition
             s.preparingSong = null
             s.current = loaded
             s.lastCommandAt = loaded.loadedAt
@@ -1020,6 +1033,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             com.prism.music.playback.AudioDiagnostics.log("cast", "sent ${song.id} as ${loaded.format}, play=$play")
             // Paused when it was sent: it starts (and goes to the phone's place) when play is pressed.
             if (!s.wantPlaying) publish(s, loading = false)
+            if (s.ctl is StationRendererLink && latestPosition != appliedPosition) seekRenderer(s, latestPosition)
         }
     }
 
@@ -1251,7 +1265,6 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             if (!cur.started) {
                 cur.started = true
                 publish(s, loading = false)
-                if (cur.startMs > 0) seekRenderer(s, cur.startMs)
                 armNext(s)
             }
             publishStationClock(old.withObservation(cur.song.id, pi.relMs, pi.durationMs ?: cur.durationMs,
@@ -1354,7 +1367,14 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         seekJob = scope.launch {
             delay(if (s.renderer.kind == RendererKind.YANDEX_STATION) 60L else 120L)
             try {
-                onWire { if (session === s && generation == loadGen) s.ctl.seek(ms) }
+                onWire {
+                    if (session !== s || generation != loadGen) return@onWire
+                    s.ctl.seek(ms)
+                    if (s.ctl is StationRendererLink && s.wantPlaying) {
+                        s.current?.let { it.started = false; it.loadedAt = SystemClock.elapsedRealtime(); it.playRetried = false }
+                        publish(s, loading = true)
+                    }
+                }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 Log.w(TAG, "seek on ${s.renderer.name} failed: ${e.message}")
@@ -1454,7 +1474,12 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                     if (playWhenReady) {
                         s.ctl.play()
                         // Sent while paused: once it's going, it goes to where the phone is.
-                        if (!cur.started) cur.loadedAt = SystemClock.elapsedRealtime()
+                        if (s.ctl is StationRendererLink) {
+                            cur.started = false
+                            cur.playRetried = false
+                            cur.loadedAt = SystemClock.elapsedRealtime()
+                            publish(s, loading = true)
+                        } else if (!cur.started) cur.loadedAt = SystemClock.elapsedRealtime()
                     } else s.ctl.pause()
                 }
             }.onFailure { Log.w(TAG, "play/pause on ${s.renderer.name} failed: ${it.message}") }
@@ -1480,7 +1505,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         val cur = s.current ?: return
         if (player?.currentMediaItem?.mediaId != cur.song.id) return
         // Not going yet (sent while paused): it starts there instead.
-        if (cur.started) seekRenderer(s, newPosition.positionMs) else cur.startMs = newPosition.positionMs
+        if (s.ctl is StationRendererLink || cur.started) seekRenderer(s, newPosition.positionMs) else cur.startMs = newPosition.positionMs
     }
 
     override fun onTimelineChanged(timeline: Timeline, reason: Int) {
