@@ -1,6 +1,8 @@
 package com.prism.music.ui.screens
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -23,6 +25,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import com.prism.music.ui.theme.LocalUi
+import com.prism.music.ui.theme.LocalAppSettings
 import com.prism.music.data.ExplicitFilter
 import com.prism.music.data.foryou.MyWave
 import com.prism.music.data.model.Song
@@ -37,8 +42,64 @@ import kotlinx.coroutines.withContext
 import kotlin.math.PI
 import kotlin.math.sin
 
+/** The Wave has its own route and can start before Home has ever been opened. */
 @Composable
-internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, recent: List<Song>, online: Boolean) {
+internal fun MyWaveScreen(bottomPadding: Dp) {
+    val c = LocalContainer.current
+    val settings = LocalAppSettings.current
+    val favorites by c.library.likedShown.collectAsState()
+    val recent by c.library.recent.collectAsState()
+    val online by c.network.online.collectAsState()
+    val source by c.queue.source.collectAsState()
+    val account = "${settings.authUser}|${settings.dataSyncId}|${settings.accountName}"
+    var retry by remember { mutableIntStateOf(0) }
+    var loading by remember(account, online, retry) { mutableStateOf(online) }
+    var failed by remember(account, online, retry) { mutableStateOf(false) }
+    val recommendations by produceState(emptyList<Song>(), account, online, retry) {
+        value = emptyList()
+        try {
+            if (!online) return@produceState
+            val day = java.time.LocalDate.now().toString()
+            val cached = c.homeCache.readPicks(day, account).orEmpty()
+            if (cached.isNotEmpty()) { value = cached; return@produceState }
+            // No parallel feed fetching while already listening to a Wave. The queue is filled by the service.
+            if (source.isMyWave && retry == 0) return@produceState
+            val fresh = kotlinx.coroutines.withTimeoutOrNull(7000L) {
+                val shelves = c.ytm.fullHome(pages = 1, maxPages = 2,
+                    satisfied = { earlyQuickPicks(it, settings.accountName) != null })
+                val own = earlyQuickPicks(shelves, settings.accountName)?.items.orEmpty()
+                    .filterIsInstance<SongItem>().map { it.song }
+                if (own.isNotEmpty()) own else shelves.flatMap { it.items }.filterIsInstance<SongItem>().map { it.song }.distinctBy { it.id }.take(60)
+            }.orEmpty()
+            value = fresh
+            // Keep first sound fast: a separate recommendation pass is bounded, never required for starting.
+            if (!c.castingNow && !c.queue.source.value.isMyWave) {
+                val curated = kotlinx.coroutines.withTimeoutOrNull(5000L) {
+                    c.yourMusic.quickPicks(fresh, radioOf = { seed -> c.ytm.next(seed.id, playlistId = "RDAMVM${seed.id}").songs }, count = 36, draw = retry)
+                }.orEmpty()
+                if (curated.isNotEmpty()) value = curated
+            }
+            failed = value.isEmpty()
+        } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { failed = value.isEmpty() }
+        finally { loading = false }
+    }
+    BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding()) {
+        val heroHeight = (maxHeight - bottomPadding - 104.dp).coerceIn(320.dp, 540.dp)
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = bottomPadding + 16.dp)) {
+            MyWaveCard(recommendations, favorites, recent, online, heroHeight, loading)
+            if (failed && recommendations.isEmpty() && !source.isMyWave && online) {
+                TextButton(onClick = { retry++ }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                    Text(if (java.util.Locale.getDefault().language == "ru") "Обновить рекомендации" else "Retry recommendations")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, recent: List<Song>, online: Boolean,
+    heroHeight: Dp = 420.dp, loading: Boolean = false) {
     val c = LocalContainer.current
     val scope = rememberCoroutineScope()
     val source by c.queue.source.collectAsState()
@@ -106,24 +167,30 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         }
     }
 
-    val pending = starting || (wave && buffering)
+    val waiting = loading && recommendations.isEmpty() && favorites.isEmpty() && recent.isEmpty() && !wave
+    val pending = starting || waiting || (wave && buffering)
+    val ui = LocalUi.current
+    val scheme = MaterialTheme.colorScheme
+    val accent = scheme.primary
+    val deep = Color(0xFF15151D)
     val subtitle = when {
-        starting -> l("Подбираем музыку", "Finding your music")
+        starting || waiting -> l("Подбираем музыку", "Finding your music")
         wave -> song?.let { "${it.title} · ${it.primaryArtist}" }.orEmpty()
         !online -> l("Твоя музыка без интернета", "Your music offline")
         else -> l("Музыка под тебя", "Music made for you")
     }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
     Box(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)
-            .height(272.dp).clip(RoundedCornerShape(28.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF22254F), Color(0xFF322A64), Color(0xFF102B42))))
+        Modifier.fillMaxWidth().padding(top = 8.dp)
+            .height(heroHeight).clip(ui.shape(32.dp))
+            .background(Brush.linearGradient(listOf(deep, accent.copy(alpha = 0.40f), deep)))
             .testTag("home:my_wave")
     ) {
         // Use real album art from the active track, otherwise a recommendation, behind a high-contrast veil.
         val art = if (wave) song else recommendations.firstOrNull() ?: favorites.firstOrNull()
         if (art != null) {
             Artwork(c.covers.art(SongItem(art)), Modifier.fillMaxSize(), RoundedCornerShape(0.dp), size = 400)
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xAA16152C), Color(0xE51D183A), Color(0xFF171A2D)))))
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(deep.copy(alpha = 0.30f), deep.copy(alpha = 0.86f), deep))))
         }
         Canvas(Modifier.fillMaxSize()) {
             val w = size.width; val h = size.height
@@ -134,8 +201,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     val y = h * (0.47f + i * 0.027f) + sin((t * 2.5 * PI) + i * 0.18).toFloat() * h * (0.13f + i * 0.006f)
                     if (x == 0) path.moveTo(0f, y) else path.lineTo(t * w, y)
                 }
-                drawPath(path, Brush.horizontalGradient(listOf(Color(0xFF7468EB).copy(alpha = 0.12f),
-                    Color(0xFFDAB4FF).copy(alpha = 0.30f), Color(0xFF63D9EF).copy(alpha = 0.13f))), style = Stroke(1.4.dp.toPx()))
+                drawPath(path, Brush.horizontalGradient(listOf(accent.copy(alpha = 0.12f),
+                    accent.copy(alpha = 0.48f), Color.White.copy(alpha = 0.12f))), style = Stroke(1.4.dp.toPx()))
             }
         }
         Column(Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -144,8 +211,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             Text(subtitle, color = Color.White.copy(alpha = 0.76f), style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(18.dp))
-            Box(Modifier.size(64.dp).clip(CircleShape).background(Color.White)
-                .clickable(enabled = !starting) { if (wave) c.player.togglePlay() else start() }
+            Box(Modifier.size(80.dp).clip(CircleShape).background(Color.White)
+                .clickable(enabled = !starting && !waiting) { if (wave) c.player.togglePlay() else start() }
                 .testTag("home:my_wave:play"), contentAlignment = Alignment.Center) {
                 if (pending) CircularProgressIndicator(Modifier.size(25.dp), strokeWidth = 2.dp, color = Color(0xFF22254F))
                 else Icon(if (wave && playing) PrismIcons.Pause else PrismIcons.Play,
@@ -175,6 +242,16 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     color = Color.White, style = MaterialTheme.typography.labelMedium, maxLines = 1)
             }
         }
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(l("Для себя", "For you") to MyWave.Style(), l("В движении", "On the move") to MyWave.Style(mood = MyWave.Mood.ENERGETIC), l("Отдохнуть", "Unwind") to MyWave.Style(mood = MyWave.Mood.CALM)).forEach { (label, preset) ->
+            Surface(modifier = Modifier.weight(1f).clip(ui.shape(18.dp)).clickable(enabled = !starting && !waiting) { style = preset; start(preset) },
+                shape = ui.shape(18.dp), color = if (wave && style == preset) scheme.primaryContainer else scheme.surfaceContainerHigh) {
+                Text(label, Modifier.padding(horizontal = 6.dp, vertical = 16.dp), style = MaterialTheme.typography.labelMedium,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
     }
     if (settingsOpen) {
         var draft by remember { mutableStateOf(style) }
