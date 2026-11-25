@@ -142,12 +142,14 @@ class ForYou(private val c: AppContainer) {
      * The listener as the mix maker sees them: every song they know scored, with how much it's been heard and served
      * lately, what's been played (never "new"), and what they've turned down.
      */
-    private fun taste(data: Listening): MixMaker.Taste {
+    private suspend fun taste(data: Listening): MixMaker.Taste {
+        val profile = c.yourMusic.waveTaste().profile
         val now = data.now
         val lately = data.events.filter { now - it.timestamp < Variety.LATELY_DAYS * DAY }.groupingBy { it.songId }.eachCount()
         val last = HashMap<String, Long>()
         data.events.forEach { e -> if (e.timestamp > (last[e.songId] ?: 0L)) last[e.songId] = e.timestamp }
         val fb = c.recFeedback
+        val evidence = fb.waveEvidence()
         val known = data.songs.values.filter { ok(it) }.map { s ->
             MixMaker.Known(
                 s, data.model.score(s), lately[s.id] ?: 0,
@@ -160,6 +162,8 @@ class ForYou(private val c: AppContainer) {
             refused = { s, knownSong -> !ok(s) || c.exclusions.isSongExcluded(s.id) || fb.turnedDown(s.id, knownSong) },
             artistDoubt = fb::artistDoubt,
             servedDaysAgo = fb::servedDaysAgo,
+            affinity = { MyWave.affinity(profile, it) },
+            feedbackWeight = { evidence(it.primaryArtist).weight(0.0) },
         )
     }
 
@@ -171,9 +175,8 @@ class ForYou(private val c: AppContainer) {
         private val radios = java.util.concurrent.ConcurrentHashMap<String, List<Song>>()
         private val related = java.util.concurrent.ConcurrentHashMap<String, com.prism.music.data.model.Related>()
         private val tops = java.util.concurrent.ConcurrentHashMap<String, List<Song>>()
-        override suspend fun radio(seed: Song) = radios[seed.id] ?: withContext(Dispatchers.IO) {
-            c.radio(seed.id, "RDAMVM${seed.id}").songs
-        }.also { radios[seed.id] = it }
+        override suspend fun radio(seed: Song) = radios[seed.id] ?: c.yourMusic.recommendationRadio(seed)
+            .also { if (it.isNotEmpty()) radios[seed.id] = it }
         override suspend fun related(seed: Song) = related[seed.id] ?: withContext(Dispatchers.IO) {
             c.ytm.related(seed.id, seed.title)
         }.also { related[seed.id] = it }
@@ -225,7 +228,7 @@ class ForYou(private val c: AppContainer) {
         val base = taste(data)
         val taste = MixMaker.Taste(
             base.known.map { k -> k.copy(score = k.score * (0.4 + 0.6 * (weight[k.song.id] ?: 0.0) / top)) },
-            base.played, base.refused, base.artistDoubt, base.servedDaysAgo,
+            base.played, base.refused, base.artistDoubt, base.servedDaysAgo, base.affinity, base.feedbackWeight,
         )
         val mix = MixMaker(sources()).make(MadeForYou.timeRecipe, taste, day) { it.song.id in weight }
         if (mix.familiar.size < 5) { c.db.mixes().deleteOthers(MadeForYou.TIME, listOf("-")); return }
