@@ -8,6 +8,7 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.activity.ComponentActivity
@@ -38,6 +39,8 @@ class StationDiagnosticsActivity : ComponentActivity() {
     private var scan: Job? = null
     private var operation: Job? = null
     private var session: StationSmokeSession? = null
+    private val group = StationSmokeGroup()
+    private lateinit var groupRows: LinearLayout
     private var connectedStation: YandexStation? = null
     private var file: File? = null
     private var accessToken: String? = null
@@ -53,7 +56,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
             val imported = withContext(Dispatchers.IO) { importMp3(uri) }
             try {
                 // Keep the verified connection when the first file is chosen.
-                if (file != null) session?.stop()
+                if (file != null) { session?.stop(); group.stop() }
             } catch (e: Throwable) {
                 imported.delete()
                 throw e
@@ -84,6 +87,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
         button("Sign in with Yandex device code") { showLogin() }
         button("Open normal Prism player") {
             if (operation?.isActive == true) return@button
+            if (group.size > 0) { report("Stop and disconnect the test group first."); return@button }
             val launch = packageManager.getLaunchIntentForPackage(packageName)
             if (launch != null) {
                 session?.close()
@@ -132,6 +136,50 @@ class StationDiagnosticsActivity : ComponentActivity() {
             session = null
             report("Disconnected. Use Stop first to terminate remote playback.")
         }
+        column.addView(TextView(this).apply {
+            text = "Multiroom test · independent volume"
+            textSize = 20f
+        })
+        button("Add selected Station to group") {
+            runOperation("Add group member") {
+                check(session == null) { "Disconnect the single Station first" }
+                val station = selected()
+                val api = QuasarStationApi(accessToken ?: error("Sign in with device code first"))
+                group.add(station, api)
+                renderGroup()
+                report("Group: ${group.size} Station(s). Select another or play test MP3.")
+            }
+        }
+        button("Remove selected Station from group") {
+            runOperation("Remove group member") {
+                group.remove(selected().deviceId)
+                renderGroup()
+                report("Group: ${group.size} Station(s).")
+            }
+        }
+        button("Play MP3 on group") {
+            runOperation("Play group") {
+                check(group.size > 0) { "Add Stations first" }
+                group.play(file ?: error("No file"))
+                renderGroup()
+                report("Group play commands sent. Check each Station and counters.")
+            }
+        }
+        button("Stop group") {
+            runOperation("Stop group") { group.stop(); renderGroup(); report("Group stop requested.") }
+        }
+        button("Group volume 20%") {
+            runOperation("Group volume") { group.volumeAll(20); renderGroup(); report("Group volume requested.") }
+        }
+        button("Refresh group diagnostics") { renderGroup() }
+        button("Disconnect group") {
+            runOperation("Disconnect group") {
+                try { group.stop() } finally { group.close(); renderGroup() }
+                report("Group disconnected.")
+            }
+        }
+        groupRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        column.addView(groupRows)
         val scroll = ScrollView(this).apply { addView(column) }
         ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
@@ -175,6 +223,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
     }
 
     private fun connect() = runOperation("Verifying Station with Yandex") {
+        check(group.size == 0) { "Disconnect the group first" }
         stage = "Select Station"
         val station = selected()
         scan?.cancelAndJoin()
@@ -204,6 +253,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
             return
         }
         if (operation?.isActive == true) return
+        if (group.size > 0) { report("Disconnect the group before signing in again."); return }
         scan?.cancel()
         session?.close()
         session = null
@@ -282,7 +332,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
             catch (e: Exception) {
                 val safeMessage = e.message.orEmpty().let { msg ->
                     when {
-                        msg in setOf("Sign in with device code first", "Not connected", "No file", "No IPv4 route", "Select a Station", "Station is not in this Yandex account", "No Station certificate in account metadata", "Yandex rejected the device token request", "Station certificate mismatch", "Station connection closed", "Invalid Yandex device list") -> msg
+                        msg in setOf("Sign in with device code first", "Disconnect the single Station first", "Disconnect the group first", "Add Stations first", "Group limit: 8 Stations", "Not connected", "No file", "No IPv4 route", "Select a Station", "Station is not in this Yandex account", "No Station certificate in account metadata", "Yandex rejected the device token request", "Station certificate mismatch", "Station connection closed", "Invalid Yandex device list") -> msg
                         Regex("Quasar HTTP [0-9]{3}").matches(msg) -> msg
                         else -> e.javaClass.simpleName
                     }
@@ -294,6 +344,33 @@ class StationDiagnosticsActivity : ComponentActivity() {
         }
     }
 
+    private fun renderGroup() {
+        groupRows.removeAllViews()
+        for (m in group.snapshot()) {
+            groupRows.addView(TextView(this).apply {
+                text = "${m.station.serviceName} (${m.station.platform})\nState frames: ${m.frames} · MP3 bytes: ${m.bytes}\nRequested volume: ${m.requestedVolume?.let { "$it%" } ?: "not set"} · ${m.error ?: "No command error"}"
+            })
+            val slider = SeekBar(this).apply {
+                max = 100
+                progress = m.requestedVolume ?: 20
+                contentDescription = "Volume for ${m.station.serviceName}; drag to set"
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) = Unit
+                    override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+                    override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                        val value = seekBar?.progress ?: return
+                        runOperation("Station volume") {
+                            group.volume(m.station.deviceId, value)
+                            renderGroup()
+                            report("Individual volume requested.")
+                        }
+                    }
+                })
+            }
+            groupRows.addView(slider)
+        }
+    }
+
     private fun report(message: String) { status.text = message }
 
     override fun onDestroy() {
@@ -301,6 +378,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
         accessToken = null
         scan?.cancel()
         operation?.cancel()
+        group.close()
         session?.close()
         file?.delete()
         super.onDestroy()
