@@ -150,20 +150,24 @@ private fun MiniVibe(c: ThemeColors, song: Song?) {
         if (backdrop != com.prism.music.ui.theme.Backdrop.DEFAULT) {
             com.prism.music.ui.theme.BackdropLayer(backdrop, photo, s.backdropDim, false, Modifier.fillMaxSize())
         }
-        Column(Modifier.fillMaxSize().padding(ui.gap(16.dp)), verticalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
-            Text(tr(R.string.stream), style = pageTitleStyle(), color = scheme.onBackground)
-            if (s.streamShowStatus) Text(tr(R.string.prism_stream_personal_stream), style = MaterialTheme.typography.bodySmall)
-            val panel = Modifier.weight(1f).fillMaxWidth()
+        VibePageLayout(s, scrollable = false, header = {
+            com.prism.music.ui.components.ScreenHeader(tr(R.string.stream),
+                subtitle = tr(R.string.prism_stream_personal_stream).takeIf { s.streamShowStatus }) {
+                Icon(PrismIcons.Shuffle, null, Modifier.size(24.dp))
+            }
+        }, player = { panel ->
             VibePlayerLayout(s, panel.then(if (s.streamGlassPanel) Modifier.clip(ui.shape(24.dp)).background(scheme.surfaceContainerHigh.copy(alpha = 0.80f)) else Modifier),
                 cover = { modifier -> StandIn(song, modifier, com.prism.music.ui.theme.CoverShapes.of(s.shapes.player, s.player.artCorners.dp), standIns.first()) },
                 metadata = {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
+                        val centered = s.player.titleAlign == com.prism.music.data.prefs.PlayerTitleAlign.CENTER
+                        if (centered && s.streamShowReactions) Icon(PrismIcons.Heart, null, Modifier.padding(6.dp))
+                        Column(Modifier.weight(1f), horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start) {
                             Text(song?.title ?: tr(R.string.prism_stream_music_in_your_rhythm), style = com.prism.music.ui.player.playerTitleStyle(MaterialTheme.typography, s), maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(song?.primaryArtist ?: tr(R.string.prism_stream_start_listening), style = com.prism.music.ui.player.playerArtistStyle(MaterialTheme.typography, s), color = scheme.onSurfaceVariant, maxLines = 1)
                         }
                         if (s.streamShowReactions) {
-                            Icon(PrismIcons.Heart, null, Modifier.padding(6.dp))
+                            if (!centered) Icon(PrismIcons.Heart, null, Modifier.padding(6.dp))
                             Icon(PrismIcons.ThumbDown, null, Modifier.padding(6.dp))
                         }
                     }
@@ -176,16 +180,17 @@ private fun MiniVibe(c: ThemeColors, song: Song?) {
                         Icon(PrismIcons.Next, null)
                     }
                 })
+        }, scenarios = {
             val scenarios = com.prism.music.data.foryou.WaveScenarios.visibleOrder(com.prism.music.data.foryou.WaveScenarios.all, s.streamScenarioOrder)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp))) {
-                val icons = listOf(PrismIcons.Customize) + scenarios.take(2).map { PrismIcons.waveScenario(it.glyph) }
-                icons.forEach { icon ->
-                    Box(Modifier.weight(1f).height(if (s.streamCompactScenarios) 36.dp else 62.dp).clip(if (s.streamCompactScenarios) ui.button else ui.card).background(scheme.surfaceContainer), contentAlignment = Alignment.Center) {
-                        Icon(icon, null, Modifier.size(24.dp))
-                    }
+            Row(Modifier.fillMaxWidth().padding(horizontal = ui.gap(16.dp), vertical = ui.gap(6.dp)),
+                horizontalArrangement = Arrangement.spacedBy(ui.gap(12.dp)), verticalAlignment = Alignment.CenterVertically) {
+                val tiles = listOf(tr(R.string.prism_stream_tune) to PrismIcons.Customize) + scenarios.take(2).map { it.label to PrismIcons.waveScenario(it.glyph) }
+                tiles.forEach { (label, icon) ->
+                    if (s.streamCompactScenarios) com.prism.music.ui.components.PrismChip(false, {}, label, Modifier.weight(1f), icon, fitLabel = true)
+                    else com.prism.music.ui.components.PrismScenarioDisc(label, icon, false, {}, Modifier.weight(1f))
                 }
             }
-        }
+        })
     }
 }
 

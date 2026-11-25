@@ -140,12 +140,12 @@ fun TvNowPlayingScreen(
 
 /** A gap in a [TvFitColumn]: this high when there's room, less when there isn't. */
 @Composable
-private fun TvFitGap(height: androidx.compose.ui.unit.Dp) = Spacer(Modifier.height(height).layoutId(TV_FIT_GAP))
+internal fun TvFitGap(height: androidx.compose.ui.unit.Dp) = Spacer(Modifier.height(height).layoutId(TV_FIT_GAP))
 
 private const val TV_FIT_GAP = "gap"
 
 /** A row of buttons in a [TvFitColumn]: it keeps its whole width, and the column is drawn smaller for it if it must be. */
-private const val TV_FIT_WIDE = "wide"
+internal const val TV_FIT_WIDE = "wide"
 
 /** How far a [TvFitColumn]'s gaps may close (a share of their height), before the column itself is drawn smaller. */
 private const val TV_FIT_MIN_GAP = 0.35f
@@ -157,7 +157,7 @@ private const val TV_FIT_MIN_GAP = 0.35f
  * size or text size, and with room to spare it's a plain column.
  */
 @Composable
-private fun TvFitColumn(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+internal fun TvFitColumn(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     androidx.compose.ui.layout.Layout(content, modifier) { measurables, constraints ->
         val width = constraints.maxWidth
         val widest = measurables.filter { it.layoutId == TV_FIT_WIDE }.maxOfOrNull { it.maxIntrinsicWidth(androidx.compose.ui.unit.Constraints.Infinity) } ?: 0

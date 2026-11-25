@@ -1920,7 +1920,7 @@ data class AppSettings(
     val streamThemeColors: Boolean = false,
     val streamShowCover: Boolean = true,
     val streamCoverSize: StreamCoverSize = StreamCoverSize.LARGE,
-    val streamGlassPanel: Boolean = true,
+    val streamGlassPanel: Boolean = false,
     val streamReverseLayout: Boolean = false,
     val streamScenarioOrder: String = "",
     val streamShowProgress: Boolean = true,
