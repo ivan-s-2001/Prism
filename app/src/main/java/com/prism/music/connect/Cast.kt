@@ -19,6 +19,7 @@ import com.prism.music.AppContainer
 import com.prism.music.BuildConfig
 import com.prism.music.connect.yandex.ConnectDeviceClient
 import kotlinx.serialization.json.*
+import com.prism.music.connect.yandex.StationNames
 import com.prism.music.connect.yandex.StationConnectAccount
 import com.prism.music.connect.yandex.StationDiscoveryEvent
 import com.prism.music.connect.yandex.StationRendererLink
@@ -191,7 +192,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                         }
                         if (!StationConnectAccount.signedIn.value) return@collect
                         val id = "yandex:${d.deviceId}"
-                        val renderer = Renderer(id, d.serviceName, "Yandex", d.platform,
+                        val name = StationNames.model(d.platform)
+                        val renderer = Renderer(id, name, "Yandex", name,
                             "yandexstation://${d.address.hostAddress}:${d.port}", null,
                             kind = RendererKind.YANDEX_STATION)
                         stationDevices[id] = d
