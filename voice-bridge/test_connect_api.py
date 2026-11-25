@@ -74,6 +74,44 @@ class ConnectApiTests(unittest.TestCase):
             with self.assertRaises(Conflict):
                 validate_command(cmd)
 
+    def test_queue_and_seek_contract(self):
+        self.pair(self.one, "one")
+        self.pair(self.two, "two")
+        g = self.api.post("/v2/claim", self.one, {})[1]["generation"]
+        queue = [{"index": 0, "id": "first", "title": "Song", "artist": "Artist"},
+                 {"index": 1, "id": "second", "title": "Song", "artist": "Artist"}]
+        state = {"queue": queue, "queue_count": 2, "current_index": 0, "track_id": "first"}
+        self.assertEqual(self.api.post("/v2/heartbeat", self.one, {"generation": g, "state": state})[0], 200)
+        self.assertEqual(self.api.post("/v2/status", self.two, {})[1]["session"]["state"]["queue"], queue)
+        for i, command in enumerate((
+            {"action": "select_track", "index": 1, "track_id": "second"},
+            {"action": "seek_absolute", "value": 45, "track_id": "first"},
+            {"action": "disconnect"},
+        )):
+            response = self.api.post("/v2/command", self.two, {"generation": g, "id": str(i), "command": command})
+            self.assertEqual(response[0], 200)
+            delivered = self.api.post("/v2/pull", self.one, {"generation": g, "state": state})[1]["command"]
+            self.assertEqual(delivered, {**command, "id": response[1]["id"]})
+        for invalid in (
+            {"queue": queue * 21}, {"queue": [{"index": True, "id": "x", "title": "x", "artist": "x"}]},
+            {"queue": [{"index": 0, "id": "x", "title": "x", "artist": "x", "secret": "x"}]},
+            {"result": {"id": "x", "status": "fabricated"}},
+            {"queue_count": -1},
+        ):
+            self.assertEqual(self.api.post("/v2/heartbeat", self.one, {"generation": g, "state": invalid})[0], 409)
+
+    def test_bad_queue_commands(self):
+        for command in (
+            {"action": "select_track", "index": -1, "track_id": "x"},
+            {"action": "select_track", "index": True, "track_id": "x"},
+            {"action": "select_track", "index": 0, "track_id": ""},
+            {"action": "seek_absolute", "value": 12},
+            {"action": "seek_absolute", "value": -1, "track_id": "x"},
+            {"action": "disconnect", "value": 1},
+        ):
+            with self.assertRaises(Conflict):
+                validate_command(command)
+
     def test_pair_expiry(self):
         now = [0]
         devices = PairedDevices(":memory:", clock=lambda: now[0])
