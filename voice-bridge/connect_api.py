@@ -123,7 +123,7 @@ class ConnectApi:
                         raise Conflict("invalid_request")
                     ok = self.sessions.submit(a, data.get("generation"), did + ":" + rid,
                                               validate_command(data.get("command")))
-                    return 200, {"accepted": ok, "duplicate": not ok}
+                    return 200, {"accepted": ok, "duplicate": not ok, "id": did + ":" + rid}
                 if path == "/v2/release":
                     # Caller is responsible for verified physical stop before release.
                     if data.get("stopped") is not True:
