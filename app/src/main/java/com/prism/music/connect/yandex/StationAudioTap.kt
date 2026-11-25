@@ -34,6 +34,7 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
         internal var recoveries = 0L
         fun read(length: Int): ByteArray = StationAudioTap.readFor(this, length)
         fun summary(): String = StationAudioTap.readerSummary(this)
+        fun rejoinLiveEdge() = StationAudioTap.rejoin(this)
         override fun close() = StationAudioTap.removeReader(this)
     }
 
@@ -41,6 +42,15 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
         // First station retains existing startup behavior. Joining stations start near the live edge.
         val start = if (readers.isEmpty()) written - size else maxOf(written - size, written - RATE * 4 * 350 / 1000)
         return Reader(start).also { readers.add(it) }
+    }
+
+    @Synchronized private fun rejoin(reader: Reader) {
+        if (reader !in readers) return
+        val target = maxOf(written - size, written - reader.targetBytes)
+        reader.skippedBytes += (target - reader.cursor).coerceAtLeast(0)
+        reader.cursor = maxOf(reader.cursor, target)
+        reader.recovering = true
+        reader.fadingIn = true
     }
 
     @Synchronized private fun removeReader(reader: Reader) { readers.remove(reader) }
