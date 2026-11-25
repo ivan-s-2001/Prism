@@ -62,10 +62,8 @@ internal class StationRendererLink(
             throw IOException("Station is playing Bluetooth")
         }
         val resume = if (paused) resumePosition else null
-        if (!paused) {
-            send(GlagolProtocol.stop())
-            delay(150)
-        }
+        // audio_play replaces the previous stream. load() has already stopped our old stream.
+        // A second stop here can arrive while the new source is buffering.
         // Mark ownership before sending: a cancelled send can still have reached the speaker.
         requested = true
         paused = false
@@ -109,7 +107,18 @@ internal class StationRendererLink(
     override suspend fun seek(ms: Long) {
         require(ms >= 0)
         if (paused) { resumePosition = ms; return }
-        send(buildJsonObject { put("command", "rewind"); put("position", ms / 1000.0) })
+        val (url, media) = loaded ?: throw IOException("No track to seek")
+        val target = ms.coerceAtMost(media.durationMs.takeIf { it > 0 } ?: ms)
+        val before = SystemClock.elapsedRealtime()
+        val payload = buildJsonObject { put("command", "rewind"); put("position", target / 1000.0) }
+        send(payload)
+        send(GlagolProtocol.ping())
+        // No fabricated success: require fresh position from this stream. Cancel on a newer seek.
+        val confirmed = kotlinx.coroutines.withTimeoutOrNull(1800) {
+            while (!StationSeekConfirmation.matches(state, url, target, before)) delay(80)
+            true
+        } == true
+        if (!confirmed) throw IOException("Station did not confirm seek")
     }
 
     override suspend fun transport(): TransportInfo {
@@ -117,7 +126,7 @@ internal class StationRendererLink(
         val previous = state
         if (previous == null || now - previous.at > 2500) {
             send(GlagolProtocol.ping())
-            withTimeout(6000) {
+            withTimeout(1800) {
                 while (state == null || SystemClock.elapsedRealtime() - (state?.at ?: 0) > 3000) delay(100)
             }
         }
@@ -126,7 +135,7 @@ internal class StationRendererLink(
         val matching = s.matches(currentUrl)
         val mode = when {
             !requested -> "STOPPED"
-            matching && s.playing == true -> "PLAYING"
+            matching && s.playing == true && s.at >= sentAt -> "PLAYING"
             paused && s.playing == false -> "PAUSED_PLAYBACK"
             matching && s.playing == false -> "PAUSED_PLAYBACK"
             now - sentAt < 5000 -> "TRANSITIONING"
