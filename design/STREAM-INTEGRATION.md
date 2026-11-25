@@ -1,0 +1,3 @@
+# Stream integration
+
+Keep upstream Prism as the design and playback authority. New features use its navigation, typography, glass surfaces, icon API, transport, queue and preferences. Preserve default parameters and layouts on existing screens; special fitting is opt-in at Stream call sites. Keep TV focus navigation and controls native to the existing TV UI. Tabler remains the explicitly requested icon source; no second theme engine or playback queue. For upstream merges, check shared components and behavior on ordinary playlists, radio, Stream, offline, and casting. Do not introduce new visible controls unless they solve a distinct user task.

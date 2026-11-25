@@ -239,6 +239,7 @@ fun SubPage(
 fun PrismChip(
     selected: Boolean, onClick: () -> Unit, label: String, modifier: Modifier = Modifier, icon: ImageVector? = null,
     idle: Color = Color.Unspecified, onLongClick: (() -> Unit)? = null, onLongClickLabel: String? = null,
+    fitLabel: Boolean = false,
 ) {
     val scheme = MaterialTheme.colorScheme
     val quiet = glassFill(1.2f)
@@ -246,7 +247,7 @@ fun PrismChip(
     val bg by animateColorAsState(if (selected) lifted else if (idle != Color.Unspecified) idle else quiet, tween(180), label = "chipBg")
     val fg by animateColorAsState(if (selected) scheme.onSurface else scheme.onSurfaceVariant, tween(180), label = "chipFg")
     val labelStyle = MaterialTheme.typography.labelLarge
-    val chipHeight = with(LocalDensity.current) { labelStyle.lineHeight.toDp() }.plus(12.dp).coerceAtLeast(36.dp)
+    val chipHeight = if (fitLabel) with(LocalDensity.current) { labelStyle.lineHeight.toDp() }.plus(12.dp).coerceAtLeast(36.dp) else 36.dp
     Row(
         modifier.height(chipHeight).clip(CircleShape).background(bg)
             .then(if (selected) Modifier.spectrumRing(CircleShape) else Modifier.border(1.dp, glassEdge(), CircleShape))
@@ -254,14 +255,15 @@ fun PrismChip(
             .then(
                 if (onLongClick == null) Modifier.clickable(onClick = onClick)
                 else Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = onLongClickLabel),
-            ).padding(horizontal = 12.dp),
+            ).padding(horizontal = if (fitLabel) 12.dp else 15.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
+        horizontalArrangement = if (fitLabel) Arrangement.Center else Arrangement.Start,
     ) {
         if (icon != null) { Icon(icon, null, Modifier.size(18.dp), tint = fg); Spacer(Modifier.width(6.dp)) }
-        Text(label, style = labelStyle, color = fg, maxLines = 1, softWrap = false,
+        if (fitLabel) Text(label, style = labelStyle, color = fg, maxLines = 1, softWrap = false,
             overflow = TextOverflow.Ellipsis,
             autoSize = FitAutoSize(minFontSize = minOf(10f, labelStyle.fontSize.value).sp, maxFontSize = labelStyle.fontSize))
+        else Text(label, style = labelStyle, color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

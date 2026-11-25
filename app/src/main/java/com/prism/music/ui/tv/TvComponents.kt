@@ -111,7 +111,7 @@ fun TvCard(
  * its label in the accent. Focused it fills white with the split light round it: one thing looks picked, never two.
  */
 @Composable
-fun TvButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, primary: Boolean = false) {
+fun TvButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, primary: Boolean = false, fitLabel: Boolean = false) {
     val scheme = MaterialTheme.colorScheme
     Button(
         onClick = onClick,
@@ -128,8 +128,9 @@ fun TvButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, i
             Icon(icon, null, Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
         }
-        Text(text, style = MaterialTheme.typography.titleSmall, maxLines = 2,
+        if (fitLabel) Text(text, style = MaterialTheme.typography.titleSmall, maxLines = 2,
             overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        else Text(text, style = MaterialTheme.typography.titleSmall)
     }
 }
 

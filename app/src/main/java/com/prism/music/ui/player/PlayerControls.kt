@@ -632,7 +632,7 @@ fun TransportRow(
     val style = LocalAppSettings.current.transportStyle
     val playSize = if (compact) 58.dp else 74.dp
     // With shuffle and repeat beside it, play's touch area gives a little room back (narrow phones).
-    val playTouch = if (compact) 76.dp else if (LocalAppSettings.current.player.shuffleRepeat) 80.dp else 92.dp
+    val playTouch = if (compact) 76.dp else if (showModes && LocalAppSettings.current.player.shuffleRepeat) 80.dp else 92.dp
     val skipSize = if (compact) 44.dp else 53.dp
     // Settings → Player: shuffle and repeat either side of the transport.
     val modes = showModes && LocalAppSettings.current.player.shuffleRepeat
@@ -746,7 +746,7 @@ private fun PlayDisc(isPlaying: Boolean, isLoading: Boolean, filled: Boolean, si
     ) {
         Box(
             Modifier.size(size).clip(CircleShape)
-                .background(if (filled) (accent ?: Color.White) else (accent ?: Color.White).copy(alpha = 0.18f))
+                .background(if (filled) (accent ?: Color.White) else (accent ?: Color.White).copy(alpha = if (accent == null) 0.10f else 0.18f))
                 .then(if (com.prism.music.ui.theme.LocalAppSettings.current.view.playRing) Modifier.border(2.dp, com.prism.music.ui.theme.PrismTokens.spectrumRing(), CircleShape) else Modifier),
             contentAlignment = Alignment.Center,
         ) {

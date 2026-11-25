@@ -170,4 +170,5 @@
     <string name="prism_stream_advanced">Дополнительно</string>
     <string name="prism_stream_language_hint">Язык по названию трека</string>
     <string name="prism_stream_save_scenario">Сохранить сценарий</string>
+    <string name="prism_tabler_icon_description">Иконки Tabler с настройками толщины и заливки Prism</string>
 </resources>

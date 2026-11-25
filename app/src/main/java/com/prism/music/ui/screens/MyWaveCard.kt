@@ -537,11 +537,11 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     WaveChoices(tr(R.string.prism_stream_popularity), MyWave.Depth.entries, draftStyle.depth, ::depthName) { value -> change { it.tune(it.style.copy(depth = value)) } }
                     Text(tr(R.string.prism_stream_player_card_backdrop), style = MaterialTheme.typography.titleSmall)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        PrismChip(selected = !editing.themeColors,
+                        PrismChip(fitLabel = true, selected = !editing.themeColors,
                             onClick = { change { it.copy(themeColors = false) } },
                             modifier = Modifier.weight(1f).height(44.dp).testTag("stream:color:artwork"),
                             label = tr(R.string.prism_stream_track_artwork))
-                        PrismChip(selected = editing.themeColors,
+                        PrismChip(fitLabel = true, selected = editing.themeColors,
                             onClick = { change { it.copy(themeColors = true) } },
                             modifier = Modifier.weight(1f).height(44.dp).testTag("stream:color:theme"),
                             label = tr(R.string.prism_stream_prism_theme))
@@ -552,7 +552,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (editing.presets.isNotEmpty())
                             Text(tr(R.string.prism_stream_my_presets), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                        PrismChip(selected = false, onClick = { namingPreset = true }, icon = PrismIcons.Add,
+                        PrismChip(fitLabel = true, selected = false, onClick = { namingPreset = true }, icon = PrismIcons.Add,
                             label = tr(R.string.prism_stream_save_scenario),
                             modifier = (if (editing.presets.isEmpty()) Modifier.fillMaxWidth() else Modifier)
                                 .height(44.dp).testTag("wave:preset:save"))
@@ -560,7 +560,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     editing.presets.forEach { preset ->
                         key(preset.id) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                PrismChip(selected = editing.presetId == preset.id && preset.origin == draftStyle.origin, label = preset.name, icon = PrismIcons.Bookmark,
+                                PrismChip(fitLabel = true, selected = editing.presetId == preset.id && preset.origin == draftStyle.origin, label = preset.name, icon = PrismIcons.Bookmark,
                                     modifier = Modifier.weight(1f).height(44.dp),
                                     onClick = { change { it.choose(preset) } })
                                 RoundAction(PrismIcons.Delete, tr(R.string.prism_stream_delete, preset.name), glass = true) { change { it.delete(preset.id) } }
@@ -603,7 +603,7 @@ private fun WaveScale(scale: WaveTuningScale, style: MyWave.Style, tag: String, 
         WaveScaleLabels(scale, value, scheme.primary, scheme.onSurfaceVariant,
             MaterialTheme.typography.labelMedium, MaterialTheme.typography.titleMedium,
             center = if (scale.automatic) {
-                { PrismChip(selected = automatic, label = tr(R.string.prism_stream_auto),
+                { PrismChip(fitLabel = true, selected = automatic, label = tr(R.string.prism_stream_auto),
                     onClick = { change(if (automatic) 50 else -1) }) }
             } else null)
         Slider(
@@ -632,7 +632,7 @@ private fun <T> WaveChoices(label: String, values: List<T>, selected: T, name: (
         values.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 row.forEach { value ->
-                    PrismChip(selected = value == selected, onClick = { onSelect(value) },
+                    PrismChip(fitLabel = true, selected = value == selected, onClick = { onSelect(value) },
                         label = name(value), modifier = Modifier.weight(1f).height(48.dp))
                 }
             }

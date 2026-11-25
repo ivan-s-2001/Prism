@@ -174,7 +174,7 @@ internal fun TvWavePlace(nav: TvNav) {
                             MyWave.Activity.SLEEP -> tr(R.string.prism_stream_sleep)
                         } }, { editor = editor.tune(draft.copy(activity = it)) })
                     var advanced by rememberSaveable { mutableStateOf(false) }
-                    TvButton(tr(R.string.prism_stream_advanced), { advanced = !advanced },
+                    WaveTvButton(tr(R.string.prism_stream_advanced), { advanced = !advanced },
                         Modifier.fillMaxWidth().tvItem("tv_wave/advanced"), icon = if (advanced) PrismIcons.ChevronUp else PrismIcons.ChevronDown)
                     if (advanced) {
                     TvWaveChoices(tr(R.string.prism_stream_popularity), MyWave.Depth.entries, draft.depth, "depth",
@@ -185,22 +185,22 @@ internal fun TvWavePlace(nav: TvNav) {
                         } }, { editor = editor.tune(draft.copy(depth = it)) })
                     Text(tr(R.string.prism_stream_player_card_backdrop), style = MaterialTheme.typography.titleSmall)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TvButton(tr(R.string.prism_stream_track_artwork), { editor = editor.copy(themeColors = false) },
+                        WaveTvButton(tr(R.string.prism_stream_track_artwork), { editor = editor.copy(themeColors = false) },
                             Modifier.weight(1f).tvItem("tv_wave/artwork"), primary = !editor.themeColors)
-                        TvButton(tr(R.string.prism_stream_prism_theme), { editor = editor.copy(themeColors = true) },
+                        WaveTvButton(tr(R.string.prism_stream_prism_theme), { editor = editor.copy(themeColors = true) },
                             Modifier.weight(1f).tvItem("tv_wave/theme"), primary = editor.themeColors)
                     }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TvButton(tr(R.string.prism_stream_save_scenario), { namingPreset = true },
+                        WaveTvButton(tr(R.string.prism_stream_save_scenario), { namingPreset = true },
                             Modifier.weight(1f).tvItem("tv_wave/save"), icon = PrismIcons.Add)
-                        TvButton(tr(R.string.prism_stream_reset), { editor = editor.reset() },
+                        WaveTvButton(tr(R.string.prism_stream_reset), { editor = editor.reset() },
                             Modifier.tvItem("tv_wave/reset"), icon = PrismIcons.Refresh)
                     }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TvButton(tr(R.string.prism_stream_cancel), { toggleTuning(false) }, Modifier.weight(1f).tvItem("tv_wave/cancel"))
-                        TvButton(tr(R.string.prism_stream_done), {
+                        WaveTvButton(tr(R.string.prism_stream_cancel), { toggleTuning(false) }, Modifier.weight(1f).tvItem("tv_wave/cancel"))
+                        WaveTvButton(tr(R.string.prism_stream_done), {
                             val final = editor
                             c.settings.applyStreamTuning(final.themeColors.takeIf { it != baseline.themeColors }, baseline.presets, final.presets,
                                 baseline.scenarioStyles, final.scenarioStyles)
@@ -222,7 +222,7 @@ internal fun TvWavePlace(nav: TvNav) {
                 val pageCount = if (group == null) customPages.size else pages.size
                 val visiblePage = page.coerceAtMost((pageCount - 1).coerceAtLeast(0))
                 Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)) {
-                    TvButton(when(group) {
+                    WaveTvButton(when(group) {
                         WaveScenarios.Group.DAY -> tr(R.string.prism_stream_time_of_day)
                         WaveScenarios.Group.ACTIVITY -> tr(R.string.prism_stream_activity)
                         WaveScenarios.Group.DISCOVERY -> tr(R.string.prism_stream_taste)
@@ -234,7 +234,7 @@ internal fun TvWavePlace(nav: TvNav) {
                         customPages.getOrElse(visiblePage) { emptyList() }.forEach { preset ->
                             key(preset.id) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    TvButton(preset.name, { editor = editor.choose(preset) },
+                                    WaveTvButton(preset.name, { editor = editor.choose(preset) },
                                         Modifier.weight(1f).tvItem("tv_wave/custom/${preset.id}"), icon = PrismIcons.Bookmark,
                                         primary = editor.presetId == preset.id && draft.origin == preset.origin)
                                     TvIconButton(PrismIcons.Delete, tr(R.string.prism_stream_delete, preset.name),
@@ -243,12 +243,12 @@ internal fun TvWavePlace(nav: TvNav) {
                             }
                         }
                     } else pages.getOrElse(visiblePage) { emptyList() }.forEach { preset ->
-                        TvButton(preset.label,
+                        WaveTvButton(preset.label,
                             { editor = editor.choose(preset) },
                             Modifier.fillMaxWidth().tvItem("tv_wave/preset/${preset.id}"),
                             primary = editor.presetId == preset.id || (editor.presetId == null && draft == WaveScenarios.resolve(preset, editor.scenarioStyles, draft.russianPercent)), icon = PrismIcons.waveScenario(preset.glyph))
                     }
-                    if (pageCount > 1) TvButton(tr(R.string.prism_stream_more_2), { page = (visiblePage + 1) % pageCount },
+                    if (pageCount > 1) WaveTvButton(tr(R.string.prism_stream_more_2), { page = (visiblePage + 1) % pageCount },
                         Modifier.tvItem("tv_wave/more"))
                 }
             }
@@ -290,9 +290,9 @@ internal fun TvWavePlace(nav: TvNav) {
                                 Modifier.tvItem("tv_wave/dislike"), on = current?.id in disliked)
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            TvButton(if (starting) tr(R.string.prism_stream_finding_music) else tr(R.string.prism_stream_refresh),
+                            WaveTvButton(if (starting) tr(R.string.prism_stream_finding_music) else tr(R.string.prism_stream_refresh),
                                 { if (!starting) start() }, Modifier.weight(1f).tvItem("tv_wave/refresh"), icon = PrismIcons.Shuffle)
-                            if (current != null) TvButton(tr(R.string.prism_stream_player), { nav.go(TvRoute.Player) }, Modifier.weight(1f).tvItem("tv_wave/player"))
+                            if (current != null) WaveTvButton(tr(R.string.prism_stream_player), { nav.go(TvRoute.Player) }, Modifier.weight(1f).tvItem("tv_wave/player"))
                         }
                     }
                 }
@@ -346,7 +346,7 @@ private fun TvWaveScale(scale: WaveTuningScale, style: MyWave.Style, tag: String
                 WaveScaleLabels(scale, value, scheme.primary, scheme.onSurfaceVariant,
                     MaterialTheme.typography.labelMedium, MaterialTheme.typography.titleMedium,
                     center = if (scale.automatic) {
-                        { TvButton(tr(R.string.prism_stream_auto), { change(if (automatic) 50 else -1) },
+                        { WaveTvButton(tr(R.string.prism_stream_auto), { change(if (automatic) 50 else -1) },
                             Modifier.tvItem("tv_wave/auto"), primary = automatic) }
                     } else null)
                 WaveScaleRail(scale, value, scheme.primary, scheme.onSurfaceVariant, scheme.surface,
@@ -368,11 +368,18 @@ private fun <T> TvWaveChoices(title: String, values: List<T>, selected: T, tag: 
         values.chunked(2).forEachIndexed { row, items ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 items.forEachIndexed { index, value ->
-                    TvButton(name(value), { choose(value) }, Modifier.weight(1f).tvItem("tv_wave/$tag/$row/$index"),
+                    WaveTvButton(name(value), { choose(value) }, Modifier.weight(1f).tvItem("tv_wave/$tag/$row/$index"),
                         primary = selected == value)
                 }
                 if (items.size == 1) Spacer(Modifier.weight(1f))
             }
         }
     }
+}
+
+/** Only Stream needs two-line, bounded choice labels; normal TV buttons retain upstream layout. */
+@Composable
+private fun WaveTvButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null, primary: Boolean = false) {
+    TvButton(text, onClick, modifier, icon, primary, fitLabel = true)
 }
