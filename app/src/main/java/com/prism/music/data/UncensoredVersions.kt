@@ -103,11 +103,19 @@ class UncensoredVersions(
                     }
                     val results = kotlinx.coroutines.coroutineScope {
                         queries.map { (q, filter) ->
-                            async { search(q, filter) }
+                            async {
+                                try {
+                                    search(q, filter)
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (_: Exception) {
+                                    emptyList()
+                                }
+                            }
                         }.awaitAll().flatten()
                     }
                     val candidate = UncensoredRules.best(song, results)
-                    if (results.isNotEmpty()) {
+                    if (results.isNotEmpty() && candidate == null) {
                         if (checked.size >= 2048) checked.clear()
                         checked[song.id] = System.currentTimeMillis()
                     }
