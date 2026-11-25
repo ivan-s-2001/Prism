@@ -54,7 +54,7 @@ internal fun StationAccountRow(ink: Color) {
             val auth = YandexDeviceAuth()
             val code = auth.requestCode()
             grant = code
-            val token = auth.awaitToken(code)
+            val token = auth.awaitCredentials(code)
             withContext(Dispatchers.IO) {
                 StationConnectAccount.authorizePersistently(context.applicationContext, token)
             }
