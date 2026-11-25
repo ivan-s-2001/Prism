@@ -636,6 +636,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 publishLive()
                 var failures = 0
                 var stalled = 0
+                var lastRecovery = 0L
                 var lastCaptured = tap.captured
                 while (true) {
                     delay(1500)
@@ -646,7 +647,19 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                     lastCaptured = captured
                     if (stalled >= 3) error("PCM source stalled while playing")
                     failures = if (active.liveReceiving()) 0 else failures + 1
-                    if (failures >= 4) error("Live HTTP stream ended: ${active.liveStatus()}")
+                    if (failures >= 4) {
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        if (!directConfirmed || (lastRecovery != 0L && now - lastRecovery < 30_000L))
+                            error("Live HTTP stream ended: ${active.liveStatus()}")
+                        lastRecovery = now
+                        Log.w("PrismLive", "${r.name}: restoring interrupted PCM receiver")
+                        // Fresh HTTP resource, same local decoder and independent room reader.
+                        // Other rooms keep playing; do not reset group or local audio focus.
+                        input.rejoinLiveEdge()
+                        withContext(Dispatchers.IO) { active.playMusicLive(address, direct = true, source = input::read) }
+                        if (!awaitStream(9000L)) error("PCM recovery not confirmed: ${active.liveStatus()}")
+                        failures = 0
+                    }
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
