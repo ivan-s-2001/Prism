@@ -63,6 +63,8 @@ class QueueState {
     @Volatile var filling = false
     /** Index in the queue where autoplay suggestions begin (-1 when none). */
     val autoplayStart = MutableStateFlow(-1)
+    /** First track of the current Vibe tuning epoch; earlier tracks cannot affect its quota. */
+    @Volatile var waveQuotaStart = 0
     /** Songs the listener added themselves (Play next, Add to queue) and hasn't reached yet: "Next in queue". */
     val userQueued = MutableStateFlow<Set<String>>(emptySet())
     /** Playing along with a Listen Together host: their queue decides what's next (no autoplay or skipping here). */

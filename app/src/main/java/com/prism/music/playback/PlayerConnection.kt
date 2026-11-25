@@ -593,6 +593,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         c.queue.source.value = source
         c.queue.autoplayContinuation = null
         c.queue.autoplayStart.value = -1
+        c.queue.waveQuotaStart = 0
         c.queue.userQueued.value = emptySet()
         ensureStarted()
         // 1.8.8: with "Blend when I skip" on, the song playing fades out over 200 ms before the new queue takes over.
@@ -811,6 +812,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
                 if (p.getMediaItemAt(i).mediaId !in manual) p.removeMediaItem(i)
             }
             c.queue.autoplayStart.value = p.mediaItemCount - songs.size
+            c.queue.waveQuotaStart = p.mediaItemCount - songs.size
         } finally { c.queue.filling = false }
         c.recFeedback.served(songs.map { it.id })
         if (c.dj.onNow) c.dj.rescan()

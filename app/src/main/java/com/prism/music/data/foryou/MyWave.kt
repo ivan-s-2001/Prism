@@ -125,18 +125,43 @@ internal object MyWave {
         return ((i + 1) * p + 50) / 100 > (i * p + 50) / 100
     }
 
-    /** No reliable vocal-language field is provided by the catalogue. Use title script as
-     * an explicitly approximate signal; never infer language from artist nationality. */
+    /** Title-script evidence, not a claim about vocals or artist nationality.
+     * Strip common catalogue annotations before classifying: e.g. "Love (официальное видео)".
+     * Ambiguous scripts, mixed titles and titles without letters stay unknown.
+     */
+    private val catalogueSuffix = Regex("""(?iu)\s*[\[(](?:[^)\]]*\b(?:official|audio|video|lyrics|remaster(?:ed)?|live|version|feat\.?)\b[^)\]]*|[^)\]]*(?:официальн\w*|видео|аудио|текст песни|клип|ремастер|версия)[^)\]]*)[\])]\s*$""")
     fun russianTitle(song: Song): Boolean? {
-        val letters = song.title.filter { it.isLetter() }
+        var title = song.title.trim()
+        while (true) {
+            val cleaned = title.replace(catalogueSuffix, "").trim()
+            if (cleaned == title) break
+            title = cleaned
+        }
+        val letters = title.filter { it.isLetter() }
         if (letters.isEmpty()) return null
+        val cyrillic = letters.count { java.lang.Character.UnicodeScript.of(it.code) == java.lang.Character.UnicodeScript.CYRILLIC }
         val russian = letters.count { it.lowercaseChar() in 'а'..'я' || it.lowercaseChar() == 'ё' }
-        if (letters.any { it.lowercaseChar() in "іїєґў" }) return null
+        if (letters.any { it.lowercaseChar() in "іїєґўђјљњћџѕќѓ" }) return false
         return when {
-            russian * 2 >= letters.length -> true
-            russian == 0 && letters.any { java.lang.Character.UnicodeScript.of(it.code) != java.lang.Character.UnicodeScript.CYRILLIC } -> false
+            russian == letters.length -> true
+            cyrillic == 0 -> false
+            russian * 4 >= letters.length * 3 && cyrillic == russian -> true
             else -> null
         }
+    }
+
+    /** Endpoints never silently admit the opposite/unknown language. */
+    fun languageAllowed(song: Song, style: Style): Boolean = when (style.russianPercent) {
+        0 -> russianTitle(song) == false
+        100 -> russianTitle(song) == true
+        else -> true
+    }
+
+    fun requestedLanguage(style: Style, index: Int): Boolean? = when (style.russianPercent) {
+        -1 -> null
+        0 -> false
+        100 -> true
+        else -> VibeLearning.languageSlot(index, style.discoveryPercent, style.russianPercent)
     }
 
     /** The supplied pool contains completed, policy-eligible downloads only. Never duplicate
@@ -152,14 +177,8 @@ internal object MyWave {
         val available = pool.distinctBy(LocalRadio::sameSong).filter { LocalRadio.sameSong(it) !in queued }
         val previousKey = previous?.let(LocalRadio::sameSong)
         val cycle = available.filter { LocalRadio.sameSong(it) != previousKey }.ifEmpty { available }
-        val preferred = cycle.filter {
-            when (style.russianPercent) {
-                0 -> russianTitle(it) == false
-                100 -> russianTitle(it) == true
-                else -> true
-            }
-        }.ifEmpty { cycle }
-        val fallbackStyle = if (preferred.none { when (style.russianPercent) { 0 -> russianTitle(it) == false; 100 -> russianTitle(it) == true; else -> true } }) style.copy(russianPercent = -1) else style
+        val preferred = cycle.filter { languageAllowed(it, style) }
+        val fallbackStyle = style
         val availableIds = preferred.mapTo(hashSetOf()) { it.id }
         val localLikes = likes.filter { it.id in availableIds }
         val likedIds = localLikes.mapTo(hashSetOf()) { it.id }
@@ -177,7 +196,7 @@ internal object MyWave {
             val ids = tier.mapTo(hashSetOf()) { it.id }
             val rest = start(tier, localLikes.filter { it.id in ids }, emptyList(), heard,
                 allowed = { LocalRadio.sameSong(it) !in used }, seed = seed,
-                count = count - result.size, style = fallbackStyle, signals = signals, profile = profile,
+                count = count - result.size, style = fallbackStyle, signals = signals, profile = profile, quotaOffset = offset + result.size,
                 previousSong = result.lastOrNull() ?: previous, artistDoubt = artistDoubt,
                 artistEvidence = artistEvidence, recentArtists = (upcoming + listOfNotNull(previous) + result).map { it.primaryArtist })
             result += rest
@@ -250,7 +269,7 @@ internal object MyWave {
         val favoriteKeys = favorites.mapTo(hashSetOf(), LocalRadio::sameSong)
         fun familiar(s: Song): Boolean? = if (LocalRadio.sameSong(s) in favoriteKeys || LocalRadio.sameSong(s) in recentKeys || heard(s)) true else signals.heard(s)
         fun pool(songs: List<Song>) = songs.filter { allowed(it) && LocalRadio.sameSong(it) !in avoid &&
-            when (style.russianPercent) { 0 -> russianTitle(it) == false; 100 -> russianTitle(it) == true; else -> true } }
+            languageAllowed(it, style) }
             .distinctBy(LocalRadio::sameSong)
             .mapIndexed { index, s ->
                 // Preserve ranking from the candidate generator; explore by bounded noise, not a uniform shuffle.
@@ -303,18 +322,22 @@ internal object MyWave {
             }
             val preferred = if (strictQuota) listOf(if (preferKnown) known else picks)
                 else if (preferKnown) listOf(known, picks, last) else listOf(picks, known, last)
-            val s = if (quotaOffset != null && style.russianPercent in 1..99) {
-                // Prefer the requested language in the preferred pool, then fall back to the available music.
-                val russian = VibeLearning.languageSlot(quotaOffset + out.size, style.discoveryPercent, style.russianPercent)
+            val target = requestedLanguage(style, (quotaOffset ?: 0) + out.size)
+            val s = if (target != null) {
+                // Language is a real quota, not a score bonus. Try all matching candidates before
+                // relaxing artist diversity. Never fill a missing language slot with the opposite one.
                 fun takeLanguage(from: MutableList<Pair<Song, Double>>, strict: Boolean): Song? {
-                    val matching = from.filter { russianTitle(it.first) == russian }.toMutableList()
+                    val matching = from.filter { russianTitle(it.first) == target }.toMutableList()
                     val chosen = take(matching, strict) ?: return null
                     from.removeAll { LocalRadio.sameSong(it.first) == LocalRadio.sameSong(chosen) }
                     return chosen
                 }
-                preferred.firstNotNullOfOrNull { pool ->
-                    takeLanguage(pool, true) ?: take(pool, true) ?: takeLanguage(pool, false) ?: take(pool, false)
-                }
+                val matchingPools = if (strictQuota && style.discoveryPercent in 1..99)
+                    preferred + (if (preferKnown) picks else known) else preferred
+                preferred.firstNotNullOfOrNull { takeLanguage(it, true) }
+                    ?: preferred.firstNotNullOfOrNull { takeLanguage(it, false) }
+                    ?: matchingPools.firstNotNullOfOrNull { takeLanguage(it, true) }
+                    ?: matchingPools.firstNotNullOfOrNull { takeLanguage(it, false) }
             } else preferred.firstNotNullOfOrNull { take(it, true) }
                 ?: preferred.firstNotNullOfOrNull { take(it, false) }
             if (s == null) break

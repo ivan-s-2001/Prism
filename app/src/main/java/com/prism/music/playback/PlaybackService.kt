@@ -1872,7 +1872,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             if (wave) {
                 val queue = (0 until player.mediaItemCount).mapNotNull { player.getMediaItemAt(it).toSong() }
                 val manual = c.queue.userQueued.value
-                val offset = queue.count { it.id !in manual }
+                val offset = queue.drop(c.queue.waveQuotaStart.coerceIn(0, queue.size)).count { it.id !in manual }
                 val additions = try {
                     c.yourMusic.waveBatch(emptyList(), waveStyle, offset, queue.lastOrNull(),
                         if (offline) queue.drop(player.currentMediaItemIndex + 1) else queue)

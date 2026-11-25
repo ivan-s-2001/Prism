@@ -310,8 +310,9 @@ class YourMusic(private val c: AppContainer) {
         fallbackBase: suspend () -> List<Song> = { base },
     ): List<Song> {
         val quick = waveBatch(base, style, 0, previous, existing, count = 2, fast = true)
-        if (quick.isNotEmpty()) return quick
-        return waveBatch(fallbackBase(), style, 0, previous, existing, count = 2)
+        if (quick.size >= 2 || (quick.isNotEmpty() && style.russianPercent < 0)) return quick
+        val full = waveBatch(fallbackBase(), style, 0, previous, existing, count = 2)
+        return if (full.size >= quick.size) full else quick
     }
 
     /** Shared start/refill path. New means absent from the available local and imported history, not a claim about
@@ -346,18 +347,25 @@ class YourMusic(private val c: AppContainer) {
         // With no likes, recommendations can still lead to related songs as the session develops.
         // A positive profile wins over an arbitrary feed. A new profile may use the feed to discover initial seeds.
         val positive = taste.likedSeeds + listOfNotNull(previous)
-        val seeds = VibeLearning.recallSeeds(positive, base,
+        val usualSeeds = VibeLearning.recallSeeds(positive, base,
             id = { it.id }, artist = { it.primaryArtist }, eligible = {
                 !it.isLocal && !it.isVideo && !it.isEpisode && !it.isLive && recommendationAllowed(it, known(it))
             })
+        // A Russian-only library must not lock foreign recall (and vice versa). Select relevant
+        // seed artists for the language of the next slots, including the listener's wider history.
+        val languagePool = (positive + taste.favorites + base).distinctBy { it.id }
+        val targets = (0 until count.coerceAtLeast(1)).mapNotNull { MyWave.requestedLanguage(style, offset + it) }.distinct()
+        val byLanguage = targets.map { target ->
+            VibeLearning.recallSeeds(languagePool, emptyList(), id = { it.id }, artist = { it.primaryArtist },
+                eligible = { !it.isLocal && !it.isVideo && !it.isEpisode && !it.isLive &&
+                    MyWave.russianTitle(it) == target && recommendationAllowed(it, known(it)) }, limit = 6)
+        }
+        val languageSeeds = (0 until 6).flatMap { i -> byLanguage.mapNotNull { it.getOrNull(i) } }
+        val seeds = (languageSeeds + usualSeeds).distinctBy { it.id }.take(12)
         val feedback = c.recFeedback
         val recentArtists = existing.takeLast(12).map { it.primaryArtist }
         fun eligible(song: Song) = LocalRadio.sameSong(song) !in avoid &&
-            recommendationAllowed(song, known(song)) && when (style.russianPercent) {
-                0 -> MyWave.russianTitle(song) == false
-                100 -> MyWave.russianTitle(song) == true
-                else -> true
-            }
+            recommendationAllowed(song, known(song)) && MyWave.languageAllowed(song, style)
         suspend fun select(related: List<Song>, allowSparseProfile: Boolean = false): List<Song> {
             val candidates = MyWave.fuse(listOf(related.filter(::eligible), base.filter(::eligible)), 160)
             val signals = c.discover.radioSignals(candidates + taste.likes.take(100), style.tune.copy(newness = 0f),
@@ -384,15 +392,33 @@ class YourMusic(private val c: AppContainer) {
         val cached = if (style.discoveryPercent > 0) cachedWaveRelated(avoid, ::eligible, seeds) else emptyList()
         if (fast) {
             val ready = select(cached)
-            if (ready.isNotEmpty() || style.discoveryPercent == 0) return@withContext ready
+            if (ready.size >= count || (ready.isNotEmpty() && style.russianPercent < 0) || style.discoveryPercent == 0) return@withContext ready
             // Only on a cache miss: a short first lookup, not three full radios.
             val quick = kotlinx.coroutines.withTimeoutOrNull(900L) {
                 waveRelated(seeds, offset, avoid, known, maxRequests = 1, timeoutMs = 850L, scoped = true, allowed = ::eligible)
             }
-            return@withContext select(quick ?: cachedWaveRelated(avoid, ::eligible, seeds), allowSparseProfile = true)
+            val more = select(quick ?: cachedWaveRelated(avoid, ::eligible, seeds), allowSparseProfile = true)
+            return@withContext if (more.size >= ready.size) more else ready
         }
         val related = if (style.discoveryPercent > 0) waveRelated(seeds, offset, avoid, known, scoped = true, allowed = ::eligible) else cached
-        select(related, allowSparseProfile = true)
+        val ranked = select(related, allowSparseProfile = true)
+        // Last resort for an explicit language preference: a bounded song-only retrieval,
+        // then the very same taste, history, exclusions and language quota as every other source.
+        // Avoid extra network pressure during a live cast.
+        if (ranked.size >= count || style.russianPercent < 0 || style.discoveryPercent == 0 || c.castingNow) return@withContext ranked
+        val missing = MyWave.requestedLanguage(style, offset + ranked.size) ?: return@withContext ranked
+        val artist = languagePool.firstOrNull { MyWave.russianTitle(it) == missing && it.primaryArtist.isNotBlank() }?.primaryArtist
+        val query = artist ?: if (missing) "русские песни" else "international music songs"
+        val searched = kotlinx.coroutines.withTimeoutOrNull(2200L) {
+            try {
+                c.ytm.search(query, com.prism.music.data.innertube.SearchFilter.SONGS).items
+                    .filterIsInstance<com.prism.music.data.model.SongItem>().map { it.song }
+                    .filter(::eligible)
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { emptyList() }
+        }.orEmpty()
+        val expanded = select(MyWave.fuse(listOf(related, searched), 160), allowSparseProfile = true)
+        if (expanded.size >= ranked.size) expanded else ranked
     }
 
 

@@ -478,6 +478,35 @@ class MyWaveTest {
         assertEquals(3, result.count { it in likedRu })
     }
 
+    @Test fun languageQuotaNeverSilentlySubstitutesTheOppositeLanguage() {
+        val en = (1..20).map { song("en$it", "E$it", "English $it") }
+        val ru = (1..20).map { song("ru$it", "R$it", "Русская песня $it") }
+        val style = MyWave.Style(discoveryPercent = 100, russianPercent = 70)
+        val result = MyWave.start(en + ru, emptyList(), emptyList(), { false }, { true }, 42L,
+            count = 10, style = style, quotaOffset = 0, strictQuota = true)
+        assertEquals(10, result.size)
+        assertEquals(7, result.count { MyWave.russianTitle(it) == true })
+        val wrongOnly = MyWave.start(en, emptyList(), emptyList(), { false }, { true }, 42L,
+            count = 10, style = style, quotaOffset = 0, strictQuota = true)
+        assertTrue(wrongOnly.isEmpty())
+    }
+
+    @Test fun languageClassificationIgnoresCatalogueAnnotations() {
+        assertEquals(false, MyWave.russianTitle(song("en", "Artist", "Love (официальное видео)")))
+        assertEquals(true, MyWave.russianTitle(song("ru", "Artist", "Любовь (Official Video)")))
+        assertEquals(false, MyWave.russianTitle(song("uk", "Artist", "Мрії")))
+        assertEquals(null, MyWave.russianTitle(song("mixed", "Artist", "Love Любовь")))
+        assertEquals(null, MyWave.russianTitle(song("number", "Artist", "123")))
+    }
+
+    @Test fun strictOfflineLanguageDoesNotPlayOppositeLanguageWhenUnavailable() {
+        val en = song("en", "Artist", "Love")
+        val result = MyWave.offlineMix(listOf(en), emptyList(), emptyList(), null, { false },
+            MyWave.Style(russianPercent = 100), com.prism.music.data.foryou.RadioSignals(),
+            MyWave.Profile(), count = 2, offset = 0, seed = 42L)
+        assertTrue(result.isEmpty())
+    }
+
     @Test fun recentArtistsDoNotDominateTheNextBatch() {
         val a = song("a", "A")
         val b = song("b", "B")
