@@ -168,4 +168,6 @@
     <string name="prism_stream_decrease_share">Less: %1$s</string>
     <string name="prism_stream_increase_share">More: %1$s</string>
     <string name="prism_stream_advanced">More settings</string>
+    <string name="prism_stream_language_hint">Language by track title</string>
+    <string name="prism_stream_save_scenario">Save scenario</string>
 </resources>

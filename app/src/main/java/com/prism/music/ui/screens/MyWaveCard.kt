@@ -499,7 +499,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 }
                 var advanced by rememberSaveable { mutableStateOf(false) }
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(bottom = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(22.dp)) {
+                    verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     WaveScale(WaveTuningScale.DISCOVERY, draftStyle, "wave:discovery-percent") { value ->
                         change { WaveTuningScale.DISCOVERY.change(it, value) }
                     }
@@ -533,18 +533,16 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                             label = tr(R.string.prism_stream_prism_theme))
                     }
 
-                        if (draftStyle.mood != MyWave.Mood.ANY || draftStyle.activity != MyWave.Activity.ANY)
-                            Text(tr(R.string.prism_stream_uses_measured_tempo_and_loudness_when_available),
-                                color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     }
                     HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.65f))
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(tr(R.string.prism_stream_my_presets), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                        if (editing.presets.isNotEmpty())
+                            Text(tr(R.string.prism_stream_my_presets), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
                         PrismChip(selected = false, onClick = { namingPreset = true }, icon = PrismIcons.Add,
-                            label = tr(R.string.prism_stream_save), modifier = Modifier.height(44.dp).testTag("wave:preset:save"))
+                            label = tr(R.string.prism_stream_save_scenario),
+                            modifier = (if (editing.presets.isEmpty()) Modifier.fillMaxWidth() else Modifier)
+                                .height(44.dp).testTag("wave:preset:save"))
                     }
-                    if (editing.presets.isEmpty()) Text(tr(R.string.prism_stream_save_the_current_settings_as_your_own_scenario),
-                        style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                     editing.presets.forEach { preset ->
                         key(preset.id) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -588,12 +586,10 @@ private fun WaveScale(scale: WaveTuningScale, style: MyWave.Style, tag: String, 
     val value = scale.value(style)
     val automatic = scale.automatic && value < 0
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
+        if (!scale.ratio) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Text(tr(scale.title), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            if (scale.automatic) PrismChip(selected = automatic, label = tr(R.string.prism_stream_auto),
-                onClick = { change(if (automatic) 50 else -1) }, modifier = Modifier.height(36.dp))
-            else if (!scale.ratio) Text(scale.level(value), style = MaterialTheme.typography.labelLarge, color = scheme.primary)
+            Text(scale.level(value), style = MaterialTheme.typography.labelLarge, color = scheme.primary)
         }
         WaveScaleLabels(scale, value, scheme.primary, scheme.onSurfaceVariant,
             MaterialTheme.typography.labelMedium, MaterialTheme.typography.titleMedium)
@@ -612,7 +608,13 @@ private fun WaveScale(scale: WaveTuningScale, style: MyWave.Style, tag: String, 
                 WaveScaleRail(scale, value, scheme.primary, scheme.onSurfaceVariant, scheme.surface)
             },
         )
-        if (scale.automatic) Text(tr(scale.detail), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+        if (scale.automatic) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(tr(R.string.prism_stream_language_hint), Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+            PrismChip(selected = automatic, label = tr(R.string.prism_stream_auto),
+                onClick = { change(if (automatic) 50 else -1) })
+        }
     }
 }
 

@@ -180,7 +180,7 @@ internal fun TvWavePlace(nav: TvNav) {
                     }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TvButton(tr(R.string.prism_stream_save_preset), { namingPreset = true },
+                        TvButton(tr(R.string.prism_stream_save_scenario), { namingPreset = true },
                             Modifier.weight(1f).tvItem("tv_wave/save"), icon = PrismIcons.Add)
                         TvButton(tr(R.string.prism_stream_reset), { editor = editor.reset() },
                             Modifier.tvItem("tv_wave/reset"), icon = PrismIcons.Refresh)
@@ -208,7 +208,6 @@ internal fun TvWavePlace(nav: TvNav) {
                 val pageCount = if (group == null) customPages.size else pages.size
                 val visiblePage = page.coerceAtMost((pageCount - 1).coerceAtLeast(0))
                 Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)) {
-                    Text(tr(R.string.prism_stream_scenarios), style = MaterialTheme.typography.headlineSmall)
                     TvButton(when(group) {
                         WaveScenarios.Group.DAY -> tr(R.string.prism_stream_time_of_day)
                         WaveScenarios.Group.ACTIVITY -> tr(R.string.prism_stream_activity)
@@ -322,12 +321,10 @@ private fun TvWaveScale(scale: WaveTuningScale, style: MyWave.Style, tag: String
     val position = scale.position(value)
     val automatic = scale.automatic && value < 0
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+        if (!scale.ratio) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(tr(scale.title), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            if (scale.automatic) TvButton(tr(R.string.prism_stream_auto), { change(if (automatic) 50 else -1) },
-                Modifier.tvItem("tv_wave/auto"), primary = automatic)
-            else if (!scale.ratio) Text(scale.level(value), style = MaterialTheme.typography.labelLarge, color = scheme.primary)
+            Text(scale.level(value), style = MaterialTheme.typography.labelLarge, color = scheme.primary)
         }
         val adjustedLabel = tr(if (scale.ratio) scale.left else scale.title)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
@@ -345,7 +342,13 @@ private fun TvWaveScale(scale: WaveTuningScale, style: MyWave.Style, tag: String
                 { change(scale.fromPosition((position + scale.step).toFloat())) },
                 Modifier.tvItem("tv_wave/$tag/up"))
         }
-        if (scale.automatic) Text(tr(scale.detail), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+        if (scale.automatic) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(tr(R.string.prism_stream_language_hint), Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+            TvButton(tr(R.string.prism_stream_auto), { change(if (automatic) 50 else -1) },
+                Modifier.tvItem("tv_wave/auto"), primary = automatic)
+        }
     }
 }
 
