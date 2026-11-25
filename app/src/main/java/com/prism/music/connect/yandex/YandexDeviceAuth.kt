@@ -10,6 +10,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.FormBody
@@ -17,7 +18,9 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
-internal class YandexAuthException(message: String) : Exception(message)
+internal class YandexAuthException(message: String, val reauthorizationRequired: Boolean = false) : Exception(message)
+
+internal class YandexCredentials(val access: String, val refresh: String?, val expiresAt: Long?)
 
 internal class YandexDeviceGrant(
     val deviceCode: String,
@@ -43,7 +46,7 @@ internal class YandexDeviceAuth {
         val result = post("device/code", mapOf(
             "client_id" to clientId,
             "device_id" to UUID.randomUUID().toString().replace("-", "").take(10),
-            "device_name" to "Prism Station Lab",
+            "device_name" to "Prism",
         ))
         val deviceCode = result.string("device_code") ?: throw YandexAuthException("Device code request rejected")
         val userCode = result.string("user_code") ?: throw YandexAuthException("No user code returned")
@@ -58,7 +61,9 @@ internal class YandexDeviceAuth {
             SystemClock.elapsedRealtime() + expires * 1000L)
     }
 
-    suspend fun awaitToken(grant: YandexDeviceGrant): String {
+    suspend fun awaitToken(grant: YandexDeviceGrant): String = awaitCredentials(grant).access
+
+    suspend fun awaitCredentials(grant: YandexDeviceGrant): YandexCredentials {
         var interval = grant.interval.toLong()
         while (SystemClock.elapsedRealtime() < grant.deadline) {
             delay(interval * 1000L)
@@ -69,7 +74,7 @@ internal class YandexDeviceAuth {
                 "client_id" to clientId,
                 "client_secret" to clientSecret,
             ))
-            result.string("access_token")?.let { if (it.isNotBlank()) return it }
+            credentials(result)?.let { return it }
             when (result.string("error")) {
                 "authorization_pending" -> Unit
                 "slow_down" -> interval += 5
@@ -80,6 +85,27 @@ internal class YandexDeviceAuth {
             }
         }
         throw YandexAuthException("Device code expired")
+    }
+
+    suspend fun refresh(previous: YandexCredentials): YandexCredentials {
+        val refresh = previous.refresh ?: throw YandexAuthException("Sign in again", true)
+        val result = post("token", mapOf(
+            "grant_type" to "refresh_token",
+            "refresh_token" to refresh,
+            "client_id" to clientId,
+            "client_secret" to clientSecret,
+        ))
+        return credentials(result, refresh) ?: throw YandexAuthException(
+            "Yandex token refresh failed", result.string("error") in setOf("invalid_grant", "invalid_client", "unauthorized_client")
+        )
+    }
+
+    private fun credentials(result: JsonObject, oldRefresh: String? = null): YandexCredentials? {
+        val access = result.string("access_token")?.takeIf { it.isNotBlank() && it.length <= 16000 } ?: return null
+        val refresh = result.string("refresh_token")?.takeIf { it.isNotBlank() && it.length <= 16000 } ?: oldRefresh
+        val expires = result["expires_in"]?.jsonPrimitive?.longOrNull?.takeIf { it > 0 }
+            ?.coerceAtMost(3153600000L)?.let { System.currentTimeMillis() + it * 1000L }
+        return YandexCredentials(access, refresh, expires)
     }
 
     private suspend fun post(path: String, fields: Map<String, String>): JsonObject = withContext(Dispatchers.IO) {
