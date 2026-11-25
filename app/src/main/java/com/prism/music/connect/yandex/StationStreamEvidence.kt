@@ -10,12 +10,14 @@ internal class StationStreamEvidence {
     private var baseline = 0L
     private var issuedAt = Long.MAX_VALUE
     private var confirmed = false
+    private var interrupted = false
 
     @Synchronized fun begin(url: String, baseline: Long, issuedAt: Long) {
         this.url = url
         this.baseline = baseline
         this.issuedAt = issuedAt
         confirmed = false
+        interrupted = false
     }
 
     @Synchronized fun clear() {
@@ -27,11 +29,12 @@ internal class StationStreamEvidence {
         val expected = url ?: return raw
         if (raw.at < issuedAt) return raw
         if (raw.type == "bluetooth" || (!raw.id.isNullOrEmpty() && raw.id != expected)) {
-            if (raw.playing == true) confirmed = false
+            if (raw.playing == true) { confirmed = false; interrupted = true }
             return raw
         }
-        if (raw.playing == true && (raw.matches(expected) || (raw.id == "" && delivery(expected) > baseline))) {
+        if (raw.playing == true && (raw.matches(expected) || (raw.id == "" && !interrupted && delivery(expected) > baseline))) {
             confirmed = true
+            interrupted = false
         }
         // Only normalize explicitly anonymous frames of an already correlated stream.
         return if (confirmed && raw.id == "") raw.copy(id = expected) else raw
