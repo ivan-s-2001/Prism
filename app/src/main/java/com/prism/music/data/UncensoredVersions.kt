@@ -89,8 +89,9 @@ class UncensoredVersions(
                     val query = "${song.title} ${song.primaryArtist}".trim()
                     val songs = search(query, SearchFilter.SONGS)
                     val videos = search(query, SearchFilter.VIDEOS)
+                    val hint = if (song.title.any { it in '\u0400'..'\u04ff' }) "без цензуры" else "uncensored"
                     val candidate = UncensoredRules.best(song, songs + videos)
-                        ?: UncensoredRules.best(song, search("$query uncensored", SearchFilter.VIDEOS))
+                        ?: UncensoredRules.best(song, search("$query $hint", SearchFilter.VIDEOS))
                     if (songs.isNotEmpty() || videos.isNotEmpty() || candidate != null) {
                         if (checked.size >= 2048) checked.clear()
                         checked[song.id] = System.currentTimeMillis()
