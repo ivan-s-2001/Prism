@@ -380,7 +380,7 @@ private fun NavTab.tab(name: String? = null): Tab {
     val label = name ?: label
     return when (this) {
         NavTab.HOME -> Tab(Routes.HOME, label, PrismIcons.Home, PrismIcons.HomeFilled)
-        NavTab.MY_WAVE -> Tab(Routes.MY_WAVE, label, PrismIcons.Radio, PrismIcons.Radio)
+        NavTab.MY_WAVE -> Tab(Routes.MY_WAVE, label, PrismIcons.Equalizer, PrismIcons.Equalizer)
         NavTab.SEARCH -> Tab(Routes.SEARCH, label, PrismIcons.Search, PrismIcons.SearchBold)
         NavTab.LIBRARY -> Tab(Routes.LIBRARY, label, PrismIcons.Library, PrismIcons.LibraryFilled)
         NavTab.REPLAY -> Tab(Routes.REPLAY, label, PrismIcons.Replay, PrismIcons.ReplayFilled)
@@ -547,10 +547,12 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
         val cutoutStart = WindowInsets.displayCutout.union(WindowInsets.navigationBars).asPaddingValues().calculateStartPadding(layoutDirection)
         val railInset = if (useRail) cutoutStart + RAIL_MARGIN + RAIL_WIDTH + 4.dp else 0.dp
         // Room the pages leave at the bottom for the bar, the mini player and the system's own bar.
+        val streamQueue by c.queue.source.collectAsState()
+        val streamOwnsPlayer = route == Routes.MY_WAVE && streamQueue.isMyWave
         val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         val bottomPadding = navInset +
             (if (useRail) 16.dp else navHeight(settings.navStyle, settings.navBarSize) + (if (settings.navStyle == NavBarStyle.DOCKED) 0.dp else 16.dp)) +
-            (if (song != null) miniHeight(settings.miniPlayerStyle) + 8.dp else 0.dp) +
+            (if (song != null && !streamOwnsPlayer) miniHeight(settings.miniPlayerStyle) + 8.dp else 0.dp) +
             (if (inSession) 42.dp else 0.dp)
 
         // Decided once: the tab Prism opens on is the root every other tab sits on, and the welcome
@@ -744,7 +746,7 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
                             Beside { CollectionScreen(CollectionType.MIX, it.arguments?.getString("id")!!, null, bottomPadding) }
                         }
                         composable(Routes.HOME) { ScreenBackdrop(BackdropScreen.HOME) { HomeScreen(bottomPadding) } }
-                        composable(Routes.MY_WAVE) { ScreenBackdrop(BackdropScreen.HOME) { com.prism.music.ui.screens.MyWaveScreen(bottomPadding) } }
+                        composable(Routes.MY_WAVE) { ScreenBackdrop(BackdropScreen.HOME) { com.prism.music.ui.screens.MyWaveScreen(bottomPadding, onOpenPlayer = { playerOpen = true }) } }
                         composable(Routes.SEARCH) { ScreenBackdrop(BackdropScreen.SEARCH) { SearchScreen(bottomPadding) } }
                         composable(Routes.LIBRARY) { ScreenBackdrop(BackdropScreen.LIBRARY) { LibraryScreen(bottomPadding) } }
                         composable(Routes.REPLAY) { ScreenBackdrop(BackdropScreen.REPLAY) { ReplayScreen(bottomPadding) } }
@@ -878,7 +880,7 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
                         AnimatedVisibility(inSession && !playerOpen && route != Routes.TOGETHER, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
                             TogetherPill(together, Modifier.padding(bottom = 8.dp)) { navigator.go(Routes.TOGETHER) }
                         }
-                        AnimatedVisibility(song != null && !playerOpen && !selection.selecting, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
+                        AnimatedVisibility(song != null && !streamOwnsPlayer && !playerOpen && !selection.selecting, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
                             MiniPlayer(Modifier.widthIn(max = 720.dp).customizable(com.prism.music.ui.components.CustomizeTarget.MINI_PLAYER)) { playerOpen = true }
                         }
                     }
@@ -904,7 +906,7 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
                         }
                         // "Joined to the tab bar" (1.7.6): one piece of glass, the mini player on top of the tabs.
                         val joined = settings.miniPlayerJoined && settings.navStyle == NavBarStyle.FLOATING
-                        if (!joined) AnimatedVisibility(song != null && !playerOpen, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
+                        if (!joined) AnimatedVisibility(song != null && !streamOwnsPlayer && !playerOpen, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
                             // Spectrum's bar (the Card style over the docked tab bar) sits right on the tab bar, edge to edge.
                             val flush = docked && settings.miniPlayerStyle == MiniPlayerStyle.CARD && !(settings.liquidGlass || settings.frostedGlass)
                             MiniPlayer(
@@ -913,7 +915,7 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
                             ) { playerOpen = true }
                         }
                         val joinedMini: (@Composable () -> Unit)? = if (!joined) null else ({
-                            AnimatedVisibility(song != null && !playerOpen, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                            AnimatedVisibility(song != null && !streamOwnsPlayer && !playerOpen, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                                 MiniPlayer(Modifier.customizable(com.prism.music.ui.components.CustomizeTarget.MINI_PLAYER), bare = true) { playerOpen = true }
                             }
                         })
