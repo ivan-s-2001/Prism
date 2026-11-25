@@ -24,6 +24,7 @@ internal class StationLiveProbe(
     bindAddress: Inet4Address,
     private val stationAddress: Inet4Address,
     private val log: (String) -> Unit = {},
+    private val source: ((Int) -> ByteArray)? = null,
 ) : Closeable {
     enum class Signal(val hz: Int) { A(440), B(880), SILENCE(0) }
     companion object {
@@ -48,7 +49,13 @@ internal class StationLiveProbe(
             }
         }
     }
-    private val header = Wav.header(RATE, CHANNELS, DATA_BYTES)
+    private val dataLength = if (source == null) DATA_BYTES else RATE.toLong() * FRAME_BYTES * 3600
+    private val totalLength = 44L + dataLength
+    private val header = Wav.header(RATE, CHANNELS, dataLength)
+    private val streaming = AtomicBoolean()
+    @Volatile var lastWriteMs = 0L
+        private set
+    val deliveredBytes: Long get() = bytes.get()
     private val signal = AtomicReference(Signal.A)
     private val closed = AtomicBoolean()
     private val clients = ConcurrentHashMap.newKeySet<Socket>()
@@ -103,7 +110,7 @@ internal class StationLiveProbe(
     private fun serve(socket: Socket) {
         socket.soTimeout = 5000
         socket.tcpNoDelay = true
-        socket.sendBufferSize = 4096
+        socket.sendBufferSize = 32768
         val input = socket.getInputStream()
         val request = line(input).split(' ')
         val out = socket.getOutputStream()
@@ -125,21 +132,26 @@ internal class StationLiveProbe(
         }
         if (!ended) return fail("400 Bad Request")
         var first = 0L
-        var last = TOTAL_BYTES - 1
+        var last = totalLength - 1
         range?.let {
             val match = Regex("bytes=(\\d+)-(\\d*)").matchEntire(it) ?: return fail("416 Range Not Satisfiable")
             first = match.groupValues[1].toLongOrNull() ?: return fail("416 Range Not Satisfiable")
             val end = match.groupValues[2]
             if (end.isNotEmpty()) last = minOf(end.toLongOrNull() ?: return fail("416 Range Not Satisfiable"), last)
-            if (first !in 0 until TOTAL_BYTES || last < first) return fail("416 Range Not Satisfiable")
+            if (first !in 0 until totalLength || last < first) return fail("416 Range Not Satisfiable")
         }
         val length = last - first + 1
+        // A live source has no past or future samples to seek to. Header probes may read independently.
+        val consume = source != null && method == "GET" && length > RATE * FRAME_BYTES && first <= 44
+        if (source != null && method == "GET" && length > RATE * FRAME_BYTES && !consume) return fail("416 Range Not Satisfiable")
+        if (consume && !streaming.compareAndSet(false, true)) return fail("503 Service Unavailable")
+        try {
         if (method == "GET") gets.incrementAndGet() else heads.incrementAndGet()
         log("$method range=${range ?: "none"} at ${elapsedMs()}ms; length=$length")
         val response = buildString {
             append(if (range == null) "HTTP/1.1 200 OK\r\n" else "HTTP/1.1 206 Partial Content\r\n")
             append("Content-Type: audio/wav\r\nContent-Length: $length\r\nAccept-Ranges: bytes\r\n")
-            if (range != null) append("Content-Range: bytes $first-$last/$TOTAL_BYTES\r\n")
+            if (range != null) append("Content-Range: bytes $first-$last/$totalLength\r\n")
             append("Cache-Control: no-store\r\nConnection: close\r\n\r\n")
         }
         out.write(response.toByteArray(Charsets.US_ASCII))
@@ -155,14 +167,20 @@ internal class StationLiveProbe(
         while (pos <= last && !closed.get()) {
             val n = minOf(CHUNK.toLong(), last - pos + 1).toInt()
             val before = System.nanoTime()
-            out.write(pcm(pos - header.size, n, signal.get()))
+            val audio = if (source == null) pcm(pos - header.size, n, signal.get())
+                else if (consume && n % FRAME_BYTES == 0) source.invoke(n) else ByteArray(n)
+            out.write(audio)
             out.flush()
             pos += n
-            bytes.addAndGet(n.toLong())
+            if (source == null || consume) {
+                bytes.addAndGet(n.toLong())
+                lastWriteMs = System.nanoTime() / 1_000_000L
+            }
             val wait = n.toLong() * 1_000_000_000L / (RATE * FRAME_BYTES) - (System.nanoTime() - before)
             if (wait > 0) Thread.sleep(wait / 1_000_000L, (wait % 1_000_000L).toInt())
         }
         log("GET finished at ${elapsedMs()}ms; PCM total=${bytes.get()}")
+        } finally { if (consume) streaming.set(false) }
     }
 
     private fun line(input: InputStream): String {
