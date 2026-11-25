@@ -177,6 +177,9 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
     private var playStartedAt = 0L
     private var accumulatedMs = 0L
     private var trackedSong: Song? = null
+    private var trackedFeedbackMs = 0L
+    private var trackedFeedbackReported = false
+    private var trackedFeedbackScope: String? = null
     /** What [trackedSong] is playing as part of, read when it starts (the queue may change before its play is counted). */
     private var trackedSource: String? = null
     /** The tracked play doesn't count towards taste (an excluded song, playlist or artist). */
@@ -987,6 +990,9 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             }
         }
         trackedSong = song
+        trackedFeedbackMs = 0L
+        trackedFeedbackReported = false
+        trackedFeedbackScope = c.yourMusic.vibeFeedbackKey()
         // For "No repeats this session": heard, however briefly (a quick skip never reaches the history).
         if (!song.isEpisode) c.sessionHeard.note(song, c.queue.counterparts[song.id] ?: c.plays.videoOf(song.id))
         trackedSource = sourceOf(mediaItem)
@@ -2451,6 +2457,9 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
     private fun untrack() {
         trackedSong = null
         trackedRecommended = false
+        trackedFeedbackMs = 0L
+        trackedFeedbackReported = false
+        trackedFeedbackScope = null
     }
 
     private fun flushPlayTime(skipped: Boolean = false) {
@@ -2468,11 +2477,24 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         if (song != null && ms > 0 && !paused) c.lastFm.heard(song, ms)
         // What the listener made of a suggestion (1.7.9): skipped within its first moments, it's left out of them for a while;
         // heard through, it's welcome. Under ten seconds a play isn't kept at all, so this is the only trace of a quick skip.
-        if (song != null && trackedRecommended && !excluded && !song.isEpisode && !song.isLive && !paused) {
-            val length = song.durationSec * 1000L
-            when {
-                skipped && ms < minOf(30_000L, if (length > 0) length * 3 / 10 else 30_000L) -> c.recFeedback.skipped(song.id, song.primaryArtist)
-                length > 0 && ms >= length * 7 / 10 -> c.recFeedback.heard(song.id, song.primaryArtist)
+        if (paused) {
+            trackedFeedbackMs = 0L
+            trackedFeedbackReported = true // Never reconstruct a private segment as recommendation feedback.
+        }
+        val feedbackScope = trackedFeedbackScope
+        if (song != null && trackedRecommended && !excluded && !song.isEpisode && !song.isLive &&
+            !paused && !trackedFeedbackReported && feedbackScope != null && feedbackScope == c.yourMusic.vibeFeedbackKey()) {
+            trackedFeedbackMs += ms.coerceAtLeast(0L)
+            when (com.prism.music.data.foryou.VibeLearning.outcome(trackedFeedbackMs, song.durationSec * 1000L, skipped)) {
+                com.prism.music.data.foryou.VibeLearning.Outcome.SKIPPED -> {
+                    trackedFeedbackReported = true
+                    c.recFeedback.skipped(song.id, song.primaryArtist, feedbackScope)
+                }
+                com.prism.music.data.foryou.VibeLearning.Outcome.ACCEPTED -> {
+                    trackedFeedbackReported = true
+                    c.recFeedback.heard(song.id, song.primaryArtist, feedbackScope)
+                }
+                null -> Unit
             }
         }
         // Replay, smart downloads and search taste are about music: episodes aren't counted. Long enough to be a play

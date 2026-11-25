@@ -68,7 +68,8 @@ internal object MyWave {
      * Exploration is bounded and applies only to genuinely unfamiliar candidates.
      * These values are ranking signals, not calibrated probabilities of a listener liking a track.
      */
-    data class Evidence(val accepted: Double = 0.0, val skipped: Double = 0.0) {
+    data class Evidence(val accepted: Double = 0.0, val skipped: Double = 0.0,
+        val sessionAccepted: Double = 0.0, val sessionSkipped: Double = 0.0) {
         val mean: Double get() = (2.0 + accepted.coerceAtLeast(0.0)) /
             (4.0 + accepted.coerceAtLeast(0.0) + skipped.coerceAtLeast(0.0))
         fun weight(explore: Double): Double {
@@ -76,7 +77,7 @@ internal object MyWave {
             val confidence = n / (n + 4.0)
             val preference = 1.0 + 0.8 * (mean - 0.5) * confidence
             val uncertainty = 0.12 * explore.coerceIn(0.0, 1.0) / kotlin.math.sqrt(1.0 + n)
-            return preference + uncertainty
+            return (preference + uncertainty) * VibeLearning.sessionWeight(sessionAccepted, sessionSkipped)
         }
     }
 
@@ -240,6 +241,9 @@ internal object MyWave {
         val noise = explorationNoise.coerceIn(0.0, 0.95)
         val explore = 0.1 + 0.9 * style.discoveryPercent.coerceIn(0, 100) / 100.0
         val energyBias = style.tune.energy
+        // Cache measured energy once per recording per batch: selection evaluates candidates repeatedly.
+        val measuredEnergy = (recommendations + favorites + recent + listOfNotNull(previousSong))
+            .distinctBy { it.id }.associate { it.id to signals.energy(it) }
         val favoriteKeys = favorites.mapTo(hashSetOf(), LocalRadio::sameSong)
         fun familiar(s: Song): Boolean? = if (LocalRadio.sameSong(s) in favoriteKeys || LocalRadio.sameSong(s) in recentKeys || heard(s)) true else signals.heard(s)
         fun pool(songs: List<Song>) = songs.filter { allowed(it) && LocalRadio.sameSong(it) !in avoid &&
@@ -249,7 +253,7 @@ internal object MyWave {
                 // Preserve ranking from the candidate generator; explore by bounded noise, not a uniform shuffle.
                 val rank = 0.35 + 0.65 / (1.0 + index * 0.045)
                 val novelty = when (familiar(s)) { true -> 1.0 - style.character.bias * 0.75; false -> 1.0 + style.character.bias * 0.75; null -> 1.0 }
-                val energy = signals.energy(s)?.let { 1.0 + energyBias * (2.0 * it - 1.0) } ?: 1.0
+                val energy = measuredEnergy[s.id]?.takeIf { it.isFinite() }?.let { 1.0 + energyBias * (2.0 * it.coerceIn(0.0, 1.0) - 1.0) } ?: 1.0
                 val rest = if (heard(s) || LocalRadio.sameSong(s) in recentKeys) 0.12 else if (servedRecently(s)) 0.55 else 1.0
                 val feedback = 1.0 - 0.65 * artistDoubt(s.primaryArtist).coerceIn(0.0, 1.0)
                 val taste = affinity(profile, s)
@@ -278,7 +282,8 @@ internal object MyWave {
             }.maxByOrNull { index ->
                 val (song, score) = from[index]
                 val fit = lastSong?.let { profile.transition(it, song) }?.coerceIn(0.0, 1.0)
-                val continuity = fit?.let { 0.8 + 0.4 * it } ?: 1.0
+                val continuity = (fit?.let { 0.8 + 0.4 * it } ?: 1.0) *
+                    VibeLearning.sequenceWeight(lastSong?.let { measuredEnergy[it.id] }, measuredEnergy[song.id])
                 val spread = 1.0 / (1.0 + (0.1 + 0.7 * diversity) * (artists[song.primaryArtist.lowercase()] ?: 0))
                 score * continuity * spread
             } ?: return null

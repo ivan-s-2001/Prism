@@ -442,4 +442,24 @@ class MyWaveTest {
         val result = com.prism.music.data.foryou.VibeContext.recycleCandidates(listOf(old, later), listOf(old, later, next), listOf(next), next)
         assertEquals(listOf(old), result)
     }
+
+    @Test fun vibePrefersAcousticallyCoherentNeighborsAtNeutralMood() {
+        val playing = song("playing", "Original")
+        val distant = song("far", "Different")
+        val near = song("near", "Similar")
+        val signals = com.prism.music.data.foryou.RadioSignals(energy = { if (it == distant) 1.0 else 0.0 })
+        val result = MyWave.start(listOf(distant, near), emptyList(), emptyList(), { false }, { true }, 10L,
+            count = 1, signals = signals, previousSong = playing, explorationNoise = 0.0)
+        assertEquals(listOf(near), result)
+    }
+
+    @Test fun currentSessionChangesRankingWithoutChangingDiscoveryQuota() {
+        val fresh = (1..10).map { song("n$it", "N$it") }
+        val known = (1..10).map { song("f$it", "F$it") }
+        val result = MyWave.start(fresh, known, emptyList(), { false }, { true }, 10L,
+            count = 10, style = MyWave.Style(discoveryPercent = 40), quotaOffset = 0, strictQuota = true,
+            artistEvidence = { MyWave.Evidence(sessionAccepted = if (it.startsWith("N")) 4.0 else 0.0) })
+        assertEquals(4, result.count { it in fresh })
+        assertEquals(6, result.count { it in known })
+    }
 }

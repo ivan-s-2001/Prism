@@ -19,6 +19,7 @@ import java.time.LocalDate
 class RecFeedback(context: Context, private val day: () -> Int = { LocalDate.now().toEpochDay().toInt() }) {
     private val prefs = context.getSharedPreferences("for_you_feedback", Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true }
+    private val session = VibeLearning.Session()
     @Volatile private var state: State = runCatching { json.decodeFromString(State.serializer(), prefs.getString(KEY, null) ?: "{}") }.getOrDefault(State())
 
     @Serializable
@@ -67,7 +68,8 @@ class RecFeedback(context: Context, private val day: () -> Int = { LocalDate.now
     fun servedOn(daysAgo: Int): Set<String> { val d = today() - daysAgo; return state.served.filterValues { it == d }.keys }
 
     /** [songId] (by [artist]) from a recommendation was skipped within its first moments. */
-    fun skipped(songId: String, artist: String) {
+    fun skipped(songId: String, artist: String, scope: String? = null) {
+        if (scope != null) session.note(scope, artist, VibeLearning.Outcome.SKIPPED)
         val d = today()
         change { s ->
             s.copy(
@@ -78,7 +80,8 @@ class RecFeedback(context: Context, private val day: () -> Int = { LocalDate.now
     }
 
     /** [songId] from a recommendation was heard through: it's welcome again. */
-    fun heard(songId: String, artist: String) {
+    fun heard(songId: String, artist: String, scope: String? = null) {
+        if (scope != null) session.note(scope, artist, VibeLearning.Outcome.ACCEPTED)
         val d = today()
         change { s ->
             s.copy(
@@ -110,21 +113,24 @@ class RecFeedback(context: Context, private val day: () -> Int = { LocalDate.now
     }
 
     /** Snapshot feedback for ranking one batch. Decay by a 10-day half-life; do not count stale or future events. */
-    internal fun waveEvidence(): (String) -> MyWave.Evidence {
+    internal fun waveEvidence(scope: String? = null): (String) -> MyWave.Evidence {
         val snapshot = state
         val now = today()
         fun weight(days: List<Int>): Double = days.sumOf { day ->
             val age = now - day
             if (age in 0..30) Math.pow(0.5, age / 10.0) else 0.0
         }
-        val evidence = (snapshot.artistHeard.keys + snapshot.artistSkips.keys).associateWith { artist ->
-            MyWave.Evidence(weight(snapshot.artistHeard[artist].orEmpty()), weight(snapshot.artistSkips[artist].orEmpty()))
+        val recent = scope?.let(session::snapshot).orEmpty()
+        val evidence = (snapshot.artistHeard.keys + snapshot.artistSkips.keys + recent.keys).associateWith { artist ->
+            val fast = recent[artist] ?: VibeLearning.Counts()
+            MyWave.Evidence(weight(snapshot.artistHeard[artist].orEmpty()), weight(snapshot.artistSkips[artist].orEmpty()),
+                fast.accepted, fast.skipped)
         }
         return { artist -> evidence[artist.lowercase()] ?: MyWave.Evidence() }
     }
 
     /** Everything forgotten (Settings → Recommendations → start over). */
-    fun clear() = change { State() }
+    fun clear() { session.clear(); change { State() } }
 
     private companion object {
         const val KEY = "state"

@@ -188,6 +188,8 @@ class YourMusic(private val c: AppContainer) {
     private val wavePageLock = Mutex()
     private val waveFetchLock = Mutex()
 
+    internal fun vibeFeedbackKey(): String = waveAccount()
+
     private fun waveAccount(): String {
         val s = c.settings.current
         return "${s.authUser}|${s.dataSyncId}|${s.accountName}"
@@ -312,7 +314,7 @@ class YourMusic(private val c: AppContainer) {
             val signals = c.discover.radioSignals(pool, style.tune.copy(newness = 0f), fetchTops = false)
             return@withContext MyWave.offlineMix(pool, taste.likes, existing, previous,
                 c.sessionHeard::has, style, signals, taste.profile, count, offset, System.nanoTime(),
-                artistDoubt = feedback::artistDoubt, artistEvidence = feedback.waveEvidence())
+                artistDoubt = feedback::artistDoubt, artistEvidence = feedback.waveEvidence(vibeFeedbackKey()))
         }
         val avoid = (existing + listOfNotNull(previous) + c.sessionHeard.oldestFirst()).mapTo(hashSetOf(), LocalRadio::sameSong)
         val ids = existing.mapTo(hashSetOf()) { it.id }
@@ -328,7 +330,7 @@ class YourMusic(private val c: AppContainer) {
         suspend fun select(related: List<Song>, allowSparseProfile: Boolean = false): List<Song> {
             val candidates = MyWave.fuse(listOf(related.filter(::recommendable), base.filter(::recommendable)), 160)
             val signals = c.discover.radioSignals(candidates + taste.likes.take(100), style.tune.copy(newness = 0f),
-                fetchTops = !fast)
+                fetchTops = !fast && !c.castingNow)
             val strict = MyWave.mix(candidates, taste.likes, isKnown = known,
             heard = c.sessionHeard::has,
             allowed = { song ->
@@ -337,7 +339,7 @@ class YourMusic(private val c: AppContainer) {
             seed = System.nanoTime(), style = style, signals = signals, profile = taste.profile,
             count = count, offset = offset, previousSong = previous, avoid = avoid, artistDoubt = feedback::artistDoubt,
             servedRecently = { feedback.servedDaysAgo(it.id)?.let { days -> days <= 1 } == true },
-            artistEvidence = feedback.waveEvidence())
+            artistEvidence = feedback.waveEvidence(vibeFeedbackKey()))
             if (strict.isNotEmpty() || !allowSparseProfile || !VibeContext.sparseProfileFallback(style, taste.likes.isEmpty())) return strict
             // The default mixed preference must still work before the first like. Never relax a 0/100 setting.
             val pool = MyWave.fuse(listOf(candidates, taste.favorites), 160)
@@ -345,7 +347,7 @@ class YourMusic(private val c: AppContainer) {
                 { !c.sessionHeard.has(it) && recommendationAllowed(it, known(it)) }, System.nanoTime(),
                 count, style, signals = RadioSignals(heard = { known(it) }, onTopList = signals.onTopList, energy = signals.energy),
                 profile = taste.profile, previousSong = previous, avoid = avoid,
-                artistDoubt = feedback::artistDoubt, artistEvidence = feedback.waveEvidence(), quotaOffset = offset)
+                artistDoubt = feedback::artistDoubt, artistEvidence = feedback.waveEvidence(vibeFeedbackKey()), quotaOffset = offset)
         }
         val cached = if (style.discoveryPercent > 0) cachedWaveRelated() else emptyList()
         if (fast) {
@@ -420,7 +422,7 @@ class YourMusic(private val c: AppContainer) {
             heard = c.sessionHeard::has, allowed = { eligible(it) && (!noRepeats || !c.sessionHeard.has(it)) },
             seed = System.nanoTime(), count = count, style = style, signals = contextualSignals,
             artistDoubt = feedback::artistDoubt, servedRecently = { (feedback.servedDaysAgo(it.id) ?: 99) <= 1 },
-            profile = taste.profile, previousSong = current, avoid = avoid, artistEvidence = feedback.waveEvidence(),
+            profile = taste.profile, previousSong = current, avoid = avoid, artistEvidence = feedback.waveEvidence(vibeFeedbackKey()),
             quotaOffset = offset, candidateWeight = ::contextWeight)
         if (fresh.isNotEmpty() || smart) return@withContext fresh
         // A narrow radio may run out. Try a bounded second recall from tracks already selected in this context.
@@ -434,7 +436,7 @@ class YourMusic(private val c: AppContainer) {
             val second = MyWave.start(secondary, secondary.filter(::known), emptyList(), c.sessionHeard::has,
                 { eligible(it) && (!noRepeats || !c.sessionHeard.has(it)) }, System.nanoTime(), count, style,
                 signals = contextualSignals, profile = taste.profile, previousSong = current, avoid = avoid,
-                artistDoubt = feedback::artistDoubt, artistEvidence = feedback.waveEvidence(), quotaOffset = offset,
+                artistDoubt = feedback::artistDoubt, artistEvidence = feedback.waveEvidence(vibeFeedbackKey()), quotaOffset = offset,
                 candidateWeight = ::contextWeight)
             if (second.isNotEmpty()) return@withContext second
         }
@@ -450,7 +452,7 @@ class YourMusic(private val c: AppContainer) {
             { LocalRadio.sameSong(it) !in protected && recommendationAllowed(it, known(it), offlineOnly = offline) &&
                 (explicitContext || com.prism.music.data.AutoplayLength.fits(it, settings.behavior.autoplayMaxMinutes)) },
             System.nanoTime(), count, style, signals = contextualSignals, artistDoubt = feedback::artistDoubt,
-            profile = taste.profile, previousSong = current, avoid = protected, artistEvidence = feedback.waveEvidence(),
+            profile = taste.profile, previousSong = current, avoid = protected, artistEvidence = feedback.waveEvidence(vibeFeedbackKey()),
             quotaOffset = offset, candidateWeight = ::contextWeight)
     }
 
@@ -473,7 +475,7 @@ class YourMusic(private val c: AppContainer) {
             System.nanoTime(), count, style,
             signals = RadioSignals(heard = { it.id in liked || history.has(it) }, onTopList = signals.onTopList, energy = signals.energy),
             artistDoubt = feedback::artistDoubt, servedRecently = { (feedback.servedDaysAgo(it.id) ?: 99) <= 1 },
-            profile = taste.profile, artistEvidence = feedback.waveEvidence(), quotaOffset = 0)
+            profile = taste.profile, artistEvidence = feedback.waveEvidence(vibeFeedbackKey()), quotaOffset = 0)
     }
 
     /**
