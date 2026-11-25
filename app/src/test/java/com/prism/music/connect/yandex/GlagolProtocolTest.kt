@@ -40,6 +40,23 @@ class GlagolProtocolTest {
         assertEquals(-1, input.read())
     }
 
+    @Test fun modernHlsUsesRadioAudioClientFormat() {
+        val url = "http://192.168.1.10:8888/live/index.m3u8"
+        val payload = GlagolProtocol.playHls(url, "Prism Live", "Prism")
+        val input = ByteArrayInputStream(Base64.getDecoder().decode(payload["data"]!!.jsonPrimitive.content))
+        assertEquals(10, input.read())
+        assertEquals("audio_play", readString(input))
+        assertEquals(18, input.read())
+        val params = Json.parseToJsonElement(readString(input)).jsonObject
+        val stream = params["stream"]!!.jsonObject
+        assertEquals(url, stream["url"]!!.jsonPrimitive.content)
+        assertEquals("HLS", stream["format"]!!.jsonPrimitive.content)
+        assertEquals("FmRadio", stream["type"]!!.jsonPrimitive.content)
+        assertEquals("0", stream["offset_ms"]!!.jsonPrimitive.content)
+        assertEquals("false", params["set_pause"]!!.jsonPrimitive.content)
+        assertEquals(-1, input.read())
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun httpsStreamIsRejected() {
         GlagolProtocol.playStream("https://example.com/test.mp3", "", "")
