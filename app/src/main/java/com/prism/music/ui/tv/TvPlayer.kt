@@ -107,14 +107,14 @@ fun TvNowPlayingScreen(
                 ) else TvProgress(now.fraction, now.played, now.total, Modifier.testTag("$TAG_PLAYER/progress"))
                 TvFitGap(20.dp)
                 Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TvIconButton(PrismIcons.Shuffle, tr(R.string.shuffle), onShuffle, Modifier.tvItem("$TAG_PLAYER/shuffle"), on = now.shuffle)
+                    if (now.allowsOrderModes) TvIconButton(PrismIcons.Shuffle, tr(R.string.shuffle), onShuffle, Modifier.tvItem("$TAG_PLAYER/shuffle"), on = now.shuffle)
                     TvIconButton(PrismIcons.Previous, tr(R.string.previous_song), onPrevious, Modifier.tvItem("$TAG_PLAYER/previous"))
                     TvIconButton(
                         if (now.playing) PrismIcons.Pause else PrismIcons.Play, tr(if (now.playing) R.string.widget_pause else R.string.widget_play),
                         onPlayPause, Modifier.tvItem("$TAG_PLAYER/playpause", entry = true), big = true,
                     )
                     TvIconButton(PrismIcons.Next, tr(R.string.next_song), onNext, Modifier.tvItem("$TAG_PLAYER/next"))
-                    TvIconButton(
+                    if (now.allowsOrderModes) TvIconButton(
                         PrismIcons.Repeat, tr(when (now.repeat) { 1 -> R.string.repeat_one; 2 -> R.string.repeat_all; else -> R.string.repeat_off }),
                         onRepeat, Modifier.tvItem("$TAG_PLAYER/repeat"), on = now.repeat != 0,
                     )

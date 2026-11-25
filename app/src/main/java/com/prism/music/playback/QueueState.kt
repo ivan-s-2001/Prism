@@ -22,6 +22,10 @@ data class QueueSource(
     /** A radio started from one song: it keeps going with similar music, Autoplay or not. */
     val isSongRadio: Boolean get() = kind == QueueKind.RADIO && seedId != null
     val isMyWave: Boolean get() = kind == QueueKind.RADIO && com.prism.music.data.foryou.MyWave.isOrigin(originId)
+    /** The source itself supplies more songs; optional Autoplay is not a separate mode here. */
+    val continuousRecommendations: Boolean get() = isMyWave || isSongRadio
+    /** Stream ordering is part of its tuning; shuffle and repeat would defeat that ordering. */
+    val allowsOrderModes: Boolean get() = !isMyWave
 }
 
 /** Shared queue bookkeeping between the UI-facing [PlayerConnection] and [PlaybackService]. */

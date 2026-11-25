@@ -68,6 +68,7 @@ fun rememberTvNow(c: AppContainer): TvNow? {
     val queue by c.player.queue.collectAsState()
     val upNext by c.player.upNext.collectAsState()
     val likedIds by c.library.likedIds.collectAsState()
+    val source by c.queue.source.collectAsState()
     var position by remember { mutableLongStateOf(c.player.position) }
     var duration by remember { mutableLongStateOf(c.player.duration) }
     // A seek moves the line at once (paused too: the video's ← →, the remote's rewind and fast forward).
@@ -87,4 +88,5 @@ fun rememberTvNow(c: AppContainer): TvNow? {
     val s = song ?: return null
     val next = upNext.firstOrNull()?.let { i -> queue.getOrNull(i)?.song }
     return tvNow(s, playing, position, duration, s.id in likedIds, shuffle, repeat, video, next)
+        .copy(allowsOrderModes = source.allowsOrderModes)
 }

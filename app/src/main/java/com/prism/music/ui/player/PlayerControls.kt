@@ -632,10 +632,11 @@ fun TransportRow(
     val style = LocalAppSettings.current.transportStyle
     val playSize = if (compact) 58.dp else 74.dp
     // With shuffle and repeat beside it, play's touch area gives a little room back (narrow phones).
-    val playTouch = if (compact) 76.dp else if (showModes && LocalAppSettings.current.player.shuffleRepeat) 80.dp else 92.dp
+    val source by LocalContainer.current.queue.source.collectAsState()
+    val modes = showModes && source.allowsOrderModes && LocalAppSettings.current.player.shuffleRepeat
+    val playTouch = if (compact) 76.dp else if (modes) 80.dp else 92.dp
     val skipSize = if (compact) 44.dp else 53.dp
     // Settings → Player: shuffle and repeat either side of the transport.
-    val modes = showModes && LocalAppSettings.current.player.shuffleRepeat
     val shuffle by pc.shuffle.collectAsState()
     val smart by LocalContainer.current.queue.smartShuffle.collectAsState()
     val repeat by pc.repeatMode.collectAsState()
@@ -998,7 +999,7 @@ fun PlayerActionRow(
     val videoLoading by pc.videoLoading.collectAsState()
     // Settings → Player → "Song / Video switch" off: audio only, the Video button goes.
     val source by c.queue.source.collectAsState()
-    val continuous = source.isMyWave || source.isSongRadio
+    val continuous = source.continuousRecommendations
     val chosen = settings.player.buttons.filter {
         (it != PlayerButton.VIDEO || settings.showVideoSwitch) && (it != PlayerButton.RADIO || !source.isMyWave)
     }
@@ -1021,7 +1022,7 @@ fun PlayerActionRow(
             ) { modes ->
                 if (modes) Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (PlayerButton.LYRICS in chosen) BottomGlyph(PrismIcons.Lyrics, tr(R.string.lyrics), false, onToggleLyrics)
-                    Pill {
+                    if (source.allowsOrderModes) Pill {
                         PillSegment(
                             if (smart) PrismIcons.SmartShuffle else PrismIcons.Shuffle, tr(R.string.shuffle), shuffle,
                             width = PILL_SEGMENT_WIDTH_TRIPLE, state = shuffleState(shuffle, smart),

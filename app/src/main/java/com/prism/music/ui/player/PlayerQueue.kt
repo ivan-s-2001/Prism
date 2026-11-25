@@ -80,7 +80,7 @@ fun InlineQueue(onRevealPlayer: () -> Unit, onHidePlayer: () -> Unit, modifier: 
     LaunchedEffect(index) { if (listState.firstVisibleItemIndex != nowItem) listState.animateScrollToItem(nowItem) }
 
     val now = queue.getOrNull(index)
-    val autoplayFrom = if (autoplayStart > 0) autoplayStart else queue.size
+    val autoplayFrom = if (!source.continuousRecommendations && autoplayStart >= 0) autoplayStart else queue.size
     val upNext by pc.upNext.collectAsState()
     val shuffled by pc.shuffle.collectAsState()
     // In play order, so with shuffle on this is the shuffled order.
@@ -272,7 +272,7 @@ fun InlineQueue(onRevealPlayer: () -> Unit, onHidePlayer: () -> Unit, modifier: 
                 if (headings) item(key = "h-next") { Heading(tr(R.string.next_from, source.title.ifBlank { now?.song?.album?.title ?: tr(R.string.queue) }), Modifier.padding(top = 16.dp, bottom = 6.dp)) }
                 queueSection(upcoming, shuffled, badge = badge, onRemove = remove, rows = rows)
             }
-            if (settings.autoplay || autoplay.isNotEmpty()) {
+            if (!source.continuousRecommendations && (settings.autoplay || autoplay.isNotEmpty())) {
                 item(key = "h-auto") { AutoplayHeading(autoplay.isNotEmpty()) }
                 queueSection(autoplay, shuffled, badge = badge, onRemove = remove, rows = rows)
             }

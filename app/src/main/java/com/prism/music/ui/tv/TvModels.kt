@@ -37,6 +37,7 @@ data class TvNow(
     val hasVideo: Boolean = false,
     /** The song after this one, for the player's "Up next" line. */
     val next: String? = null,
+    val allowsOrderModes: Boolean = true,
 )
 
 /** Lyrics as the TV shows them: the lines, which one is sung now, and the playhead for the sung line's sweep. */
