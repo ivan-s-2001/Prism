@@ -52,6 +52,8 @@ internal object GlagolProtocol {
         val params = buildJsonObject {
             put("stream", buildJsonObject {
                 put("url", url)
+                // Stable identity echoed in playerState.id by current Station firmware.
+                put("id", url)
                 // Firmware detects the actual codec; MP3 is the enum for ordinary file streams.
                 put("format", "MP3")
                 put("type", "Track")
