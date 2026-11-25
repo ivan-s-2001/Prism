@@ -29,6 +29,7 @@ class PairedDevices:
         self.approvals = {}
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.execute("CREATE TABLE IF NOT EXISTS devices (hash TEXT PRIMARY KEY, device TEXT UNIQUE NOT NULL, name TEXT NOT NULL)")
+        self.db.execute("CREATE TABLE IF NOT EXISTS reservation (slot INTEGER PRIMARY KEY CHECK(slot=1), device TEXT NOT NULL)")
         self.db.commit()
 
     def _prune(self):
@@ -82,3 +83,19 @@ class PairedDevices:
     def revoke(self, secret):
         with self.lock, self.db:
             self.db.execute("DELETE FROM devices WHERE hash=?", (digest(secret),))
+
+    def reserved(self):
+        with self.lock:
+            row = self.db.execute("SELECT device FROM reservation WHERE slot=1").fetchone()
+            return row[0] if row else None
+
+    def reserve(self, device):
+        with self.lock, self.db:
+            current = self.reserved()
+            if current not in (None, device):
+                raise PairingError("host_reserved")
+            self.db.execute("INSERT OR REPLACE INTO reservation(slot,device) VALUES(1,?)", (device,))
+
+    def release(self, device):
+        with self.lock, self.db:
+            self.db.execute("DELETE FROM reservation WHERE slot=1 AND device=?", (device,))
