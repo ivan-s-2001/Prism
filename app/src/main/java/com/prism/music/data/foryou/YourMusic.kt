@@ -91,7 +91,10 @@ class YourMusic(private val c: AppContainer) {
             val song = s.songs[event.songId] ?: continue
             val a = song.primaryArtist.lowercase()
             if (a.isBlank()) continue
-            val weight = Math.pow(0.5, (s.at - event.timestamp) / (30.0 * DAY))
+            // Listening for ten seconds is not the same preference signal as finishing a song.
+            val duration = song.durationSec * 1000L
+            val completion = if (duration > 0) (event.playedMs.toDouble() / duration).coerceIn(0.0, 1.0) else 0.5
+            val weight = Math.pow(0.5, (s.at - event.timestamp) / (30.0 * DAY)) * (0.15 + 0.85 * completion)
             artist.merge(a, weight, Double::plus)
             val at = java.time.Instant.ofEpochMilli(event.timestamp).atZone(zone)
             val delta = kotlin.math.abs(hour - at.hour)
