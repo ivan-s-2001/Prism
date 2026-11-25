@@ -5,6 +5,7 @@ client account IDs. All state transitions run under one lock. Intended for
 one server process; persistence and production authentication are separate.
 """
 import secrets
+from copy import deepcopy
 import threading
 import time
 from collections import deque
@@ -62,7 +63,7 @@ class ConnectSessions:
             s = self._host(account, device, generation)
             s.expires = self.clock() + self.ttl
             if state is not None:
-                s.state = dict(state)
+                s.state = deepcopy(state)
                 s.revision += 1
             return s.revision
 
@@ -72,7 +73,7 @@ class ConnectSessions:
             if s is None:
                 return None
             return {"host": s.host, "generation": s.generation,
-                    "revision": s.revision, "state": dict(s.state)}
+                    "revision": s.revision, "state": deepcopy(s.state)}
 
     def submit(self, account, generation, request_id, command):
         """Controller and Alice both use this path; duplicate IDs are ignored."""
@@ -80,6 +81,10 @@ class ConnectSessions:
             s = self._current(account)
             if s is None or s.generation != generation:
                 raise Conflict("session_changed")
+            if not isinstance(request_id, str) or not 0 < len(request_id) <= 128:
+                raise Conflict("invalid_request")
+            if not isinstance(command, dict) or not isinstance(command.get("action"), str) or "id" in command:
+                raise Conflict("invalid_command")
             now = self.clock()
             s.seen = {k: t for k, t in s.seen.items() if now - t < 300}
             if request_id in s.seen:
@@ -89,7 +94,7 @@ class ConnectSessions:
             if len(s.commands) >= 32 or len(s.seen) >= 512:
                 raise Conflict("queue_full")
             s.seen[request_id] = now
-            s.commands.append((now + 10, {"id": request_id, **command}))
+            s.commands.append((now + 10, {**deepcopy(command), "id": request_id}))
             return True
 
     def pull(self, account, device, generation):
