@@ -54,4 +54,19 @@ class RecFeedbackTest {
         assertFalse(fb.turnedDown("s1", known = false))
         assertEquals(null, fb.servedDaysAgo("a"))
     }
+
+    @Test fun feedbackExpiresEvenWhenNoNewEventsArrive() {
+        var day = 20000
+        val fb = RecFeedback(app) { day }.apply { clear() }
+        fb.served(listOf("track"))
+        repeat(6) { fb.skipped("track", "Artist") }
+        assertTrue(fb.turnedDown("track", known = true))
+        assertTrue(fb.artistDoubt("Artist") > 0.4)
+        day += 31
+        assertEquals(0.0, fb.artistDoubt("Artist"), 1e-9)
+        assertEquals(null, fb.servedDaysAgo("track"))
+        assertTrue(fb.turnedDown("track", known = false))
+        day += 30
+        assertFalse(fb.turnedDown("track", known = false))
+    }
 }

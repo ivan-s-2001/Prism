@@ -16,7 +16,7 @@ import java.time.LocalDate
  * - An artist whose recommended songs are skipped again and again, and never heard through, counts for less
  *   ([artistDoubt]).
  */
-class RecFeedback(context: Context) {
+class RecFeedback(context: Context, private val day: () -> Int = { LocalDate.now().toEpochDay().toInt() }) {
     private val prefs = context.getSharedPreferences("for_you_feedback", Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true }
     @Volatile private var state: State = runCatching { json.decodeFromString(State.serializer(), prefs.getString(KEY, null) ?: "{}") }.getOrDefault(State())
@@ -34,7 +34,7 @@ class RecFeedback(context: Context) {
         val artistHeard: Map<String, List<Int>> = emptyMap(),
     )
 
-    private fun today() = LocalDate.now().toEpochDay().toInt()
+    private fun today() = day()
 
     @Synchronized
     private fun change(f: (State) -> State) {
@@ -61,7 +61,7 @@ class RecFeedback(context: Context) {
     }
 
     /** Days since Prism last offered [id] (0 = today), or null. */
-    fun servedDaysAgo(id: String): Int? = state.served[id]?.let { today() - it }
+    fun servedDaysAgo(id: String): Int? = state.served[id]?.let { today() - it }?.takeIf { it in 0..14 }
 
     /** The ids Prism offered [daysAgo] days ago (yesterday's mixes, for one). */
     fun servedOn(daysAgo: Int): Set<String> { val d = today() - daysAgo; return state.served.filterValues { it == d }.keys }
@@ -91,7 +91,8 @@ class RecFeedback(context: Context) {
 
     /** Whether [songId] is left out of recommendations for now: skipped once if it was new to them, twice if known. */
     fun turnedDown(songId: String, known: Boolean): Boolean {
-        val n = state.skipped[songId]?.size ?: return false
+        val now = today()
+        val n = state.skipped[songId]?.count { now - it in 0..Variety.SKIP_DAYS } ?: return false
         return n >= if (known) 2 else 1
     }
 
@@ -101,8 +102,9 @@ class RecFeedback(context: Context) {
      */
     fun artistDoubt(artist: String): Double {
         val a = artist.lowercase()
-        val skips = state.artistSkips[a]?.size ?: 0
-        val heard = state.artistHeard[a]?.size ?: 0
+        val now = today()
+        val skips = state.artistSkips[a]?.count { now - it in 0..30 } ?: 0
+        val heard = state.artistHeard[a]?.count { now - it in 0..30 } ?: 0
         if (skips < 3) return 0.0
         return ((skips - 2 * heard) / 6.0).coerceIn(0.0, 0.8)
     }

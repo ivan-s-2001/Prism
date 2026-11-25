@@ -364,11 +364,12 @@ class YourMusic(private val c: AppContainer) {
         val seedGenres = seeds.filter { it.id !in s.genres }.takeIf { it.isNotEmpty() }
             ?.let { runCatching { c.meta.cachedGenres(it) }.getOrNull() }.orEmpty()
         val profile = waveTaste().profile
+        val evidence = c.recFeedback.waveEvidence()
         val pool = LocalRadio.Pool(
             // Not clips under a minute (an album's intro, a skit, a sound file on the phone): they'd break the run of songs.
             songs = s.songs.values.filter { recommendationAllowed(it, offlineOnly = offlineOnly) },
             coListen = s.coListen,
-            affinity = { s.model.score(it) * rest(s, it.id) * recommendationScore(profile, it) },
+            affinity = { s.model.score(it) * rest(s, it.id) * recommendationScore(profile, it) * evidence(it.primaryArtist).weight(0.0) },
             genreOf = { s.genres[it] ?: seedGenres[it] },
             keyFit = { a, b -> keyFit(a, b) },
             bpmOf = { c.mixTempo.djBpm(it) },
