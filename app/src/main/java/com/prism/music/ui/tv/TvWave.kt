@@ -48,11 +48,12 @@ internal fun TvWavePlace(nav: TvNav) {
     val savedPresets = appSettings.streamPresets
     var namingPreset by rememberSaveable { mutableStateOf(false) }
     var chosenPresetId by rememberSaveable { mutableStateOf(appSettings.streamScenarioId) }
-    val scenarioOrder = remember {
+    val automaticScenarioOrder = remember {
         val clock = java.util.Calendar.getInstance()
         WaveScenarios.stripOrder(clock.get(java.util.Calendar.HOUR_OF_DAY),
             clock.get(java.util.Calendar.DAY_OF_WEEK) in listOf(java.util.Calendar.SATURDAY, java.util.Calendar.SUNDAY))
     }
+    val scenarioOrder = remember(automaticScenarioOrder, appSettings.streamScenarioOrder) { WaveScenarios.visibleOrder(automaticScenarioOrder, appSettings.streamScenarioOrder) }
     val song by c.player.currentSong.collectAsState()
     val disliked by c.library.dislikedIds.collectAsState()
     val now = rememberTvNow(c).takeIf { source.isMyWave }
@@ -262,10 +263,12 @@ internal fun TvWavePlace(nav: TvNav) {
                 Row(Modifier.weight(1f).fillMaxWidth().then(if (appSettings.streamGlassPanel) Modifier.tvGlass(ui.shape(24.dp)) else Modifier).padding(ui.gap(24.dp)),
                     horizontalArrangement = Arrangement.spacedBy(if (narrow) 20.dp else 36.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    if (appSettings.streamShowCover) BoxWithConstraints(Modifier.weight(if (narrow) 0.65f else 0.85f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    @Composable fun Cover() { BoxWithConstraints(Modifier.weight(if (narrow) 0.65f else 0.85f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                         Artwork(now?.art, Modifier.size(minOf(maxWidth, maxHeight, 340.dp) * appSettings.streamCoverSize.fraction),
                             shape = com.prism.music.ui.theme.CoverShapes.of(appSettings.shapes.player, appSettings.player.artCorners.dp), size = 1080)
                     }
+                    }
+                    if (appSettings.streamShowCover && !appSettings.streamReverseLayout) Cover()
                     Column(Modifier.weight(1.15f), verticalArrangement = Arrangement.spacedBy(if (narrow) 8.dp else 16.dp)) {
                         Text(now?.title ?: tr(R.string.prism_stream_music_in_your_rhythm),
                             style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -298,6 +301,7 @@ internal fun TvWavePlace(nav: TvNav) {
                             if (current != null) WaveTvButton(tr(R.string.prism_stream_player), { nav.go(TvRoute.Player) }, Modifier.weight(1f).tvItem("tv_wave/player"))
                         }
                     }
+                    if (appSettings.streamShowCover && appSettings.streamReverseLayout) Cover()
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(16.dp)), verticalAlignment = Alignment.CenterVertically) {
                     ScenarioTile(tr(R.string.prism_stream_tune), PrismIcons.Customize, selected = false,

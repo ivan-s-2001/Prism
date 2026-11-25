@@ -92,6 +92,24 @@ internal object WaveScenarios {
     /** Capture once per screen: playback/selection must never reorder the carousel. */
     fun stripOrder(hour: Int, weekend: Boolean): List<Scenario> = (forDay(hour, weekend) + all).distinctBy { it.id }
 
+    /** Empty string = automatic; "-" = intentionally no built-in shortcuts. IDs are stable across languages. */
+    fun sanitizeOrder(stored: String): String {
+        if (stored.isBlank()) return ""
+        if (stored == "-") return "-"
+        val known = all.map { it.id }.toSet()
+        return stored.split(',').filter { it in known }.distinct().joinToString(",")
+    }
+
+    fun encodeOrder(ids: List<String>): String = sanitizeOrder(ids.joinToString(",")).ifEmpty { "-" }
+
+    fun visibleOrder(automatic: List<Scenario>, stored: String): List<Scenario> {
+        val order = sanitizeOrder(stored)
+        if (order.isEmpty()) return automatic
+        if (order == "-") return emptyList()
+        val byId = all.associateBy { it.id }
+        return order.split(',').mapNotNull(byId::get)
+    }
+
     fun forDay(hour: Int, weekend: Boolean): List<Scenario> {
         val first = when (hour) {
             in 5..8 -> "wake"

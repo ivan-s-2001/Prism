@@ -132,6 +132,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     heroHeight: Dp = 420.dp, loading: Boolean = false, onRetry: (() -> Unit)? = null, onOpenPlayer: () -> Unit = {}) {
     val c = LocalContainer.current
     val scope = rememberCoroutineScope()
+    val nav = com.prism.music.ui.LocalNavigator.current
     val source by c.queue.source.collectAsState()
     val song by c.player.currentSong.collectAsState()
     val playing by c.player.isPlaying.collectAsState()
@@ -145,11 +146,12 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     fun restoredStyle(origin: String?) =
         MyWave.restore(origin, settings.streamStyleOrigin, settings.streamRussianPercent)
     var style by remember(source.originId) { mutableStateOf(restoredStyle(source.originId)) }
-    val scenarioOrder = remember {
+    val automaticScenarioOrder = remember {
         val calendar = java.util.Calendar.getInstance()
         WaveScenarios.stripOrder(calendar.get(java.util.Calendar.HOUR_OF_DAY),
             calendar.get(java.util.Calendar.DAY_OF_WEEK) in listOf(java.util.Calendar.SATURDAY, java.util.Calendar.SUNDAY))
     }
+    val scenarioOrder = remember(automaticScenarioOrder, settings.streamScenarioOrder) { WaveScenarios.visibleOrder(automaticScenarioOrder, settings.streamScenarioOrder) }
     val scenarioScroll = androidx.compose.foundation.lazy.rememberLazyListState()
     val savedPresets = settings.streamPresets
     var namingPreset by rememberSaveable { mutableStateOf(false) }
@@ -398,32 +400,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     }
                 }
             }
-            // Keep the three transport controls separate from the two song reactions.
-            // A five-button transport row can exceed the available width on compact phones.
-            val inset = ui.gap(if (maxWidth < 340.dp) 12.dp else 16.dp)
-            val landscape = maxWidth >= 520.dp && maxWidth > maxHeight * 1.3f
-            if (landscape) {
-                Row(Modifier.fillMaxSize().padding(inset), horizontalArrangement = Arrangement.spacedBy(ui.gap(24.dp)),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    if (settings.streamShowCover) BoxWithConstraints(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                        CoverArt(Modifier.size(minOf(maxWidth, maxHeight) * settings.streamCoverSize.fraction))
-                    }
-                    Column(Modifier.weight(1.3f), verticalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
-                        Metadata(reactions = true)
-                        if (settings.streamShowProgress) Progress()
-                        Transport()
-                    }
-                }
-            } else {
-                Column(Modifier.fillMaxSize().padding(inset), verticalArrangement = if (settings.streamShowCover) Arrangement.spacedBy(ui.gap(12.dp)) else Arrangement.spacedBy(ui.gap(12.dp), Alignment.CenterVertically)) {
-                    if (settings.streamShowCover) BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        CoverArt(Modifier.size(minOf(maxWidth, maxHeight) * settings.streamCoverSize.fraction))
-                    }
-                    Metadata(reactions = true)
-                    if (settings.streamShowProgress) Progress()
-                    Transport()
-                }
-            }
+            VibePlayerLayout(settings, Modifier.fillMaxSize(), cover = { CoverArt(it) },
+                metadata = { Metadata(reactions = true) }, progress = { Progress() }, transport = { Transport() })
         }
             }
         }
@@ -495,6 +473,9 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 Row(Modifier.fillMaxWidth().padding(bottom = ui.gap(18.dp)), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
                     Text(tr(R.string.prism_stream_tune_your_stream), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    RoundAction(PrismIcons.Palette, tr(R.string.customize_prism)) {
+                        close { nav.go(com.prism.music.ui.Routes.settings("home_library", tr(R.string.stream))) }
+                    }
                     RoundAction(PrismIcons.Refresh, tr(R.string.prism_stream_reset)) { change { it.reset() } }
                 }
                 var advanced by rememberSaveable { mutableStateOf(false) }

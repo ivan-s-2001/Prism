@@ -154,28 +154,32 @@ private fun MiniVibe(c: ThemeColors, song: Song?) {
             Text(tr(R.string.stream), style = pageTitleStyle(), color = scheme.onBackground)
             if (s.streamShowStatus) Text(tr(R.string.prism_stream_personal_stream), style = MaterialTheme.typography.bodySmall)
             val panel = Modifier.weight(1f).fillMaxWidth()
-            Column(panel.then(if (s.streamGlassPanel) Modifier.clip(ui.shape(24.dp)).background(scheme.surfaceContainerHigh.copy(alpha = 0.80f)) else Modifier).padding(ui.gap(16.dp)),
-                verticalArrangement = if (s.streamShowCover) Arrangement.spacedBy(ui.gap(12.dp)) else Arrangement.spacedBy(ui.gap(12.dp), Alignment.CenterVertically),
-                horizontalAlignment = Alignment.CenterHorizontally) {
-                if (s.streamShowCover) BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    StandIn(song, Modifier.size(minOf(maxWidth, maxHeight) * s.streamCoverSize.fraction),
-                        com.prism.music.ui.theme.CoverShapes.of(s.shapes.player, s.player.artCorners.dp), standIns.first())
-                }
-                Text(song?.title ?: tr(R.string.prism_stream_music_in_your_rhythm), style = com.prism.music.ui.player.playerTitleStyle(MaterialTheme.typography, s), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(song?.primaryArtist ?: tr(R.string.prism_stream_start_listening), style = com.prism.music.ui.player.playerArtistStyle(MaterialTheme.typography, s), color = scheme.onSurfaceVariant, maxLines = 1)
-                if (s.streamShowProgress) Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(scheme.outlineVariant)) {
-                    Box(Modifier.fillMaxWidth(0.35f).height(4.dp).background(scheme.primary))
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    if (s.streamShowReactions) Icon(PrismIcons.Heart, null)
-                    Icon(PrismIcons.Previous, null)
-                    Icon(PrismIcons.Play, null, Modifier.size(38.dp))
-                    Icon(PrismIcons.Next, null)
-                    if (s.streamShowReactions) Icon(PrismIcons.ThumbDown, null)
-                }
-            }
+            VibePlayerLayout(s, panel.then(if (s.streamGlassPanel) Modifier.clip(ui.shape(24.dp)).background(scheme.surfaceContainerHigh.copy(alpha = 0.80f)) else Modifier),
+                cover = { modifier -> StandIn(song, modifier, com.prism.music.ui.theme.CoverShapes.of(s.shapes.player, s.player.artCorners.dp), standIns.first()) },
+                metadata = {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(song?.title ?: tr(R.string.prism_stream_music_in_your_rhythm), style = com.prism.music.ui.player.playerTitleStyle(MaterialTheme.typography, s), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(song?.primaryArtist ?: tr(R.string.prism_stream_start_listening), style = com.prism.music.ui.player.playerArtistStyle(MaterialTheme.typography, s), color = scheme.onSurfaceVariant, maxLines = 1)
+                        }
+                        if (s.streamShowReactions) {
+                            Icon(PrismIcons.Heart, null, Modifier.padding(6.dp))
+                            Icon(PrismIcons.ThumbDown, null, Modifier.padding(6.dp))
+                        }
+                    }
+                }, progress = {
+                    PreviewBar(s, Brush.horizontalGradient(c.ring), ink = scheme.onSurface)
+                }, transport = {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                        Icon(PrismIcons.Previous, null)
+                        PreviewPlay(s, c, 52.dp, ink = scheme.onSurface, inverseInk = scheme.surface, ring = s.view.playRing)
+                        Icon(PrismIcons.Next, null)
+                    }
+                })
+            val scenarios = com.prism.music.data.foryou.WaveScenarios.visibleOrder(com.prism.music.data.foryou.WaveScenarios.all, s.streamScenarioOrder)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp))) {
-                listOf(PrismIcons.Customize, PrismIcons.Stream, PrismIcons.Bookmark).forEach { icon ->
+                val icons = listOf(PrismIcons.Customize) + scenarios.take(2).map { PrismIcons.waveScenario(it.glyph) }
+                icons.forEach { icon ->
                     Box(Modifier.weight(1f).height(if (s.streamCompactScenarios) 36.dp else 62.dp).clip(if (s.streamCompactScenarios) ui.button else ui.card).background(scheme.surfaceContainer), contentAlignment = Alignment.Center) {
                         Icon(icon, null, Modifier.size(24.dp))
                     }
@@ -333,46 +337,46 @@ fun MiniPlayerScreen(c: ThemeColors, song: Song?) {
 
 /** The preview's play button, in the Controls style picked. */
 @Composable
-private fun PreviewPlay(s: AppSettings, c: ThemeColors, size: Dp) {
+private fun PreviewPlay(s: AppSettings, c: ThemeColors, size: Dp, ink: Color = Color.White, inverseInk: Color = Color.Black, ring: Boolean = true) {
     when (s.transportStyle) {
-        TransportStyle.GLYPHS -> Icon(PrismIcons.Pause, null, Modifier.size(size * 0.68f), tint = Color.White)
+        TransportStyle.GLYPHS -> Icon(PrismIcons.Pause, null, Modifier.size(size * 0.68f), tint = ink)
         TransportStyle.BUTTON -> Box(
-            Modifier.size(size).clip(CircleShape).background(Color.White).border(2.dp, Brush.sweepGradient(c.ring), CircleShape),
+            Modifier.size(size).clip(CircleShape).background(ink).then(if (ring) Modifier.border(2.dp, Brush.sweepGradient(c.ring), CircleShape) else Modifier),
             contentAlignment = Alignment.Center,
-        ) { Icon(PrismIcons.Pause, null, Modifier.size(size * 0.45f), tint = Color.Black) }
+        ) { Icon(PrismIcons.Pause, null, Modifier.size(size * 0.45f), tint = inverseInk) }
         TransportStyle.OUTLINE -> Box(
-            Modifier.size(size).clip(CircleShape).border(1.5.dp, Brush.sweepGradient(c.ring), CircleShape),
+            Modifier.size(size).clip(CircleShape).then(if (ring) Modifier.border(1.5.dp, Brush.sweepGradient(c.ring), CircleShape) else Modifier.border(1.5.dp, ink, CircleShape)),
             contentAlignment = Alignment.Center,
-        ) { Icon(PrismIcons.Pause, null, Modifier.size(size * 0.45f), tint = Color.White) }
+        ) { Icon(PrismIcons.Pause, null, Modifier.size(size * 0.45f), tint = ink) }
     }
 }
 
 /** The preview's progress bar: its style (a waveform's bars too), color and the times under it. */
 @Composable
-private fun PreviewBar(s: AppSettings, light: Brush) {
+private fun PreviewBar(s: AppSettings, light: Brush, ink: Color = Color.White) {
     val fill = com.prism.music.ui.player.scrubberFill(s.scrubberColor, null) ?: light
     if (s.scrubberStyle == ScrubberStyle.WAVE) {
         Row(Modifier.fillMaxWidth().height(22.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
             PREVIEW_WAVE.forEachIndexed { i, v ->
-                Box(Modifier.weight(1f).fillMaxSize(v).clip(CircleShape).background(if (i < PREVIEW_WAVE.size * 0.4f) fill else androidx.compose.ui.graphics.SolidColor(Color.White.copy(alpha = 0.22f))))
+                Box(Modifier.weight(1f).fillMaxSize(v).clip(CircleShape).background(if (i < PREVIEW_WAVE.size * 0.4f) fill else androidx.compose.ui.graphics.SolidColor(ink.copy(alpha = 0.22f))))
             }
         }
     } else {
         val bar = when (s.scrubberStyle) { ScrubberStyle.BOLD -> 6.dp; ScrubberStyle.HAIRLINE -> 2.dp; else -> 3.dp }
         Box(Modifier.fillMaxWidth().height(14.dp), contentAlignment = Alignment.CenterStart) {
-            Box(Modifier.fillMaxWidth().height(bar).clip(CircleShape).background(Color.White.copy(alpha = 0.2f)))
+            Box(Modifier.fillMaxWidth().height(bar).clip(CircleShape).background(ink.copy(alpha = 0.2f)))
             Box(Modifier.fillMaxWidth(0.4f).height(bar).clip(CircleShape).background(fill))
             if (s.scrubberStyle == ScrubberStyle.THUMB || s.scrubberStyle == ScrubberStyle.RIBBONS) Row {
                 Spacer(Modifier.fillMaxWidth(0.38f))
-                Box(Modifier.size(14.dp).clip(CircleShape).background(Color.White))
+                Box(Modifier.size(14.dp).clip(CircleShape).background(ink))
             }
         }
     }
     val times = s.player.times
     if (times != com.prism.music.data.prefs.PlayerTimes.NONE) Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
         val st = MaterialTheme.typography.labelMedium
-        Text(if (times == com.prism.music.data.prefs.PlayerTimes.LEFT) "" else "1:12", style = st, color = Color.White.copy(alpha = 0.55f))
-        Text(if (times == com.prism.music.data.prefs.PlayerTimes.ELAPSED) "" else "−2:31", style = st, color = Color.White.copy(alpha = 0.55f))
+        Text(if (times == com.prism.music.data.prefs.PlayerTimes.LEFT) "" else "1:12", style = st, color = ink.copy(alpha = 0.55f))
+        Text(if (times == com.prism.music.data.prefs.PlayerTimes.ELAPSED) "" else "−2:31", style = st, color = ink.copy(alpha = 0.55f))
     }
 }
 

@@ -144,6 +144,12 @@ fun TvSettingsPlace(nav: TvNav) {
             ),
         ),
         TvSettingGroup(tr(R.string.stream), PrismIcons.Stream, emptyList()) to listOf(
+            TvSettingRow(TvSetting(tr(R.string.prism_stream_appearance_reverse), on = settings.streamReverseLayout), TvSettingAction.Flip({ c.settings.setStreamReverseLayout(it) }, settings.streamReverseLayout)),
+            TvSettingRow(TvSetting(tr(R.string.prism_stream_appearance_arrange), if (settings.streamScenarioOrder.isEmpty()) tr(R.string.prism_stream_auto) else tr(R.string.changed)), TvSettingAction.Choose(listOf(
+                tr(R.string.prism_stream_auto) to { c.settings.setStreamScenarioOrder("") },
+                tr(R.string.prism_stream_appearance_all_scenarios) to { c.settings.setStreamScenarioOrder(com.prism.music.data.foryou.WaveScenarios.encodeOrder(com.prism.music.data.foryou.WaveScenarios.all.map { it.id })) },
+                tr(R.string.prism_stream_appearance_no_scenarios) to { c.settings.setStreamScenarioOrder("-") }
+            ))),
             TvSettingRow(TvSetting(tr(R.string.prism_stream_appearance_panel), on = settings.streamGlassPanel), TvSettingAction.Flip({ c.settings.setStreamGlassPanel(it) }, settings.streamGlassPanel)),
             TvSettingRow(TvSetting(tr(R.string.cover_size), settings.streamCoverSize.label), TvSettingAction.Choose(com.prism.music.data.prefs.StreamCoverSize.entries.map { size -> size.label to { c.settings.setStreamCoverSize(size) } })),
             TvSettingRow(TvSetting(tr(R.string.artwork), on = settings.streamShowCover), TvSettingAction.Flip({ c.settings.setStreamShowCover(it) }, settings.streamShowCover)),

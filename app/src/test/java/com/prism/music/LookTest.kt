@@ -51,6 +51,7 @@ class LookTest {
     fun vibeAppearanceIsPartOfALook() {
         val r = repo()
         val values = mapOf("stream_show_cover" to "b:0", "stream_cover_size" to "s:COMPACT",
+            "stream_reverse_layout" to "b:1", "stream_scenario_order" to "s:focus,night",
             "stream_glass_panel" to "b:0", "stream_show_progress" to "b:0", "stream_compact_scenarios" to "b:1")
         val s = r.previewLook(values)
         assertEquals(false, s.streamShowCover)
@@ -58,7 +59,20 @@ class LookTest {
         assertEquals(false, s.streamGlassPanel)
         assertEquals(false, s.streamShowProgress)
         assertTrue(s.streamCompactScenarios)
+        assertTrue(s.streamReverseLayout)
+        assertEquals("focus,night", s.streamScenarioOrder)
         assertTrue(values.keys.all(LookLabels::named))
+    }
+
+    @Test
+    fun vibeScenarioOrderSupportsAutomaticManualAndHidden() {
+        val wave = com.prism.music.data.foryou.WaveScenarios
+        val automatic = wave.stripOrder(21, false)
+        assertEquals(automatic, wave.visibleOrder(automatic, ""))
+        assertEquals(listOf("night", "focus"), wave.visibleOrder(automatic, "night,focus,night,invalid").map { it.id })
+        assertTrue(wave.visibleOrder(automatic, "-").isEmpty())
+        assertEquals("-", wave.encodeOrder(emptyList()))
+        assertEquals("", wave.sanitizeOrder("invalid"))
     }
 
     @Test

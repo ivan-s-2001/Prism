@@ -43,6 +43,7 @@ private val page = SettingsPageId.HOME_LIBRARY
 internal object HlGroups {
     val home get() = tr(R.string.home)
     val stream get() = tr(R.string.stream)
+    val streamScenarios get() = tr(R.string.prism_stream_appearance_scenarios)
     val search get() = tr(R.string.search)
     val replayCard get() = tr(R.string.replay_card)
     val library get() = tr(R.string.library)
@@ -78,6 +79,9 @@ fun HomeLibraryPage(bottomPadding: Dp, find: String? = null, showBack: Boolean =
     val d = remember { AppSettings() }
     val reset = ListeningResets()
     val onOff: (Boolean) -> String = { ListeningResets.onOff(it) }
+    val streamReverseChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_reverse), s.streamReverseLayout, d.streamReverseLayout, onOff) { prefs.setStreamReverseLayout(it) }
+    val streamOrderChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_arrange), s.streamScenarioOrder, d.streamScenarioOrder, { if (it.isEmpty()) tr(R.string.prism_stream_auto) else tr(R.string.changed) }) { prefs.setStreamScenarioOrder(it) }
+    var arrangeVibe by rememberSaveable { mutableStateOf(false) }
     val streamSizeChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.cover_size), s.streamCoverSize, d.streamCoverSize, { it.label }) { prefs.setStreamCoverSize(it) }
     val streamPanelChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_panel), s.streamGlassPanel, d.streamGlassPanel, onOff) { prefs.setStreamGlassPanel(it) }
     val streamShowCoverChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.artwork), s.streamShowCover, d.streamShowCover, onOff) { prefs.setStreamShowCover(it) }
@@ -156,7 +160,11 @@ fun HomeLibraryPage(bottomPadding: Dp, find: String? = null, showBack: Boolean =
             SwitchRow(tr(R.string.progress_bar), s.streamShowProgress, changed = streamShowProgressChanged) { prefs.setStreamShowProgress(it) }
             SwitchRow(tr(R.string.prism_stream_appearance_reactions), s.streamShowReactions, changed = streamShowReactionsChanged) { prefs.setStreamShowReactions(it) }
             SwitchRow(tr(R.string.prism_stream_appearance_status), s.streamShowStatus, changed = streamShowStatusChanged) { prefs.setStreamShowStatus(it) }
+            SwitchRow(tr(R.string.prism_stream_appearance_reverse), s.streamReverseLayout, changed = streamReverseChanged) { prefs.setStreamReverseLayout(it) }
+        }
+        group(HlGroups.streamScenarios) {
             SwitchRow(tr(R.string.prism_stream_appearance_compact_scenarios), s.streamCompactScenarios, changed = streamCompactScenariosChanged) { prefs.setStreamCompactScenarios(it) }
+            LinkRow(tr(R.string.prism_stream_appearance_arrange), value = if (s.streamScenarioOrder.isEmpty()) tr(R.string.prism_stream_auto) else tr(R.string.changed), changed = streamOrderChanged, icon = PrismIcons.Customize) { arrangeVibe = true }
         }
         group(HlGroups.search) {
             SwitchRow(tr(R.string.open_the_keyboard), s.searchKeyboard, info = tr(R.string.ready_to_type_when_search_opens), changed = keyboardChanged) { prefs.setSearchKeyboard(it) }
@@ -225,6 +233,7 @@ fun HomeLibraryPage(bottomPadding: Dp, find: String? = null, showBack: Boolean =
             )
         }
     }
+    if (arrangeVibe) VibeScenarioEditor(s.streamScenarioOrder, prefs::setStreamScenarioOrder) { arrangeVibe = false }
     if (arranging) ArrangeSearchSheet { arranging = false }
     if (editingTiles) LibraryTilesSheet { editingTiles = false }
 }
@@ -338,7 +347,7 @@ fun homeLibraryValue(s: AppSettings, dark: Boolean): String {
 val homeLibraryLookKeys: List<String> = listOf(
     "replay_card", "replay_card_graph", "library_view", "library_views", "library_columns", "library_subtitles",
     "playlist_hero_cover", "album_hero_cover", "downloads_albums",
-    "stream_show_cover", "stream_cover_size", "stream_glass_panel", "stream_show_progress", "stream_show_reactions", "stream_show_status", "stream_compact_scenarios",
+    "stream_show_cover", "stream_cover_size", "stream_glass_panel", "stream_reverse_layout", "stream_scenario_order", "stream_show_progress", "stream_show_reactions", "stream_show_status", "stream_compact_scenarios",
 )
 
 /** Old group titles → this page's groups: "Liked songs" (on Recommendations before 1.8.4) held what is in Library now. */
@@ -372,13 +381,15 @@ val homeLibraryIndex: List<SettingEntry> by lazy {
         SettingEntry(page, g.home, tr(R.string.recently_played_shows), tr(R.string.recently_played_albums_playlists_songs_home)),
         SettingEntry(page, g.home, tr(R.string.buttons_at_the_top_of_home), words(R.string.podcasts_button, R.string.customize_button_at_the_top)),
         // Vibe appearance
+        SettingEntry(page, g.stream, tr(R.string.prism_stream_appearance_reverse), tr(R.string.stream)),
+        SettingEntry(page, g.streamScenarios, tr(R.string.prism_stream_appearance_arrange), tr(R.string.stream)),
         SettingEntry(page, g.stream, tr(R.string.prism_stream_appearance_panel), tr(R.string.stream)),
         SettingEntry(page, g.stream, tr(R.string.cover_size), tr(R.string.stream)),
         SettingEntry(page, g.stream, tr(R.string.artwork), tr(R.string.stream)),
         SettingEntry(page, g.stream, tr(R.string.progress_bar), tr(R.string.stream)),
         SettingEntry(page, g.stream, tr(R.string.prism_stream_appearance_reactions), tr(R.string.stream)),
         SettingEntry(page, g.stream, tr(R.string.prism_stream_appearance_status), tr(R.string.stream)),
-        SettingEntry(page, g.stream, tr(R.string.prism_stream_appearance_compact_scenarios), tr(R.string.stream)),
+        SettingEntry(page, g.streamScenarios, tr(R.string.prism_stream_appearance_compact_scenarios), tr(R.string.stream)),
         // Search
         SettingEntry(page, g.search, tr(R.string.search)),
         SettingEntry(page, g.search, tr(R.string.open_the_keyboard), tr(R.string.search_typing)),
