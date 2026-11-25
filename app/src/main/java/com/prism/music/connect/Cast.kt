@@ -16,6 +16,12 @@ import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.prism.music.AppContainer
+import com.prism.music.BuildConfig
+import com.prism.music.connect.yandex.StationConnectAccount
+import com.prism.music.connect.yandex.StationDiscoveryEvent
+import com.prism.music.connect.yandex.StationRendererLink
+import com.prism.music.connect.yandex.YandexStation
+import com.prism.music.connect.yandex.YandexStationDiscovery
 import com.prism.music.data.model.Song
 import com.prism.music.data.model.hiRes
 import com.prism.music.playback.toSong
@@ -100,6 +106,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
     private val manual = java.util.concurrent.CopyOnWriteArrayList<String>()
     private var lookers = 0
     private var discovery: Job? = null
+    private val stationDevices = ConcurrentHashMap<String, YandexStation>()
+    private val stationListed = ConcurrentHashMap<String, String>()
 
     /** Starts looking for renderers (the output picker while it's open); every call needs a [stopDiscovery]. */
     fun startDiscovery() {
@@ -131,6 +139,9 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         val lock = runCatching { wifi?.createMulticastLock("prism-connect")?.apply { setReferenceCounted(false); acquire() } }.getOrNull()
         val notify = scope.launch(Dispatchers.IO) { listenForNotify() }
         val google = withContext(Dispatchers.Main) { startCastDiscovery() }
+        val stations = if (BuildConfig.DEBUG && StationConnectAccount.api() != null) {
+            scope.launch(Dispatchers.IO) { discoverStations() }
+        } else null
         try {
             manual.forEach { describe(it, force = true) }
             while (kotlinx.coroutines.currentCoroutineContext().isActive) {
@@ -143,9 +154,43 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             }
         } finally {
             notify.cancel()
+            stations?.cancel()
+            stationListed.clear()
             google?.let { l -> runCatching { nsd?.stopServiceDiscovery(l) } }
             castListed.clear()
             runCatching { lock?.release() }
+        }
+    }
+
+    /** Experimental routes use the same output picker and discovery lifecycle as other renderers. */
+    private suspend fun discoverStations() {
+        try {
+            YandexStationDiscovery(app).discover().collect { event ->
+                when (event) {
+                    is StationDiscoveryEvent.Found -> {
+                        val d = event.station
+                        val id = "yandex:${d.deviceId}"
+                        val renderer = Renderer(id, d.serviceName, "Yandex", d.platform,
+                            "yandexstation://${d.address.hostAddress}:${d.port}", null,
+                            kind = RendererKind.YANDEX_STATION)
+                        stationDevices[id] = d
+                        stationListed[d.serviceName] = id
+                        found[id] = renderer to SystemClock.elapsedRealtime()
+                        publishFound()
+                    }
+                    is StationDiscoveryEvent.Lost -> stationListed.remove(event.serviceName)?.let { id ->
+                        if (id != (state.value as? CastState.Casting)?.renderer?.id) {
+                            stationDevices.remove(id)
+                            found.remove(id)
+                            publishFound()
+                        }
+                    }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            Log.w(TAG, "Yandex Station discovery failed")
         }
     }
 
@@ -263,7 +308,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         val cutoff = SystemClock.elapsedRealtime() - FORGET_MS
         val castingTo = (state.value as? CastState.Casting)?.renderer?.id
         // Cast devices still listed by mDNS stay (they don't answer SSDP searches, so their time never moves on).
-        val listed = castListed.values.toSet()
+        val listed = castListed.values.toSet() + stationListed.values
         if (found.entries.removeIf { it.value.second < cutoff && it.key != castingTo && it.key !in listed && it.value.first.location !in manual }) publishFound()
     }
 
@@ -395,7 +440,25 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         if (session != null || tv != null) disconnect(null, keepPlaying = true)
         _state.value = CastState.Connecting(r)
         scope.launch {
-            val ctl: RendererLink = if (r.kind == RendererKind.GOOGLE_CAST) GoogleCastLink(r) else RendererControl(c.http, r)
+            val ctl: RendererLink = try {
+                when (r.kind) {
+                    RendererKind.YANDEX_STATION -> {
+                        check(BuildConfig.DEBUG)
+                        val device = stationDevices[r.id] ?: error("Station no longer available")
+                        val api = StationConnectAccount.api() ?: error("Sign in through Station Lab")
+                        val identity = api.verify(device)
+                        StationRendererLink(device, identity, api)
+                    }
+                    RendererKind.GOOGLE_CAST -> GoogleCastLink(r)
+                    else -> RendererControl(c.http, r)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                if (state.value == CastState.Connecting(r)) _state.value = CastState.Idle
+                _events.tryEmit(tr(R.string.couldn_t_reach_make_sure_it, r.name))
+                return@launch
+            }
             val host = withContext(Dispatchers.IO) { r.host?.let { RendererControl.localAddressFor(it) } }
             // A Cast device opens its player first, which takes a few seconds (longer for a TV that was asleep).
             val wait = if (r.kind == RendererKind.GOOGLE_CAST) 25_000L else 8_000L
@@ -412,7 +475,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             server.newSession()
             val s = Session(r, ctl, host!!, sink)
             // Cast devices get each song as it comes (no "next" to line up), so it isn't got ready twice.
-            s.nextSupported = r.kind != RendererKind.GOOGLE_CAST
+            s.nextSupported = r.kind != RendererKind.GOOGLE_CAST && r.kind != RendererKind.YANDEX_STATION
             s.volume = runCatching { ctl.volume() }.getOrNull()
             session = s
             casting = true
@@ -758,6 +821,10 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
     /** The renderer wouldn't take (or play) what was sent: the other kind of PCM, then giving up. */
     private fun refuse(s: Session, l: Loaded) {
         if (session !== s) return
+        if (s.renderer.kind == RendererKind.YANDEX_STATION) {
+            disconnect(tr(R.string.couldn_t_play_the_music_prism, s.renderer.name), keepPlaying = false)
+            return
+        }
         s.refused += l.format
         val left = listOf(CastFormat.WAV, CastFormat.L16).filterNot { it in s.refused }
         if (left.isEmpty()) {
