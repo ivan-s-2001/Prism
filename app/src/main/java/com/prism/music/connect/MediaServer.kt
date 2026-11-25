@@ -1,6 +1,8 @@
 package com.prism.music.connect
 
 import java.security.SecureRandom
+import java.io.OutputStream
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Serves songs to renderers on the local network: `GET/HEAD /cast/<token>/<key>` with Range support and the DLNA
@@ -10,8 +12,12 @@ import java.security.SecureRandom
 class MediaServer(preferredPort: Int = PORT) {
     @Volatile var token: String = newToken()
         private set
-    private val bodies = object : LinkedHashMap<String, CastBody>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CastBody>?) = size > KEEP
+    private class Entry(val body: CastBody, val observedPeer: String?) {
+        val delivery = AtomicLong(0)
+    }
+    private val sequence = AtomicLong(0)
+    private val bodies = object : LinkedHashMap<String, Entry>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>?) = size > KEEP
     }
     /** Requests served, for the log and tests: "GET key bytes=a-b". */
     val log = java.util.concurrent.ConcurrentLinkedQueue<String>()
@@ -40,10 +46,10 @@ class MediaServer(preferredPort: Int = PORT) {
         publishForSession(token, key, body, host)
 
     /** A decoder finishing after disconnect must not publish into a newer cast session. */
-    fun publishForSession(expectedToken: String, key: String, body: CastBody, host: String): String =
+    fun publishForSession(expectedToken: String, key: String, body: CastBody, host: String, observedPeer: String? = null): String =
         synchronized(bodies) {
             check(token == expectedToken) { "Cast media session changed" }
-            bodies[key] = body
+            bodies[key] = Entry(body, observedPeer)
             "http://$host:$port/cast/$expectedToken/$key"
         }
 
@@ -51,12 +57,45 @@ class MediaServer(preferredPort: Int = PORT) {
 
     fun has(key: String) = synchronized(bodies) { bodies.containsKey(key) }
 
+    /** Evidence of a real GET body write to the expected Station IP, never HEAD or another client.
+     * This proves HTTP delivery started, not that audio has reached the speaker.
+     */
+    fun deliverySequence(url: String): Long {
+        val parts = runCatching { java.net.URI(url).path.trimStart('/').split('/') }.getOrNull() ?: return 0
+        if (parts.size != 3 || parts[0] != "cast") return 0
+        return synchronized(bodies) {
+            if (parts[1] == token) bodies[parts[2]]?.delivery?.get() ?: 0 else 0
+        }
+    }
+
+    private fun observedOutput(entry: Entry, req: HttpRequest, out: OutputStream): OutputStream {
+        if (entry.observedPeer == null || req.remote.hostAddress != entry.observedPeer) return out
+        return object : OutputStream() {
+            private var started = false
+            override fun write(b: Int) { out.write(b); mark() }
+            override fun write(b: ByteArray, off: Int, len: Int) {
+                out.write(b, off, len)
+                if (len > 0) mark()
+            }
+            override fun flush() = out.flush()
+            private fun mark() {
+                if (!started) {
+                    // Flush the first data immediately instead of waiting for the 64 KiB HTTP buffer.
+                    out.flush()
+                    entry.delivery.set(sequence.incrementAndGet())
+                    started = true
+                }
+            }
+        }
+    }
+
     private fun handle(req: HttpRequest, res: HttpResponse) {
         if (req.method != "GET" && req.method != "HEAD") { res.text(405, "GET only", mapOf("Allow" to "GET, HEAD")); return }
         val parts = req.path.removePrefix("/").split('/')
         if (parts.size != 3 || parts[0] != "cast") { res.text(404, "Not found"); return }
         val key = parts[2]
-        val body = synchronized(bodies) { if (parts[1] == token) bodies[key] else null } ?: run { res.text(404, "Not found"); return }
+        val entry = synchronized(bodies) { if (parts[1] == token) bodies[key] else null } ?: run { res.text(404, "Not found"); return }
+        val body = entry.body
         val total = body.length
         val headers = linkedMapOf(
             "Content-Type" to body.mime,
@@ -72,12 +111,12 @@ class MediaServer(preferredPort: Int = PORT) {
             ByteRange.Unsatisfiable -> res.send(416, null, ByteArray(0), headers + ("Content-Range" to "bytes */$total"))
             ByteRange.Whole -> {
                 val out = res.start(200, headers, total)
-                if (req.method == "GET") body.write(0, total - 1, out)
+                if (req.method == "GET") body.write(0, total - 1, observedOutput(entry, req, out))
                 out.flush()
             }
             is ByteRange.Part -> {
                 val out = res.start(206, headers + ("Content-Range" to "bytes ${range.start}-${range.end}/$total"), range.length)
-                if (req.method == "GET") body.write(range.start, range.end, out)
+                if (req.method == "GET") body.write(range.start, range.end, observedOutput(entry, req, out))
                 out.flush()
             }
         }
