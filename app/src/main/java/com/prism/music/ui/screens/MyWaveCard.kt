@@ -351,19 +351,22 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (reactions) {
-                        Spacer(Modifier.width(4.dp))
+                        Spacer(Modifier.width(8.dp))
                         Reaction(true)
+                        Spacer(Modifier.width(8.dp))
                         Reaction(false)
                     }
                 }
             }
-            @Composable fun Transport(withReactions: Boolean) {
+            @Composable fun Transport() {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Box(Modifier.widthIn(max = 340.dp).fillMaxWidth()) {
                 TransportRow(isPlaying = wave && playing, isLoading = pending && !wave,
                     previousEnabled = wave && hasPrevious, nextEnabled = wave && hasNext,
                     compact = true, showModes = false, playAction = { if (wave) c.player.togglePlay() else if (!starting) start() },
-                    playAccent = accent.takeIf { settings.streamThemeColors }, playTag = "home:my_wave:play",
-                    leadingAction = if (withReactions) ({ Reaction(true) }) else null,
-                    trailingAction = if (withReactions) ({ Reaction(false) }) else null)
+                    playAccent = accent.takeIf { settings.streamThemeColors }, playTag = "home:my_wave:play")
+                    }
+                }
             }
             @Composable fun Progress() {
                 val id = current?.id
@@ -388,31 +391,30 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     }
                 }
             }
-            // One composition: cover, metadata, scrubber, transport. Reactions share the
-            // native transport row rather than occupying another full row of buttons.
+            // Keep the three transport controls separate from the two song reactions.
+            // A five-button transport row can exceed the available width on compact phones.
             val inset = if (maxWidth < 340.dp) 12.dp else 16.dp
-            val sideBySide = maxHeight < 325.dp && maxWidth >= 340.dp
-            val withReactions = maxWidth - inset * 2 >= 296.dp
-            if (sideBySide) {
-                Column(Modifier.fillMaxSize().padding(inset), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        BoxWithConstraints(Modifier.weight(0.85f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                            CoverArt(Modifier.size(minOf(maxWidth, maxHeight)))
-                        }
-                        Box(Modifier.weight(1.15f)) { Metadata() }
+            val landscape = maxWidth >= 520.dp && maxWidth > maxHeight * 1.3f
+            if (landscape) {
+                Row(Modifier.fillMaxSize().padding(inset), horizontalArrangement = Arrangement.spacedBy(24.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    BoxWithConstraints(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        CoverArt(Modifier.size(minOf(maxWidth, maxHeight)))
                     }
-                    Progress()
-                    Transport(withReactions = true)
+                    Column(Modifier.weight(1.3f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Metadata(reactions = true)
+                        Progress()
+                        Transport()
+                    }
                 }
             } else {
-                Column(Modifier.fillMaxSize().padding(inset), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.fillMaxSize().padding(inset), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                         CoverArt(Modifier.size(minOf(maxWidth, maxHeight)))
                     }
-                    Metadata(reactions = !withReactions)
+                    Metadata(reactions = true)
                     Progress()
-                    Transport(withReactions)
+                    Transport()
                 }
             }
         }
