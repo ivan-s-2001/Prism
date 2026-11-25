@@ -92,7 +92,9 @@ class Discover(private val c: AppContainer) {
         if (events.isEmpty() && liked.isEmpty() && starred.isEmpty()) return null
         val songs = events.map { it.songId }.distinct().chunked(500).flatMap { c.db.songs().getAll(it) }.associate { it.id to it.toSong() }
         val favorites = Discovery.favorites(events, songs, liked, now)
+        val profile = c.yourMusic.waveTaste().profile
         val fb = c.recFeedback
+        val evidence = fb.waveEvidence()
         val explicit = c.settings.current.behavior.explicitContent
         return Discovery.Listener(
             favorites, Discovery.lovedArtists(favorites, starred), heard(),
@@ -101,6 +103,8 @@ class Discover(private val c: AppContainer) {
             servedDaysAgo = fb::servedDaysAgo,
             lastWeeks = offered(id).values.flatten().toSet(),
             albumsHeard = favorites.mapNotNull { it.song.album?.id }.toSet(),
+            affinity = { MyWave.affinity(profile, it) },
+            feedbackWeight = { evidence(it.primaryArtist).weight(0.0) },
         )
     }
 
