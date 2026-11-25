@@ -17,7 +17,7 @@ internal class StationRendererLink(
     private val tokens: StationTokenSource,
 ) : RendererLink {
     private data class Snapshot(
-        val type: String?, val title: String?, val playing: Boolean?,
+        val type: String?, val id: String?, val title: String?, val playing: Boolean?,
         val position: Long?, val duration: Long?, val volume: Int?,
         val at: Long,
     )
@@ -31,6 +31,7 @@ internal class StationRendererLink(
             fun JsonObject?.field(k: String) = this?.get(k) as? JsonPrimitive
             state = Snapshot(
                 p.field("playerType")?.contentOrNull,
+                p.field("id")?.contentOrNull,
                 p.field("title")?.contentOrNull,
                 root.field("playing")?.booleanOrNull,
                 p.field("progress")?.doubleOrNull?.takeIf { it.isFinite() && it >= 0 }?.let { (it * 1000).toLong() },
@@ -73,7 +74,7 @@ internal class StationRendererLink(
 
     override suspend fun play() {
         val (url, media) = loaded ?: throw IOException("No track")
-        if (requested && !paused && state?.title == media.title && state?.playing == true) return
+        if (requested && !paused && state?.id == url && state?.playing == true) return
         if (state?.type == "bluetooth" && state?.playing == true) {
             throw IOException("Station is playing Bluetooth")
         }
@@ -122,14 +123,13 @@ internal class StationRendererLink(
             }
         }
         val s = state ?: throw IOException("No Station state")
-        val media = loaded?.second
-        val matching = s.type != "bluetooth" && media != null && s.title == media.title
+        val currentUrl = loaded?.first
+        val matching = currentUrl != null && s.id == currentUrl
         val mode = when {
             !requested -> "STOPPED"
             matching && s.playing == true -> "PLAYING"
-            matching && s.playing == false && paused -> "PAUSED_PLAYBACK"
+            matching && s.playing == false -> "PAUSED_PLAYBACK"
             now - sentAt < 5000 -> "TRANSITIONING"
-            matching && s.playing == false -> "STOPPED"
             else -> "STOPPED"
         }
         return TransportInfo(mode, "OK")
@@ -138,10 +138,11 @@ internal class StationRendererLink(
     override suspend fun position(): PositionInfo {
         val s = state
         val track = loaded
-        if (requested && track != null && s != null && s.type != "bluetooth" && s.title == track.second.title) {
+        if (requested && track != null && s != null && s.id == track.first) {
             return PositionInfo(track.first, s.position, s.duration ?: track.second.durationMs)
         }
-        return PositionInfo(null, null, null)
+        // A foreign source must not be mistaken for the current Prism stream.
+        return PositionInfo(s?.id?.takeIf { s.playing == true }, null, null)
     }
 
     override suspend fun volume(): Int? = state?.volume
