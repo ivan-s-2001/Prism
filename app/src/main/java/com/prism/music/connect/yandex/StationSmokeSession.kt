@@ -6,6 +6,8 @@ import java.net.Inet4Address
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -50,8 +52,20 @@ internal class StationSmokeSession(
     }
     private val stopControl = StationStopControl()
     @Volatile private var liveState: StationPlaybackState? = null
+    @Volatile private var audioClient: Boolean? = null
+    @Volatile private var audioClientHls: Boolean? = null
+    private var liveModern = true
+    private var liveStoppedBoundary = false
     private val socket = GlagolSocket(station, identity.certificatePem) { text ->
         stopControl.onState(text)
+        runCatching {
+            val features = Json.parseToJsonElement(text).jsonObject["supported_features"] as? JsonArray
+            if (features != null && features.isNotEmpty()) {
+                val names = features.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.toSet()
+                audioClient = "audio_client" in names
+                audioClientHls = "audio_client_hls" in names
+            }
+        }
         StationPlaybackState.parse(text, android.os.SystemClock.elapsedRealtime())?.let { liveState = it }
         onState(text)
     }
@@ -124,16 +138,27 @@ internal class StationSmokeSession(
                 true
             } == true
             check(ready) { "AAC playlist not ready: ${stream.summary()}" }
-            send(GlagolProtocol.stop())
+            // Read advertised features before choosing a directive. Missing feature data
+            // is not evidence of legacy firmware; prefer modern audio_play in that case.
+            ping()
+            kotlinx.coroutines.withTimeoutOrNull(2500L) {
+                while (audioClient == null && liveState == null) delay(100)
+            }
+            check(liveState?.let { it.type == "bluetooth" && it.playing == true } != true) { "Station is playing Bluetooth" }
+            liveModern = audioClient != false
+            stopControl.stop(socket, tokens.tokenFor(identity), allowTextFallback = false)
+            liveStoppedBoundary = true
             delay(150)
             send(GlagolProtocol.volume(0.20))
             liveRequestedAt = android.os.SystemClock.elapsedRealtime()
             liveTitle = "Prism Live " + java.util.UUID.randomUUID().toString().take(6)
-            android.util.Log.i("PrismLive", "Sending radio_play; ${stream.summary()}; captured=${StationAudioTap.captured}")
-            val reply = socket.request(tokens.tokenFor(identity),
-                GlagolProtocol.playRadio(stream.url, liveTitle, "Prism"), 1500L)
-            android.util.Log.i("PrismLive", "radio_play reply=${if (reply == null) "pending" else if (reply.equals("SUCCESS", true)) "success" else "rejected"}")
-            if (reply != null && !reply.equals("SUCCESS", true)) error("Station rejected radio_play")
+            val directive = if (liveModern) "audio_play/HLS" else "radio_play"
+            android.util.Log.i("PrismLive", "Sending $directive audio_client=$audioClient audio_client_hls=$audioClientHls; ${stream.summary()}; captured=${StationAudioTap.captured}")
+            val payload = if (liveModern) GlagolProtocol.playHls(stream.url, liveTitle, "Prism")
+                else GlagolProtocol.playRadio(stream.url, liveTitle, "Prism")
+            val reply = socket.request(tokens.tokenFor(identity), payload, 1500L)
+            android.util.Log.i("PrismLive", "$directive reply=${if (reply == null) "pending" else if (reply.equals("SUCCESS", true)) "success" else "rejected"}")
+            if (reply != null && !reply.equals("SUCCESS", true)) error("Station rejected $directive")
         } catch (e: Throwable) {
             stream.close()
             liveHls = null
@@ -146,15 +171,16 @@ internal class StationSmokeSession(
     fun liveConfirmed(): Boolean {
         val stream = liveHls ?: return false
         val state = liveState
-        val matched = state != null && state.at >= liveRequestedAt && state.type != "bluetooth" &&
-            state.playing == true && (state.matches(stream.url) || state.title == liveTitle)
-        return matched && stream.receiving
+        return stream.receiving && state?.confirmsLive(stream.url, liveTitle, liveRequestedAt,
+            allowEmptyId = liveModern && liveStoppedBoundary) == true
     }
 
     fun liveStatus(): String {
         val state = liveState
         return "${liveHls?.summary() ?: "no HLS"}; captured=${StationAudioTap.captured}; " +
-            "stateType=${state?.type}; playing=${state?.playing}; matched=${liveConfirmed()}"
+            "audioClient=$audioClient; stateType=${state?.type}; playing=${state?.playing}; " +
+            "id=${if (state?.id == null) "missing" else if (state.id.isEmpty()) "empty" else "present"}; " +
+            "titleMatched=${state?.title == liveTitle}; matched=${liveConfirmed()}"
     }
 
     fun liveSignal(signal: StationLiveProbe.Signal) {
