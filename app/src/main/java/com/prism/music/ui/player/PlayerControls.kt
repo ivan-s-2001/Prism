@@ -1485,8 +1485,8 @@ internal fun DeviceRow(
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                subtitle + if (selected) tr(R.string.playing) else "",
+            if (subtitle.isNotBlank() || selected) Text(
+                (subtitle + if (selected) tr(R.string.playing) else "").trim().trimStart('·').trim(),
                 style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
@@ -1569,8 +1569,10 @@ private fun SpeakersAndTvs(castState: com.prism.music.connect.CastState, casting
             val selected = r.id == castingTo
             val connecting = castState is com.prism.music.connect.CastState.Connecting && selected
             val speaker = speakerWords.any { w -> "${r.name} ${r.manufacturer} ${r.model}".lowercase().contains(w) }
+            val station = r.kind == com.prism.music.connect.RendererKind.YANDEX_STATION
             DeviceRow(
-                if (speaker) PrismIcons.Speaker else PrismIcons.Tv, r.name,
+                if (station) com.prism.music.ui.theme.StationIcons.forModel(r.model)
+                else if (speaker) PrismIcons.Speaker else PrismIcons.Tv, r.name,
                 r.detail + if (connecting) tr(R.string.connecting) else "",
                 selected = selected && !connecting, busy = connecting,
             ) { if (!selected) cast.connect(r) }
