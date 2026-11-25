@@ -47,4 +47,48 @@ class StationAudioTapTest {
             assertEquals(441L * 4, tap.captured)
         } finally { tap.stop() }
     }
+
+    @Test fun independentRoomsReceiveSameSamples() {
+        val tap = StationAudioTap
+        tap.flush(44100, 2, C.ENCODING_PCM_16BIT)
+        tap.start(true)
+        val first = tap.openReader()
+        val second = tap.openReader()
+        try {
+            val input = ByteBuffer.allocate(44100 * 4 / 2).order(ByteOrder.LITTLE_ENDIAN)
+            while (input.hasRemaining()) input.putShort(1200).putShort(-600)
+            input.flip()
+            tap.handleBuffer(input)
+            repeat(4) {
+                val a = first.read(3528)
+                val b = second.read(3528)
+                assertArrayEquals(a, b)
+                assertTrue(a.any { it != 0.toByte() })
+            }
+            first.close()
+            assertTrue(second.read(3528).any { it != 0.toByte() })
+        } finally {
+            first.close()
+            second.close()
+            tap.stop()
+        }
+    }
+
+    @Test fun stalledRoomResumesNearLiveEdge() {
+        val tap = StationAudioTap
+        tap.flush(44100, 2, C.ENCODING_PCM_16BIT)
+        tap.start(true)
+        val slow = tap.openReader()
+        try {
+            val input = ByteBuffer.allocate(44100 * 4 * 3).order(ByteOrder.LITTLE_ENDIAN)
+            while (input.hasRemaining()) input.putShort(1200).putShort(-600)
+            input.flip()
+            tap.handleBuffer(input)
+            assertTrue(slow.read(3528).any { it != 0.toByte() })
+            assertTrue(slow.skippedBytes >= 44100L * 4 * 2)
+        } finally {
+            slow.close()
+            tap.stop()
+        }
+    }
 }
