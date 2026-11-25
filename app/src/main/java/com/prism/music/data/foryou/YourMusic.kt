@@ -190,6 +190,31 @@ class YourMusic(private val c: AppContainer) {
         }
     }
 
+    /** The same seed cache for Home mixes and Wave, without leaking unrelated seeds into thematic mixes. */
+    internal suspend fun recommendationRadio(seed: Song): List<Song> = waveFetchLock.withLock {
+        val account = waveAccount()
+        val key = "$account|${seed.id}"
+        val now = System.currentTimeMillis()
+        val cached = wavePageLock.withLock { wavePages[key]?.takeIf { now - it.at in 0L..600_000L } }
+        if (cached != null) return@withLock cached.songs
+        if (!c.network.isOnline()) return@withLock emptyList()
+        val page = kotlinx.coroutines.withTimeoutOrNull(2000L) {
+            withContext(Dispatchers.IO) { c.ytm.next(seed.id, playlistId = "RDAMVM${seed.id}") }
+        } ?: return@withLock emptyList()
+        if (waveAccount() != account) return@withLock emptyList()
+        val songs = page.songs.distinctBy(LocalRadio::sameSong).take(120)
+        wavePageLock.withLock {
+            wavePages[key] = WavePage(songs, page.continuation, System.currentTimeMillis())
+            while (wavePages.size > 24) wavePages.remove(wavePages.keys.first())
+        }
+        songs
+    }
+
+    /** Shared scoring, used by thematic recipes as well as the continuous stream. */
+    internal fun recommendationScore(profile: MyWave.Profile, song: Song): Double =
+        (0.65 + 0.7 * (profile.taste(song) ?: 0.5)) *
+            (1.0 + 1.35 * profile.likedAffinity(song).coerceIn(0.0, 1.0))
+
     /** Prepare local taste/history and related candidates while the Wave screen is visible. */
     internal suspend fun warmWave() {
         val taste = waveTaste()
@@ -412,66 +437,41 @@ class YourMusic(private val c: AppContainer) {
         return out
     }
 
-    /**
-     * Quick picks made around the artists the listener plays: favourites by their top artists they haven't played for
-     * a few days, new songs from radios of their top three artists ([radioOf], none they've played), and [youtube]'s own
-     * picks when they're by artists the listener plays; taken in turn (two favourites, two new, one of YouTube's), no
-     * artist twice running and three at most. With too little history to go on, [youtube] as it is.
-     *
-     * [draw]: which draw of the day (each pull to refresh is another, #371: every draw used to be the day's one, so a
-     * refresh gave the same songs back). [shown] is the set being replaced, kept out where there are others to take.
+    /** A finite recommendation surface using the same profile, recall, and ranking as Wave.
+     * Unlike the continuous stream, Home may fill spare slots with previously known music.
      */
+    @Suppress("UNUSED_PARAMETER")
     suspend fun quickPicks(
         youtube: List<Song>, radioOf: suspend (Song) -> List<Song>, count: Int = 20, draw: Int = 0, shown: Set<String> = emptySet(),
-    ): List<Song> {
-        val s = snapshot()
-        val now = System.currentTimeMillis()
-        val recent = s.events.filter { now - it.timestamp < 90 * DAY }
-        if (recent.size < MIN_PICK_HISTORY) return youtube
-        // How much the listener plays each main artist: newer plays count more (halving every 30 days), likes add.
-        val aff = HashMap<String, Double>()
-        for (e in recent) {
-            val a = s.songs[e.songId]?.primaryArtist?.lowercase().orEmpty()
-            if (a.isNotBlank()) aff[a] = (aff[a] ?: 0.0) + Math.pow(0.5, (now - e.timestamp) / (30.0 * DAY))
-        }
-        s.liked.forEach { val a = it.primaryArtist.lowercase(); if (a.isNotBlank()) aff[a] = (aff[a] ?: 0.0) + 0.5 }
-        val top = aff.values.maxOrNull()?.takeIf { it > 0 } ?: return youtube
-        fun affinity(song: Song) = song.artists.maxOfOrNull { (aff[it.name.lowercase()] ?: 0.0) / top } ?: 0.0
-        val heardToday = s.events.filter { now - it.timestamp < DAY }.map { it.songId }.toSet()
-        val heardSongs = heardToday.mapNotNull { s.songs[it] }.map { LocalRadio.sameSong(it) }.toSet()
-        fun fresh(song: Song) = ok(song) && !song.isVideo && song.id !in heardToday && LocalRadio.sameSong(song) !in heardSongs
-        val day = LocalDate.now().toString()
-        fun j(id: String) = 0.85 + 0.3 * (((id + day + draw).hashCode().toLong() and 0xffff) / 65535.0)
-        fun seed(salt: String) = drawSeed(day, salt, draw)
-
-        val last = s.events.groupBy { it.songId }.mapValues { (_, e) -> e.maxOf { it.timestamp } }
-        val favourites = s.songs.values
-            .filter { fresh(it) && (last[it.id] ?: 0) < now - 3 * DAY && affinity(it) > 0.15 && (it.durationSec == 0 || it.durationSec >= 60) }
-            .distinctBy { LocalRadio.sameSong(it) }
-            // Drawn by weighted chance, the day's own draw, so the same favourites don't head Quick picks every day.
-            .let { all -> Variety.sample(all, count * if (shown.isEmpty()) 1 else 2, seed("picks"), sharpness = 1.5) { s.model.score(it) * rest(s, it.id) } }
-        // New songs from the radios of three of the listener's eight main artists, a different three most days, each from one of their songs drawn by liking.
-        val topArtists = Variety.sample(aff.entries.sortedByDescending { it.value }.take(8), 3, seed("pick-artists")) { it.value }.map { it.key }
-        val seeds = topArtists.mapNotNull { a ->
-            Variety.sample(s.songs.values.filter { it.primaryArtist.equals(a, true) && !it.isVideo && !it.isLocal }, 1, seed("seed:$a"), sharpness = 2.0) { s.model.score(it) }.firstOrNull()
-        }
-        val played = s.events.map { it.songId }.toSet()
-        val playedSongs = played.mapNotNull { s.songs[it] }.map { LocalRadio.sameSong(it) }.toSet()
-        // All three at once (#371: one after the other, they were a good part of the wait for the section).
-        val radios = kotlinx.coroutines.coroutineScope {
-            seeds.map { seed -> async { runCatching { radioOf(seed) }.getOrDefault(emptyList()).filter { it.id != seed.id } } }.awaitAll()
-        }
-        val discovered = radios.flatten()
-            .filter { fresh(it) && it.id !in played && LocalRadio.sameSong(it) !in playedSongs && !c.recFeedback.turnedDown(it.id, known = false) }
-            .distinctBy { LocalRadio.sameSong(it) }
-            .sortedByDescending { (0.6 + affinity(it)) * j(it.id) }
-        val fromYouTube = youtube.filter { fresh(it) && affinity(it) > 0.05 }
-
-        val out = takeTurns(favourites, discovered, fromYouTube, count, shown).toMutableList()
-        // Still short (a new listener's few artists): YouTube's own fill the rest.
-        val taken = out.map { LocalRadio.sameSong(it) }.toSet()
-        youtube.filter { fresh(it) && LocalRadio.sameSong(it) !in taken }.take(count - out.size).forEach { out += it }
-        return out
+    ): List<Song> = withContext(Dispatchers.Default) {
+        val taste = waveTaste()
+        val history = c.discover.heard()
+        val liked = c.library.likedIds.value
+        val likedKeys = taste.likes.mapTo(hashSetOf(), LocalRadio::sameSong)
+        fun known(song: Song) = song.id in liked || LocalRadio.sameSong(song) in likedKeys || history.has(song)
+        val recent = c.sessionHeard.oldestFirst()
+        val recentKeys = recent.mapTo(hashSetOf(), LocalRadio::sameSong)
+        val feedback = c.recFeedback
+        fun eligible(song: Song) = ok(song) && !song.isVideo &&
+            (song.durationSec == 0 || song.durationSec >= 60) &&
+            (c.network.isOnline() || c.availableOffline(song.id)) &&
+            !feedback.turnedDown(song.id, known(song)) &&
+            com.prism.music.data.ExplicitFilter.plays(c.settings.current.behavior.explicitContent, song)
+        val related = if (c.network.isOnline()) waveRelated(taste.likedSeeds, draw.coerceAtLeast(0) * MyWave.HORIZON,
+            recentKeys, ::known) else emptyList()
+        val candidates = MyWave.fuse(listOf(related, youtube), 160)
+        val style = MyWave.Style()
+        val seed = drawSeed(LocalDate.now().toString(), "personal", draw)
+        val signals = RadioSignals(heard = { known(it) })
+        fun select(avoidShown: Boolean, size: Int, avoid: Set<String>) = MyWave.start(candidates, taste.favorites,
+            emptyList(), c.sessionHeard::has, { eligible(it) && (!avoidShown || it.id !in shown) },
+            seed, size, style, signals, feedback::artistDoubt,
+            { feedback.servedDaysAgo(it.id)?.let { days -> days <= 1 } == true },
+            taste.profile, avoid = avoid, artistEvidence = feedback.waveEvidence())
+        val fresh = select(true, count, recentKeys)
+        val rest = if (fresh.size < count && shown.isNotEmpty())
+            select(false, count - fresh.size, recentKeys + fresh.map(LocalRadio::sameSong)) else emptyList()
+        fresh + rest
     }
 
     /** Songs ready offline, most likely first: Quick picks' stand-in with no connection. */
