@@ -74,6 +74,7 @@ internal class StationSmokeSession(
     private var server: StationMp3Server? = null
     private var liveProbe: StationLiveProbe? = null
     private var liveHls: StationLiveHls? = null
+    private var livePcm: StationLivePcm? = null
     private var liveRequestedAt = 0L
     private var liveTitle = "Prism Live"
 
@@ -123,7 +124,7 @@ internal class StationSmokeSession(
         }
     }
 
-    suspend fun playMusicLive(phoneAddress: Inet4Address) {
+    suspend fun playMusicLive(phoneAddress: Inet4Address, direct: Boolean = false) {
         liveMusicSession = true
         liveCommandAttempted = false
         liveStoppedBoundary = false
@@ -132,8 +133,13 @@ internal class StationSmokeSession(
         liveProbe?.close()
         liveProbe = null
         liveHls?.close()
-        val stream = StationLiveHls(phoneAddress, station.address, StationAudioTap::read)
-        liveHls = stream
+        liveHls = null
+        livePcm?.close()
+        livePcm = null
+        if (direct) livePcm = StationLivePcm(phoneAddress, station.address, StationAudioTap::read)
+        else liveHls = StationLiveHls(phoneAddress, station.address, StationAudioTap::read)
+        val stream = liveHls
+        val url = livePcm?.url ?: requireNotNull(stream).url
         try {
             // Read advertised features before choosing a directive. Missing feature data
             // is not evidence of legacy firmware; prefer modern audio_play in that case.
@@ -148,44 +154,49 @@ internal class StationSmokeSession(
             delay(150)
             send(GlagolProtocol.volume(0.20))
             // Encoder fills the playlist while the socket negotiates and the old source stops.
-            val ready = kotlinx.coroutines.withTimeoutOrNull(8000L) {
+            val ready = if (stream == null) true else kotlinx.coroutines.withTimeoutOrNull(8000L) {
                 while (!stream.ready) {
                     stream.failure?.let { error("AAC encoder: $it") }
                     delay(100)
                 }
                 true
             } == true
-            check(ready) { "AAC playlist not ready: ${stream.summary()}" }
+            check(ready) { "AAC playlist not ready: ${stream?.summary()}" }
             liveRequestedAt = android.os.SystemClock.elapsedRealtime()
             liveTitle = "Prism Live " + java.util.UUID.randomUUID().toString().take(6)
-            val directive = if (liveModern) "audio_play/HLS" else "radio_play"
-            android.util.Log.i("PrismLive", "Sending $directive audio_client=$audioClient audio_client_hls=$audioClientHls; ${stream.summary()}; captured=${StationAudioTap.captured}")
-            val payload = if (liveModern) GlagolProtocol.playHls(stream.url, liveTitle, "Prism")
-                else GlagolProtocol.playRadio(stream.url, liveTitle, "Prism")
+            val directive = if (!liveModern) "radio_play" else if (direct) "audio_play/PCM" else "audio_play/HLS"
+            android.util.Log.i("PrismLive", "Sending $directive audio_client=$audioClient audio_client_hls=$audioClientHls; ${liveStatus()}")
+            val payload = when {
+                !liveModern -> GlagolProtocol.playRadio(url, liveTitle, "Prism")
+                direct -> GlagolProtocol.playDirectLive(url, liveTitle, "Prism")
+                else -> GlagolProtocol.playHls(url, liveTitle, "Prism")
+            }
             val token = tokens.tokenFor(identity)
             liveCommandAttempted = true
             val reply = socket.request(token, payload, 1500L)
             android.util.Log.i("PrismLive", "$directive reply=${if (reply == null) "pending" else if (reply.equals("SUCCESS", true)) "success" else "rejected"}")
             if (reply != null && !reply.equals("SUCCESS", true)) error("Station rejected $directive")
         } catch (e: Throwable) {
-            stream.close()
+            liveHls?.close()
             liveHls = null
+            livePcm?.close()
+            livePcm = null
             throw e
         }
     }
 
-    fun liveReceiving(): Boolean = liveHls?.receiving == true
+    fun liveReceiving(): Boolean = livePcm?.receiving ?: (liveHls?.receiving == true)
 
     fun liveConfirmed(): Boolean {
-        val stream = liveHls ?: return false
+        val url = livePcm?.url ?: liveHls?.url ?: return false
         val state = liveState
-        return stream.receiving && state?.confirmsLive(stream.url, liveTitle, liveRequestedAt,
+        return liveReceiving() && state?.confirmsLive(url, liveTitle, liveRequestedAt,
             allowEmptyId = liveModern && liveStoppedBoundary) == true
     }
 
     fun liveStatus(): String {
         val state = liveState
-        return "${liveHls?.summary() ?: "no HLS"}; captured=${StationAudioTap.captured}; " +
+        return "${livePcm?.summary() ?: liveHls?.summary() ?: "no Live server"}; captured=${StationAudioTap.captured}; " +
             "audioClient=$audioClient; stateType=${state?.type}; playing=${state?.playing}; " +
             "id=${if (state?.id == null) "missing" else if (state.id.isEmpty()) "empty" else "present"}; " +
             "titleMatched=${state?.title == liveTitle}; matched=${liveConfirmed()}"
@@ -200,6 +211,8 @@ internal class StationSmokeSession(
     suspend fun volume(value: Double) = send(GlagolProtocol.volume(value))
 
     suspend fun stop() {
+        livePcm?.close()
+        livePcm = null
         liveHls?.close()
         liveHls = null
         liveProbe?.close()
@@ -215,6 +228,8 @@ internal class StationSmokeSession(
 
     /** Call stop() before close() to request remote playback termination. */
     override fun close() {
+        livePcm?.close()
+        livePcm = null
         liveHls?.close()
         liveHls = null
         liveProbe?.close()
