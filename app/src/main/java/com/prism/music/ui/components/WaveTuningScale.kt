@@ -22,6 +22,10 @@ import com.prism.music.R
 import com.prism.music.tr
 import com.prism.music.data.foryou.MyWave
 import com.prism.music.data.foryou.WaveSettingsDraft
+import com.prism.music.ui.theme.LocalIsDark
+import com.prism.music.ui.theme.LocalUi
+import com.prism.music.ui.theme.PrismTokens
+import androidx.compose.ui.graphics.SolidColor
 import kotlin.math.roundToInt
 
 /** The same labels, numeric mapping and draft updates on touch and TV. */
@@ -74,8 +78,9 @@ internal fun WaveScaleLabels(
     labelStyle: TextStyle, numberStyle: TextStyle,
     center: (@Composable () -> Unit)? = null,
 ) {
+    val ui = LocalUi.current
     if (!scale.ratio) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp)),
             verticalAlignment = Alignment.CenterVertically) {
             Text(tr(scale.title), Modifier.weight(1f), style = labelStyle, color = muted)
             Text(scale.level(value), style = numberStyle, color = accent, textAlign = TextAlign.End)
@@ -86,16 +91,16 @@ internal fun WaveScaleLabels(
     val pos = scale.position(value)
     val leftColor = if (scale.ratio && !automatic) accent else muted
     val rightColor = muted
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp)),
         verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(ui.gap(2.dp))) {
             Text(tr(scale.left), style = labelStyle, color = leftColor)
             if (scale.ratio && !automatic) Text(tr(R.string.prism_stream_share_percent, pos),
                 style = numberStyle, color = leftColor, maxLines = 1)
         }
         center?.invoke()
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            verticalArrangement = Arrangement.spacedBy(ui.gap(2.dp))) {
             Text(tr(scale.right), style = labelStyle, color = rightColor, textAlign = TextAlign.End)
             if (scale.ratio && !automatic) Text(tr(R.string.prism_stream_share_percent, 100 - pos),
                 style = numberStyle, color = rightColor, maxLines = 1)
@@ -109,6 +114,8 @@ internal fun WaveScaleRail(
     scale: WaveTuningScale, value: Int, accent: Color, muted: Color, surface: Color,
     modifier: Modifier = Modifier, showThumb: Boolean = false,
 ) {
+    val ui = LocalUi.current
+    val dark = LocalIsDark.current
     val auto = scale.automatic && value < 0
     val fraction = scale.position(value) / 100f
     Canvas(modifier.fillMaxWidth().height(if (showThumb) 24.dp else 12.dp)) {
@@ -117,18 +124,19 @@ internal fun WaveScaleRail(
         val start = inset.coerceAtMost(size.width / 2)
         val end = size.width - start
         val x = start + (end - start) * fraction
-        val thickness = 8.dp.toPx()
+        val thickness = (if (ui.classicControls) 8.dp else 4.dp).toPx()
         val corner = CornerRadius(thickness / 2f)
         val top = y - thickness / 2f
         val railSize = Size((end - start).coerceAtLeast(0f), thickness)
         drawRoundRect(if (scale.ratio && !auto) muted.copy(alpha = 0.60f) else muted.copy(alpha = 0.24f),
             topLeft = Offset(start, top), size = railSize, cornerRadius = corner)
         if (!auto && x > start) clipRect(left = start, top = top, right = x, bottom = top + thickness) {
-            drawRoundRect(accent, topLeft = Offset(start, top), size = railSize, cornerRadius = corner)
+            drawRoundRect(if (ui.classicControls) SolidColor(accent) else PrismTokens.spectrum(dark, start, end),
+                topLeft = Offset(start, top), size = railSize, cornerRadius = corner)
         }
         if (showThumb) {
             drawCircle(surface, 8.dp.toPx(), Offset(x, y))
-            drawCircle(if (auto) muted else accent, 6.dp.toPx(), Offset(x, y))
+            drawCircle(if (auto) muted else if (ui.classicControls) accent else Color.White, 6.dp.toPx(), Offset(x, y))
         }
     }
 }

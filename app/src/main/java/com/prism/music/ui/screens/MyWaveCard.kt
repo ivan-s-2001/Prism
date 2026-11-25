@@ -14,7 +14,8 @@ import com.prism.music.ui.components.scenarioEdgeFade
 import com.prism.music.ui.components.WavePresetNameDialog
 import com.prism.music.ui.components.WaveTuningScale
 import com.prism.music.ui.components.WaveScaleLabels
-import com.prism.music.ui.components.WaveScaleRail
+import com.prism.music.ui.components.PrismBalanceSlider
+import com.prism.music.ui.components.PrismSlider
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -313,7 +314,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     tween(fadeMs), label = "streamCoverScale")
                 val shape = com.prism.music.ui.theme.CoverShapes.of(settings.shapes.player, settings.player.artCorners.dp)
                 Box(modifier.graphicsLayer { scaleX = scale; scaleY = scale }
-                    .shadow(10.dp, com.prism.music.ui.theme.CoverShapes.shadowOf(shape)).clip(shape).background(scheme.surfaceContainerHighest)
+                    .shadow(ui.gap(10.dp), com.prism.music.ui.theme.CoverShapes.shadowOf(shape)).clip(shape).background(scheme.surfaceContainerHighest)
                     .clickable(enabled = current != null, onClick = onOpenPlayer), contentAlignment = Alignment.Center) {
                     if (shownCover == null) Icon(if (current == null) PrismIcons.Stream else PrismIcons.Song, null, Modifier.fillMaxSize(0.32f), tint = scheme.onSurfaceVariant.copy(alpha = 0.65f))
                     Crossfade(targetState = shownCover, animationSpec = tween(fadeMs), label = "streamArtwork",
@@ -439,7 +440,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 state = scenarioScroll,
                 flingBehavior = rememberSnapFlingBehavior(lazyListState = scenarioScroll, snapPosition = SnapPosition.Start),
                 horizontalArrangement = Arrangement.spacedBy(ui.gap(12.dp)),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                contentPadding = PaddingValues(horizontal = ui.gap(12.dp), vertical = ui.gap(4.dp))) {
                 items(savedPresets, key = { it.id }) { preset ->
                     PrismScenarioDisc(label = preset.name, icon = PrismIcons.Bookmark,
                         selected = activeSaved?.id == preset.id,
@@ -483,16 +484,15 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 c.settings.setStreamStyle(final.style, final.presetId)
             }
         }
-        com.prism.music.ui.components.PrismSheet(onDismiss = { closeSettings() },
-            containerColor = scheme.surfaceContainerHigh, contentColor = scheme.onSurface) { close ->
-            Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f).padding(horizontal = 20.dp).navigationBarsPadding().imePadding()) {
-                Row(Modifier.fillMaxWidth().padding(bottom = 18.dp), verticalAlignment = Alignment.CenterVertically,
+        com.prism.music.ui.components.PrismSheet(onDismiss = { closeSettings() }) { close ->
+            Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f).padding(horizontal = ui.gap(20.dp)).navigationBarsPadding().imePadding()) {
+                Row(Modifier.fillMaxWidth().padding(bottom = ui.gap(18.dp)), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
                     Text(tr(R.string.prism_stream_tune_your_stream), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
                     RoundAction(PrismIcons.Refresh, tr(R.string.prism_stream_reset)) { change { it.reset() } }
                 }
                 var advanced by rememberSaveable { mutableStateOf(false) }
-                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(bottom = 8.dp),
+                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(bottom = ui.gap(8.dp)),
                     verticalArrangement = Arrangement.spacedBy(ui.gap(16.dp))) {
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(ui.gap(6.dp))) {
                         WaveScale(WaveTuningScale.DISCOVERY, draftStyle, "wave:discovery-percent") { value ->
@@ -510,7 +510,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     WaveChoices(tr(R.string.prism_stream_activity), MyWave.Activity.entries, draftStyle.activity, ::activityName) { value -> change { it.tune(it.style.copy(activity = value)) } }
 
                     Row(Modifier.fillMaxWidth().clip(com.prism.music.ui.theme.LocalUi.current.shape(12.dp))
-                        .clickable { advanced = !advanced }.padding(vertical = 10.dp),
+                        .clickable { advanced = !advanced }.padding(vertical = ui.gap(10.dp)),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ui.gap(10.dp))) {
                         Text(tr(R.string.prism_stream_advanced), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
                         Icon(if (advanced) PrismIcons.ChevronUp else PrismIcons.ChevronDown, null, Modifier.size(20.dp))
@@ -526,13 +526,13 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                         PrismChip(fitLabel = true, selected = false, onClick = { namingPreset = true }, icon = PrismIcons.Add,
                             label = tr(R.string.prism_stream_save_scenario),
                             modifier = (if (editing.presets.isEmpty()) Modifier.fillMaxWidth() else Modifier)
-                                .height(44.dp).testTag("wave:preset:save"))
+                                .heightIn(min = ui.gap(44.dp).coerceAtLeast(36.dp)).testTag("wave:preset:save"))
                     }
                     editing.presets.forEach { preset ->
                         key(preset.id) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
                                 PrismChip(fitLabel = true, selected = editing.presetId == preset.id && preset.origin == draftStyle.origin, label = preset.name, icon = PrismIcons.Bookmark,
-                                    modifier = Modifier.weight(1f).height(44.dp),
+                                    modifier = Modifier.weight(1f).heightIn(min = ui.gap(44.dp).coerceAtLeast(36.dp)),
                                     onClick = { change { it.choose(preset) } })
                                 RoundAction(PrismIcons.Delete, tr(R.string.prism_stream_delete, preset.name), glass = true) { change { it.delete(preset.id) } }
                             }
@@ -540,7 +540,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     }
 
                 }
-                Row(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp),
+                Row(Modifier.fillMaxWidth().padding(top = ui.gap(12.dp), bottom = ui.gap(8.dp)),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
                     com.prism.music.ui.components.PrismTextButton(onClick = { close {} }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
                         Text(tr(R.string.prism_stream_cancel))
@@ -581,25 +581,12 @@ private fun WaveScale(scale: WaveTuningScale, style: MyWave.Style, tag: String, 
                 { PrismChip(fitLabel = true, selected = automatic, label = tr(R.string.prism_stream_auto),
                     onClick = { change(if (automatic) 50 else -1) }) }
             } else null)
-        if (LocalUi.current.classicControls) Slider(
-            value = scale.position(value).toFloat(), onValueChange = { change(scale.fromPosition(it)) },
-            valueRange = 0f..100f, steps = 100 / scale.step - 1,
-            modifier = Modifier.fillMaxWidth().testTag(tag),
-        ) else Slider(
-            value = scale.position(value).toFloat(),
-            onValueChange = { change(scale.fromPosition(it)) },
-            valueRange = 0f..100f, steps = 100 / scale.step - 1,
-            modifier = Modifier.fillMaxWidth().testTag(tag),
-            thumb = {
-                Box(Modifier.size(22.dp).clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(scheme.surface).padding(3.dp)
-                    .clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(if (automatic) scheme.onSurfaceVariant else scheme.primary))
-            },
-            track = {
-                WaveScaleRail(scale, value, scheme.primary, scheme.onSurfaceVariant, scheme.surface)
-            },
-        )
+        val position = scale.position(value).toFloat()
+        val update: (Float) -> Unit = { change(scale.fromPosition(it)) }
+        val modifier = Modifier.fillMaxWidth().testTag(tag)
+        val steps = 100 / scale.step - 1
+        if (scale.ratio) PrismBalanceSlider(position, update, modifier, steps, automatic)
+        else PrismSlider(position, update, modifier, valueRange = 0f..100f, steps = steps)
 
     }
 }
@@ -613,7 +600,7 @@ private fun <T> WaveChoices(label: String, values: List<T>, selected: T, name: (
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
                 row.forEach { value ->
                     PrismChip(fitLabel = true, selected = value == selected, onClick = { onSelect(value) },
-                        label = name(value), modifier = Modifier.weight(1f).height(48.dp))
+                        label = name(value), modifier = Modifier.weight(1f).heightIn(min = ui.gap(48.dp).coerceAtLeast(44.dp)))
                 }
             }
         }

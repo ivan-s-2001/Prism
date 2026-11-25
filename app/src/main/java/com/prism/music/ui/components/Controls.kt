@@ -26,6 +26,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
@@ -261,21 +262,45 @@ fun PrismSlider(
     valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
     steps: Int = 0,
     onValueChangeFinished: (() -> Unit)? = null,
+) = PrismSliderCore(value, onValueChange, modifier, enabled, valueRange, steps, onValueChangeFinished,
+    balance = false, automatic = false)
+
+/** Complementary shares use the same visual controls as the rest of Prism. Auto assigns neither share. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun PrismBalanceSlider(
+    value: Float, onValueChange: (Float) -> Unit, modifier: Modifier = Modifier,
+    steps: Int = 0, automatic: Boolean = false,
+) = PrismSliderCore(value, onValueChange, modifier, true, 0f..100f, steps, null,
+    balance = true, automatic = automatic)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PrismSliderCore(
+    value: Float, onValueChange: (Float) -> Unit, modifier: Modifier, enabled: Boolean,
+    valueRange: ClosedFloatingPointRange<Float>, steps: Int, onValueChangeFinished: (() -> Unit)?,
+    balance: Boolean, automatic: Boolean,
 ) {
+    val s = MaterialTheme.colorScheme
     if (classic()) {
-        Slider(value, onValueChange, modifier, enabled, valueRange = valueRange, steps = steps, onValueChangeFinished = onValueChangeFinished)
+        val colors = if (balance) SliderDefaults.colors(
+            thumbColor = if (automatic) s.onSurfaceVariant else s.primary,
+            activeTrackColor = if (automatic) s.surfaceVariant else s.primary,
+            inactiveTrackColor = if (automatic) s.surfaceVariant else s.onSurfaceVariant.copy(alpha = 0.60f),
+        ) else SliderDefaults.colors()
+        Slider(value, onValueChange, modifier, enabled, valueRange = valueRange, steps = steps,
+            onValueChangeFinished = onValueChangeFinished, colors = colors)
         return
     }
-    val s = MaterialTheme.colorScheme
     val dark = LocalIsDark.current
-    val track = s.onSurface.copy(alpha = 0.14f)
+    val track = if (balance && !automatic) s.onSurfaceVariant.copy(alpha = 0.60f) else s.onSurface.copy(alpha = 0.14f)
     val alpha = if (enabled) 1f else 0.4f
     Slider(
         value = value, onValueChange = onValueChange, modifier = modifier, enabled = enabled,
         valueRange = valueRange, steps = steps, onValueChangeFinished = onValueChangeFinished,
         thumb = {
             Box(
-                Modifier.size(20.dp).shadow(3.dp, CircleShape).background(Color.White.copy(alpha = alpha), CircleShape)
+                Modifier.size(20.dp).shadow(3.dp, CircleShape).background((if (automatic) s.onSurfaceVariant else Color.White).copy(alpha = alpha), CircleShape)
                     .border(1.dp, s.onSurface.copy(alpha = if (dark) 0f else 0.08f), CircleShape),
             )
         },
@@ -286,10 +311,10 @@ fun PrismSlider(
                 val y = size.height / 2
                 val w = 4.dp.toPx()
                 drawLine(track, Offset(0f, y), Offset(size.width, y), w, StrokeCap.Round)
-                if (f > 0f) drawLine(
+                if (!automatic && f > 0f) drawLine(
                     PrismTokens.spectrum(dark, 0f, size.width), Offset(0f, y), Offset(size.width * f, y), w, StrokeCap.Round, alpha = alpha,
                 )
-                if (state.steps > 0) for (i in 0..state.steps + 1) {
+                if (!balance && state.steps > 0) for (i in 0..state.steps + 1) {
                     val tx = size.width * i / (state.steps + 1)
                     if (tx > size.width * f) drawCircle(s.onSurface.copy(alpha = 0.3f), 1.5.dp.toPx(), Offset(tx, y))
                 }

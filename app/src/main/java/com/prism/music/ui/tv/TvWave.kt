@@ -328,17 +328,18 @@ internal fun TvWavePlace(nav: TvNav) {
 @Composable
 private fun TvWaveScale(scale: WaveTuningScale, style: MyWave.Style, tag: String, change: (Int) -> Unit) {
     val scheme = MaterialTheme.colorScheme
+    val ui = com.prism.music.ui.theme.LocalUi.current
     val value = scale.value(style)
     val position = scale.position(value)
     val automatic = scale.automatic && value < 0
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(ui.gap(8.dp))) {
         val adjustedLabel = tr(if (scale.ratio) scale.left else scale.title)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(com.prism.music.ui.theme.LocalUi.current.gap(12.dp))) {
             TvIconButton(PrismIcons.Remove, tr(R.string.prism_stream_decrease_share, adjustedLabel),
                 { change(scale.fromPosition((position - scale.step).toFloat())) },
                 Modifier.tvItem("tv_wave/$tag/down", entry = tag == "discovery"))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(ui.gap(4.dp))) {
                 WaveScaleLabels(scale, value, scheme.primary, scheme.onSurfaceVariant,
                     MaterialTheme.typography.labelMedium, MaterialTheme.typography.titleMedium,
                     center = if (scale.automatic) {
@@ -359,7 +360,8 @@ private fun TvWaveScale(scale: WaveTuningScale, style: MyWave.Style, tag: String
 @Composable
 private fun <T> TvWaveChoices(title: String, values: List<T>, selected: T, tag: String,
     name: (T) -> String, choose: (T) -> Unit) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    val ui = com.prism.music.ui.theme.LocalUi.current
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(ui.gap(8.dp))) {
         Text(title, style = MaterialTheme.typography.titleSmall)
         values.chunked(2).forEachIndexed { row, items ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(com.prism.music.ui.theme.LocalUi.current.gap(12.dp))) {
