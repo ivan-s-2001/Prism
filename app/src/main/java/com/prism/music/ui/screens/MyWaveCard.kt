@@ -59,6 +59,7 @@ import com.prism.music.ui.theme.LocalUi
 import com.prism.music.ui.theme.LocalAppSettings
 import com.prism.music.data.ExplicitFilter
 import com.prism.music.data.foryou.MyWave
+import com.prism.music.data.foryou.WaveSettingsDraft
 import com.prism.music.data.foryou.WaveScenarios
 import com.prism.music.data.foryou.LocalRadio
 import kotlinx.coroutines.Job
@@ -159,6 +160,21 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     var namingPreset by rememberSaveable { mutableStateOf(false) }
     var chosenPresetId by rememberSaveable { mutableStateOf<String?>(null) }
     var revealPresetId by rememberSaveable { mutableStateOf<String?>(null) }
+    var baseline by remember { mutableStateOf<WaveSettingsDraft?>(null) }
+    var editor by remember { mutableStateOf<WaveSettingsDraft?>(null) }
+    fun openSettings() {
+        val initial = WaveSettingsDraft(style, settings.streamThemeColors, savedPresets, chosenPresetId)
+        baseline = initial
+        editor = initial
+        namingPreset = false
+        settingsOpen = true
+    }
+    fun closeSettings() {
+        namingPreset = false
+        settingsOpen = false
+        editor = null
+        baseline = null
+    }
     val activeSaved = savedPresets.firstOrNull { it.id == chosenPresetId && it.origin == style.origin }
         ?: savedPresets.firstOrNull { chosenPresetId == null && it.origin == style.origin }
     LaunchedEffect(savedPresets, revealPresetId) {
@@ -443,7 +459,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically) {
             PrismScenarioDisc(l("Настройки", "Tune"), PrismIcons.Equalizer, selected = false,
-                onClick = { settingsOpen = true }, modifier = Modifier.testTag("home:my_wave:settings"))
+                onClick = { openSettings() }, modifier = Modifier.testTag("home:my_wave:settings"))
             LazyRow(Modifier.weight(1f).scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward }),
                 state = scenarioScroll,
                 flingBehavior = rememberSnapFlingBehavior(lazyListState = scenarioScroll, snapPosition = SnapPosition.Start),
@@ -475,17 +491,30 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             Controls()
         }
     }
-    if (settingsOpen) {
-        var diversity by remember(style.diversity) { mutableFloatStateOf(style.diversity.toFloat()) }
-        var discovery by remember(style.discoveryPercent) { mutableFloatStateOf(style.discoveryPercent.toFloat()) }
-        var russian by remember(style.russianPercent) { mutableFloatStateOf(if (style.russianPercent < 0) 50f else style.russianPercent.toFloat()) }
-        ModalBottomSheet(onDismissRequest = { settingsOpen = false },
+    val editing = editor
+    if (settingsOpen && editing != null) {
+        val draftStyle = editing.style
+        val diversity = draftStyle.diversity.toFloat()
+        val discovery = draftStyle.discoveryPercent.toFloat()
+        val russian = draftStyle.russianPercent.takeIf { it >= 0 }?.toFloat() ?: 50f
+        fun change(transform: (WaveSettingsDraft) -> WaveSettingsDraft) { editor = editor?.let(transform) }
+        fun applySettings() {
+            val initial = baseline ?: return
+            val final = editor ?: return
+            c.settings.applyStreamTuning(final.themeColors.takeIf { it != initial.themeColors }, initial.presets, final.presets)
+            chosenPresetId = final.presetId
+            if (final.presetId != null && initial.presets.none { it.id == final.presetId } && final.presets.any { it.id == final.presetId })
+                revealPresetId = final.presetId
+            closeSettings()
+            if (final.style != style) start(final.style)
+        }
+        ModalBottomSheet(onDismissRequest = { closeSettings() },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = scheme.surfaceContainerHigh) {
             Column(Modifier.fillMaxWidth().heightIn(max = 640.dp).padding(horizontal = 20.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(l("Настроить поток", "Tune your Stream"), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { if (style != MyWave.Style()) start(MyWave.Style()) }) { Text(l("Сбросить", "Reset")) }
+                    PrismChip(selected = false, onClick = { change { it.reset() } }, label = l("Сбросить", "Reset"), icon = PrismIcons.Refresh, modifier = Modifier.height(44.dp))
                 }
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -494,105 +523,95 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                         PrismChip(selected = false, onClick = { namingPreset = true }, icon = PrismIcons.Add,
                             label = l("Сохранить", "Save"), modifier = Modifier.height(44.dp).testTag("wave:preset:save"))
                     }
-                    if (savedPresets.isEmpty()) Text(l("Сохрани текущие настройки как отдельный сценарий.", "Save the current settings as your own scenario."),
+                    if (editing.presets.isEmpty()) Text(l("Сохрани текущие настройки как отдельный сценарий.", "Save the current settings as your own scenario."),
                         style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-                    savedPresets.forEach { preset ->
+                    editing.presets.forEach { preset ->
                         key(preset.id) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                PrismChip(selected = activeSaved?.id == preset.id, label = preset.name, icon = PrismIcons.Bookmark,
+                                PrismChip(selected = editing.presetId == preset.id && preset.origin == draftStyle.origin, label = preset.name, icon = PrismIcons.Bookmark,
                                     modifier = Modifier.weight(1f).height(44.dp),
-                                    onClick = { chosenPresetId = preset.id; start(MyWave.style(preset.origin)); settingsOpen = false })
-                                IconButton(onClick = { c.settings.deleteStreamPreset(preset.id) }) {
-                                    Icon(PrismIcons.Delete, l("Удалить ", "Delete ") + preset.name)
-                                }
+                                    onClick = { change { it.choose(preset) } })
+                                RoundAction(PrismIcons.Delete, l("Удалить ", "Delete ") + preset.name, glass = true) { change { it.delete(preset.id) } }
                             }
                         }
                     }
                     HorizontalDivider(color = scheme.outlineVariant)
                     Text(l("Оформление плеера", "Player card backdrop"), style = MaterialTheme.typography.titleSmall)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        PrismChip(selected = !settings.streamThemeColors,
-                            onClick = { c.settings.setStreamThemeColors(false) },
+                        PrismChip(selected = !editing.themeColors,
+                            onClick = { change { it.copy(themeColors = false) } },
                             modifier = Modifier.weight(1f).height(44.dp).testTag("stream:color:artwork"),
                             label = l("Обложка трека", "Track artwork"))
-                        PrismChip(selected = settings.streamThemeColors,
-                            onClick = { c.settings.setStreamThemeColors(true) },
+                        PrismChip(selected = editing.themeColors,
+                            onClick = { change { it.copy(themeColors = true) } },
                             modifier = Modifier.weight(1f).height(44.dp).testTag("stream:color:theme"),
                             label = l("Тема Prism", "Prism theme"))
                     }
-                    WaveChoices(l("Занятие", "Activity"), MyWave.Activity.entries, style.activity, ::activityName) { if (it != style.activity) start(style.copy(activity = it)) }
-                    fun selectPercent(percent: Int) {
-                        if (percent != style.discoveryPercent) start(style.copy(discoveryPercent = percent,
-                            character = when (percent) {
-                                0 -> MyWave.Character.FAMILIAR
-                                100 -> MyWave.Character.DISCOVERY
-                                else -> MyWave.Character.BALANCED
-                            }))
-                    }
+                    WaveChoices(l("Занятие", "Activity"), MyWave.Activity.entries, draftStyle.activity, ::activityName) { value -> change { it.tune(it.style.copy(activity = value)) } }
                     WaveScale(
                         title = l("Характер потока", "Discovery mix"),
-                        value = discovery, onValueChange = { discovery = it },
+                        value = discovery, onValueChange = { percent -> change { it.discovery(percent.toInt()) } },
                         left = l("Лайки", "Liked songs"), right = l("Открытия", "Discoveries"),
                         summary = "${100 - discovery.toInt()}% / ${discovery.toInt()}%",
                         choices = listOf(0 to l("Лайки", "Liked"), 50 to l("Баланс", "Balance"),
                             70 to l("Для меня", "For me"), 100 to l("Новое", "New")),
                         selectedChoice = discovery.toInt(), step = 5, tag = "wave:discovery-percent",
-                        onCommit = ::selectPercent,
+                        onCommit = { percent -> change { it.discovery(percent) } },
                         detail = l("Открытия — записи вне известной Prism истории. Офлайн пропорция зависит от скачанной музыки.",
                             "Discoveries are recordings outside Prism's known history. Offline proportions depend on downloads.")
                     )
                     HorizontalDivider(color = scheme.outlineVariant)
                     WaveScale(
                         title = l("Язык музыки", "Music language"),
-                        value = russian, onValueChange = { russian = it },
+                        value = russian, onValueChange = { percent -> change { it.tune(it.style.copy(russianPercent = percent.toInt())) } },
                         left = l("Иностранная", "Foreign"), right = l("Русская", "Russian"),
-                        summary = if (style.russianPercent < 0) l("Авто", "Auto") else "${100 - russian.toInt()}% / ${russian.toInt()}%",
+                        summary = if (draftStyle.russianPercent < 0) l("Авто", "Auto") else "${100 - russian.toInt()}% / ${russian.toInt()}%",
                         choices = listOf(-1 to l("Авто", "Auto"), 0 to l("Иностранная", "Foreign"),
                             50 to l("Баланс", "Balance"), 100 to l("Русская", "Russian")),
-                        selectedChoice = if (style.russianPercent < 0) -1 else russian.toInt(),
+                        selectedChoice = if (draftStyle.russianPercent < 0) -1 else russian.toInt(),
                         step = 5, tag = "wave:language-percent",
-                        onCommit = { percent -> if (percent != style.russianPercent) start(style.copy(russianPercent = percent)) },
+                        onCommit = { percent -> change { it.tune(it.style.copy(russianPercent = percent)) } },
                         detail = l("Приблизительное соотношение по языку названий. При нехватке треков баланс может отличаться.",
                             "Approximate title-language balance. The actual mix may vary when matching tracks are scarce.")
                     )
                     HorizontalDivider(color = scheme.outlineVariant)
-                    WaveChoices(l("Настроение", "Mood"), MyWave.Mood.entries, style.mood, ::moodName) { if (it != style.mood) start(style.copy(mood = it)) }
-                    WaveChoices(l("Популярность", "Popularity"), MyWave.Depth.entries, style.depth, ::depthName) { if (it != style.depth) start(style.copy(depth = it)) }
+                    WaveChoices(l("Настроение", "Mood"), MyWave.Mood.entries, draftStyle.mood, ::moodName) { value -> change { it.tune(it.style.copy(mood = value)) } }
+                    WaveChoices(l("Популярность", "Popularity"), MyWave.Depth.entries, draftStyle.depth, ::depthName) { value -> change { it.tune(it.style.copy(depth = value)) } }
                     WaveScale(
                         title = l("Разнообразие", "Variety"),
-                        value = diversity, onValueChange = { diversity = it },
+                        value = diversity, onValueChange = { percent -> change { it.tune(it.style.copy(diversity = percent.toInt())) } },
                         left = l("Похожее", "Similar"), right = l("Разное", "Varied"),
                         summary = "${diversity.toInt()}%",
                         choices = listOf(0 to l("Похожее", "Similar"), 50 to l("Баланс", "Balance"),
                             70 to l("Разное", "Varied"), 100 to l("Максимум", "Maximum")),
                         selectedChoice = diversity.toInt(), step = 10, tag = "wave:diversity-percent",
-                        onCommit = { percent -> if (percent != style.diversity) start(style.copy(diversity = percent)) },
+                        onCommit = { percent -> change { it.tune(it.style.copy(diversity = percent)) } },
                         detail = l("Уровень разнообразия исполнителей и записей.", "Variety of artists and recordings.")
                     )
-                    if (style.mood != MyWave.Mood.ANY || style.activity != MyWave.Activity.ANY)
+                    if (draftStyle.mood != MyWave.Mood.ANY || draftStyle.activity != MyWave.Activity.ANY)
                         Text(l("Темп и громкость учитываются, если измерены.", "Uses measured tempo and loudness when available."),
                             color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                    if (style.depth != MyWave.Depth.ANY)
+                    if (draftStyle.depth != MyWave.Depth.ANY)
                         Text(l("По топ-трекам исполнителей, если доступны.", "Based on artist top songs when available."),
                             color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
-                Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (starting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Text(if (starting) l("Обновляем поток", "Updating Stream") else l("Настройки применяются сразу", "Changes play immediately"),
-                        Modifier.weight(1f).padding(horizontal = 8.dp), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-                    TextButton(onClick = { settingsOpen = false }) { Text(l("Готово", "Done")) }
+                Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(l("Изменения вступят в силу после подтверждения", "Changes apply after confirmation"),
+                        Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                    PrismChip(selected = false, onClick = { closeSettings() }, label = l("Отмена", "Cancel"), modifier = Modifier.height(44.dp))
+                    PrismChip(selected = true, onClick = { applySettings() }, label = l("Готово", "Done"),
+                        icon = PrismIcons.Check, modifier = Modifier.height(44.dp).testTag("wave:settings:done"))
                 }
             }
         }
-    }
-    if (settingsOpen && namingPreset) WavePresetNameDialog(ru, savedPresets.map { it.name }, { namingPreset = false }) { name ->
-        val id = c.settings.saveStreamPreset(name, style.origin)
-        chosenPresetId = id
-        revealPresetId = id
-        namingPreset = false
-        settingsOpen = false
+        if (namingPreset) WavePresetNameDialog(ru, editing.presets.map { it.name }, { namingPreset = false }) { name ->
+            change { it.save(name) }
+            namingPreset = false
+        }
     }
 }
+
 
 /** Shared layout for all numeric Stream controls. Ratio summaries follow the
  * same left-to-right order as the slider; variety is a level, not a track quota. */
@@ -611,7 +630,9 @@ private fun WaveScale(
             Text(summary, style = MaterialTheme.typography.titleMedium, color = scheme.primary)
         }
         Column {
-            Slider(value = value, onValueChange = onValueChange,
+            Slider(value = value, onValueChange = { next ->
+                onValueChange((kotlin.math.round(next / step).toInt() * step).coerceIn(0, 100).toFloat())
+            },
                 onValueChangeFinished = {
                     onCommit((kotlin.math.round(value / step).toInt() * step).coerceIn(0, 100))
                 }, valueRange = 0f..100f, steps = 100 / step - 1,
@@ -627,7 +648,6 @@ private fun WaveScale(
                 PrismChip(selected = selectedChoice == percent, label = label,
                     modifier = Modifier.height(44.dp),
                     onClick = {
-                        if (percent >= 0) onValueChange(percent.toFloat())
                         onCommit(percent)
                     })
             }

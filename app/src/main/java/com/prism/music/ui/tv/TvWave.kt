@@ -13,6 +13,8 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.prism.music.data.foryou.MyWave
+import com.prism.music.data.foryou.WaveSettingsDraft
+import androidx.compose.foundation.verticalScroll
 import com.prism.music.data.foryou.WaveScenarios
 import com.prism.music.data.model.Song
 import com.prism.music.data.model.SongItem
@@ -56,7 +58,9 @@ internal fun TvWavePlace(nav: TvNav) {
         if (source.isMyWave) it else it.copy(russianPercent = c.settings.current.streamRussianPercent)
     }
     var style by remember(source.originId) { mutableStateOf(restored()) }
-    var draft by remember { mutableStateOf(style) }
+    var editor by remember { mutableStateOf(WaveSettingsDraft(style, appSettings.streamThemeColors, savedPresets, chosenPresetId)) }
+    var baseline by remember { mutableStateOf(editor) }
+    val draft = editor.style
     val activeSaved = savedPresets.firstOrNull { it.id == chosenPresetId && it.origin == style.origin }
         ?: savedPresets.firstOrNull { chosenPresetId == null && it.origin == style.origin }
     var tuning by remember { mutableStateOf(false) }
@@ -67,7 +71,11 @@ internal fun TvWavePlace(nav: TvNav) {
     val screen = LocalTvScreen.current
     val memory = LocalTvFocusMemory.current
     fun toggleTuning(open: Boolean) {
-        if (open) draft = style
+        if (open) {
+            baseline = WaveSettingsDraft(style, appSettings.streamThemeColors, savedPresets, chosenPresetId)
+            editor = baseline
+        }
+        namingPreset = false
         memory.opening(if (open) "$screen/tune" else screen)
         tuning = open
     }
@@ -119,41 +127,46 @@ internal fun TvWavePlace(nav: TvNav) {
         if (tuning) {
             CompositionLocalProvider(LocalTvScreen provides "$screen/tune") {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)) {
+                Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(l("Настроить поток", "Tune Stream"), style = MaterialTheme.typography.headlineMedium)
-                    @Composable fun Ratio(label: String, percent: Int, change: (Int) -> Unit, tag: String) {
-                        Text(label, style = MaterialTheme.typography.titleSmall, color = scheme.onSurfaceVariant)
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            TvButton("−5", { change((percent - 5).coerceIn(0, 100)) }, Modifier.tvItem("tv_wave/$tag/down", entry = tag == "discovery"))
-                            Text("$percent%", Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall)
-                            TvButton("+5", { change((percent + 5).coerceIn(0, 100)) }, Modifier.tvItem("tv_wave/$tag/up"))
-                        }
-                    }
-                    Ratio(l("Открытия", "Discoveries"), draft.discoveryPercent, { p ->
-                        draft = draft.copy(discoveryPercent = p, character = when (p) {
-                            0 -> MyWave.Character.FAMILIAR
-                            100 -> MyWave.Character.DISCOVERY
-                            else -> MyWave.Character.BALANCED
-                        })
-                    }, "discovery")
-                    Ratio(l("Русская музыка", "Russian music"), draft.russianPercent.takeIf { it >= 0 } ?: 50,
-                        { draft = draft.copy(russianPercent = it) }, "language")
-                    TvButton(if (draft.russianPercent < 0) l("Язык: авто", "Language: auto") else l("Включить авто", "Use auto"),
-                        { draft = draft.copy(russianPercent = -1) }, Modifier.tvItem("tv_wave/auto"), primary = draft.russianPercent < 0)
-                    Text(l("Язык определяется приблизительно по названиям.", "Language is estimated from titles."),
+                    TvWaveScale(l("Характер потока", "Discovery mix"), draft.discoveryPercent,
+                        "${100 - draft.discoveryPercent}% / ${draft.discoveryPercent}%",
+                        l("Лайки", "Liked songs"), l("Открытия", "Discoveries"), "discovery",
+                        { editor = editor.discovery(it) })
+                    val language = draft.russianPercent.takeIf { it >= 0 } ?: 50
+                    TvWaveScale(l("Язык музыки", "Music language"), language,
+                        if (draft.russianPercent < 0) l("Авто", "Auto") else "${100 - language}% / $language%",
+                        l("Иностранная", "Foreign"), l("Русская", "Russian"), "language",
+                        { editor = editor.tune(draft.copy(russianPercent = it)) })
+                    TvButton(l("Авто", "Auto"), { editor = editor.tune(draft.copy(russianPercent = -1)) },
+                        Modifier.tvItem("tv_wave/auto"), primary = draft.russianPercent < 0)
+                    TvWaveScale(l("Разнообразие", "Variety"), draft.diversity, "${draft.diversity}%",
+                        l("Похожее", "Similar"), l("Разное", "Varied"), "diversity",
+                        { editor = editor.tune(draft.copy(diversity = it)) }, step = 10)
+                    Text(l("Изменения вступят в силу после подтверждения", "Changes apply after confirmation"),
                         style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TvButton(l("Применить", "Apply"), { val chosen = draft; toggleTuning(false); start(chosen) },
-                            Modifier.weight(1f).tvItem("tv_wave/apply"), primary = true)
-                        TvButton(l("Сохранить", "Save"), { namingPreset = true },
+                        TvButton(l("Отмена", "Cancel"), { toggleTuning(false) }, Modifier.weight(1f).tvItem("tv_wave/cancel"))
+                        TvButton(l("Готово", "Done"), {
+                            val final = editor
+                            c.settings.applyStreamTuning(final.themeColors.takeIf { it != baseline.themeColors }, baseline.presets, final.presets)
+                            chosenPresetId = final.presetId
+                            toggleTuning(false)
+                            if (final.style != style) start(final.style)
+                        }, Modifier.weight(1f).tvItem("tv_wave/apply"), primary = true, icon = PrismIcons.Check)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        TvButton(l("Сохранить пресет", "Save preset"), { namingPreset = true },
                             Modifier.weight(1f).tvItem("tv_wave/save"), icon = PrismIcons.Add)
+                        TvButton(l("Сбросить", "Reset"), { editor = editor.reset() },
+                            Modifier.tvItem("tv_wave/reset"), icon = PrismIcons.Refresh)
                     }
                 }
                 var groupIndex by remember { mutableIntStateOf(0) }
                 var page by remember(groupIndex) { mutableIntStateOf(0) }
                 val group = WaveScenarios.Group.entries.getOrNull(groupIndex)
                 val pages = WaveScenarios.all.filter { it.group == group }.chunked(4)
-                val customPages = savedPresets.chunked(3)
+                val customPages = editor.presets.chunked(3)
                 val pageCount = if (group == null) customPages.size else pages.size
                 val visiblePage = page.coerceAtMost((pageCount - 1).coerceAtLeast(0))
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)) {
@@ -166,21 +179,21 @@ internal fun TvWavePlace(nav: TvNav) {
                     }, { groupIndex = (groupIndex + 1) % (WaveScenarios.Group.entries.size + 1) },
                         Modifier.fillMaxWidth().tvItem("tv_wave/group"))
                     if (group == null) {
-                        if (savedPresets.isEmpty()) Text(l("Нет сохранённых пресетов", "No saved presets"), color = scheme.onSurfaceVariant)
+                        if (editor.presets.isEmpty()) Text(l("Нет сохранённых пресетов", "No saved presets"), color = scheme.onSurfaceVariant)
                         customPages.getOrElse(visiblePage) { emptyList() }.forEach { preset ->
                             key(preset.id) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    TvButton(preset.name, { chosenPresetId = preset.id; draft = MyWave.style(preset.origin) },
+                                    TvButton(preset.name, { editor = editor.choose(preset) },
                                         Modifier.weight(1f).tvItem("tv_wave/custom/${preset.id}"), icon = PrismIcons.Bookmark,
                                         primary = draft.origin == preset.origin)
                                     TvIconButton(PrismIcons.Delete, l("Удалить ", "Delete ") + preset.name,
-                                        { c.settings.deleteStreamPreset(preset.id) }, Modifier.tvItem("tv_wave/delete/${preset.id}"))
+                                        { editor = editor.delete(preset.id) }, Modifier.tvItem("tv_wave/delete/${preset.id}"))
                                 }
                             }
                         }
                     } else pages.getOrElse(visiblePage) { emptyList() }.forEach { preset ->
                         TvButton(if (ru) preset.ru else preset.en,
-                            { chosenPresetId = preset.id; draft = preset.style.copy(russianPercent = draft.russianPercent) },
+                            { editor = editor.choose(preset) },
                             Modifier.fillMaxWidth().tvItem("tv_wave/preset/${preset.id}"),
                             primary = draft.copy(russianPercent = -1) == preset.style, icon = PrismIcons.waveScenario(preset.glyph))
                     }
@@ -257,11 +270,38 @@ internal fun TvWavePlace(nav: TvNav) {
             }
         }
     }
-    if (tuning && namingPreset) WavePresetNameDialog(ru, savedPresets.map { it.name }, { namingPreset = false }) { name ->
-        chosenPresetId = c.settings.saveStreamPreset(name, draft.origin)
+    if (tuning && namingPreset) WavePresetNameDialog(ru, editor.presets.map { it.name }, { namingPreset = false }) { name ->
+        editor = editor.save(name)
         namingPreset = false
-        val chosen = draft
-        toggleTuning(false)
-        start(chosen)
+    }
+}
+
+/** Consistent, remote-friendly version of the phone's numeric tuning controls. */
+@Composable
+private fun TvWaveScale(title: String, value: Int, summary: String, left: String, right: String,
+    tag: String, change: (Int) -> Unit, step: Int = 5) {
+    val scheme = MaterialTheme.colorScheme
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            Text(summary, style = MaterialTheme.typography.titleMedium, color = scheme.primary)
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            TvButton("−$step", { change((value - step).coerceIn(0, 100)) }, Modifier.tvItem("tv_wave/$tag/down", entry = tag == "discovery"))
+            androidx.compose.foundation.Canvas(Modifier.weight(1f).height(12.dp)) {
+                val y = size.height / 2
+                drawLine(scheme.onSurfaceVariant.copy(alpha = 0.25f), androidx.compose.ui.geometry.Offset(0f, y),
+                    androidx.compose.ui.geometry.Offset(size.width, y), strokeWidth = 4.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                drawLine(scheme.primary, androidx.compose.ui.geometry.Offset(0f, y),
+                    androidx.compose.ui.geometry.Offset(size.width * value / 100f, y), strokeWidth = 4.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                drawCircle(scheme.primary, radius = 5.dp.toPx(), center = androidx.compose.ui.geometry.Offset(size.width * value / 100f, y))
+            }
+            TvButton("+$step", { change((value + step).coerceIn(0, 100)) }, Modifier.tvItem("tv_wave/$tag/up"))
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(left, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+            Text(right, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+        }
     }
 }

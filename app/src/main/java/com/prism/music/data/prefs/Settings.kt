@@ -3964,6 +3964,18 @@ class SettingsRepository(
         return preset.id
     }
 
+    /** Merge only this tuning session's additions/deletions, preserving unrelated concurrent edits. */
+    internal fun applyStreamTuning(themeColors: Boolean?, initial: List<SavedWavePreset>, updated: List<SavedWavePreset>) = edit { p ->
+        if (themeColors != null) p[K.streamThemeColors] = themeColors
+        val removed = initial.map { it.id }.toSet() - updated.map { it.id }.toSet()
+        val originalIds = initial.map { it.id }.toSet()
+        val additions = updated.filterNot { it.id in originalIds }
+        if (removed.isNotEmpty() || additions.isNotEmpty()) {
+            val current = readStreamPresets(p[K.streamPresets]).filterNot { it.id in removed }
+            p[K.streamPresets] = json.encodeToString<List<SavedWavePreset>>((current + additions).distinctBy { it.id })
+        }
+    }
+
     internal fun deleteStreamPreset(id: String) = edit { p ->
         p[K.streamPresets] = json.encodeToString<List<SavedWavePreset>>(readStreamPresets(p[K.streamPresets]).filterNot { it.id == id })
     }

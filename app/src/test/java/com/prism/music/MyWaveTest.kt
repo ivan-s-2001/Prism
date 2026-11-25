@@ -275,4 +275,19 @@ class MyWaveTest {
         assertEquals(scenarios.all.toSet(), order.toSet())
         assertEquals(scenarios.all.size, order.size)
     }
+
+    @Test fun tuningDraftNeverMutatesOriginalSettings() {
+        val original = com.prism.music.data.foryou.WaveSettingsDraft(MyWave.Style(), false, emptyList(), null)
+        val edited = original.discovery(30).tune(MyWave.Style(russianPercent = 75, discoveryPercent = 30, diversity = 80))
+            .copy(themeColors = true).save("Мой поток", "test")
+        assertEquals(MyWave.Style(), original.style)
+        assertFalse(original.themeColors)
+        assertTrue(original.presets.isEmpty())
+        assertEquals(30, edited.style.discoveryPercent)
+        assertEquals(75, edited.style.russianPercent)
+        assertEquals(80, edited.style.diversity)
+        assertEquals(edited.style, MyWave.style(edited.presets.single().origin))
+        assertEquals("test", edited.presetId)
+        assertTrue(edited.delete("test").presets.isEmpty())
+    }
 }
