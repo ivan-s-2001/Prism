@@ -22,8 +22,9 @@ internal object MyWave {
         val activity: Activity = Activity.ANY,
         val diversity: Int = 50,
         val discoveryPercent: Int = character.percent,
+        val russianPercent: Int = -1, // -1: automatic, otherwise target share by title-script proxy
     ) {
-        val origin: String get() = "$ORIGIN:${character.name}:${mood.name}:${depth.name}:${activity.name}:${diversity.coerceIn(0, 100)}:${discoveryPercent.coerceIn(0, 100)}"
+        val origin: String get() = "$ORIGIN:${character.name}:${mood.name}:${depth.name}:${activity.name}:${diversity.coerceIn(0, 100)}:${discoveryPercent.coerceIn(0, 100)}:${russianPercent.coerceIn(-1, 100)}"
         // An explicit mood takes precedence over the activity's approximate energy target.
         val tune: RadioTune get() = RadioTune(newness = character.bias,
             energy = if (mood == Mood.ANY) activity.energy else mood.energy, depth = depth.bias)
@@ -37,7 +38,8 @@ internal object MyWave {
             Depth.entries.firstOrNull { it.name == parts.getOrNull(2) } ?: Depth.ANY,
             Activity.entries.firstOrNull { it.name == parts.getOrNull(3) } ?: Activity.ANY,
             parts.getOrNull(4)?.toIntOrNull()?.coerceIn(0, 100) ?: 50,
-            parts.getOrNull(5)?.toIntOrNull()?.coerceIn(0, 100) ?: character.percent)
+            parts.getOrNull(5)?.toIntOrNull()?.coerceIn(0, 100) ?: character.percent,
+            parts.getOrNull(6)?.toIntOrNull()?.coerceIn(-1, 100) ?: -1)
     }
 
     /** Decayed implicit feedback. Beta prior shrinks a few observations toward neutral.
@@ -100,6 +102,20 @@ internal object MyWave {
         return ((i + 1) * p + 50) / 100 > (i * p + 50) / 100
     }
 
+    /** No reliable vocal-language field is provided by the catalogue. Use title script as
+     * an explicitly approximate signal; never infer language from artist nationality. */
+    fun russianTitle(song: Song): Boolean? {
+        val letters = song.title.filter { it.isLetter() }
+        if (letters.isEmpty()) return null
+        val russian = letters.count { it.lowercaseChar() in 'а'..'я' || it.lowercaseChar() == 'ё' }
+        if (letters.any { it.lowercaseChar() in "іїєґў" }) return null
+        return when {
+            russian * 2 >= letters.length -> true
+            russian == 0 && letters.any { java.lang.Character.UnicodeScript.of(it.code) != java.lang.Character.UnicodeScript.CYRILLIC } -> false
+            else -> null
+        }
+    }
+
     fun mix(
         candidates: List<Song>, likes: List<Song>, isKnown: (Song) -> Boolean,
         heard: (Song) -> Boolean, allowed: (Song) -> Boolean, seed: Long,
@@ -110,12 +126,13 @@ internal object MyWave {
     ): List<Song> {
         val likedKeys = likes.mapTo(hashSetOf(), LocalRadio::sameSong)
         val likedIds = likes.mapTo(hashSetOf()) { it.id }
-        fun eligible(s: Song) = allowed(s) && !heard(s) && LocalRadio.sameSong(s) !in avoid
+        fun eligible(s: Song) = allowed(s) && !heard(s) && LocalRadio.sameSong(s) !in avoid &&
+            when (style.russianPercent) { 0 -> russianTitle(s) == false; 100 -> russianTitle(s) == true; else -> true }
         val fresh = candidates.filter { eligible(it) && it.id !in likedIds &&
             LocalRadio.sameSong(it) !in likedKeys && !isKnown(it) }
         fun rank(items: List<Song>, favorite: Boolean): MutableList<Song> =
             start(if (favorite) emptyList() else items, if (favorite) items else emptyList(), emptyList(),
-                heard, ::eligible, seed, items.size.coerceAtMost((count * 3).coerceIn(1, 160)), style, signals,
+                heard, ::eligible, seed, items.size.coerceAtMost(if (style.russianPercent in 0..100) 160 else (count * 3).coerceIn(1, 160)), style, signals,
                 artistDoubt, servedRecently, profile, previousSong, avoid, artistEvidence).toMutableList()
         val newPool = rank(fresh, false)
         val likedPool = rank(likes.filter(::eligible), true)
@@ -125,7 +142,13 @@ internal object MyWave {
         var last = previousSong?.primaryArtist?.lowercase().orEmpty()
         repeat(count.coerceAtLeast(0)) { slot ->
             val pool = if (discoverySlot(offset + slot, style.discoveryPercent)) newPool else likedPool
-            val possible = pool.indices.filter { LocalRadio.sameSong(pool[it]) !in seen }
+            val available = pool.indices.filter { LocalRadio.sameSong(pool[it]) !in seen }
+            val possible = if (style.russianPercent in 1..99) {
+                val russian = discoverySlot(offset + slot, style.russianPercent)
+                available.filter { russianTitle(pool[it]) == russian }
+                    .ifEmpty { available.filter { russianTitle(pool[it]) == null } }
+                    .ifEmpty { available }
+            } else available
             val index = possible.firstOrNull {
                 val artist = pool[it].primaryArtist.lowercase()
                 artist != last && (artistCounts[artist] ?: 0) < if (style.diversity >= 75) 2 else 3
