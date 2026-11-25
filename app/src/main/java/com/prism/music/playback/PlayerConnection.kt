@@ -905,6 +905,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     val playWhenReady: Boolean get() = player?.playWhenReady ?: false
 
     fun setPlaying(playing: Boolean) = withPlayer { p ->
+        if (c.castingNow && c.cast.requestStationPlaying(playing)) return@withPlayer
         if (playing) {
             ensureStarted()
             if (p.playbackState == Player.STATE_IDLE) p.prepare()
@@ -933,6 +934,9 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     }
 
     fun togglePlay() = withPlayer { p ->
+        if (c.castingNow) c.cast.stationWantsPlaying()?.let { desired ->
+            if (c.cast.requestStationPlaying(!desired)) return@withPlayer
+        }
         if (!p.isPlaying) ensureStarted()
         if (p.playbackState == Player.STATE_IDLE) p.prepare()
         if (p.playbackState == Player.STATE_ENDED) p.seekTo(0, 0)
@@ -957,7 +961,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     /** Moves the playhead by [ms] (negative goes back), kept inside the song. */
     fun seekBy(ms: Long) = withPlayer { p ->
         val end = p.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
-        p.seekTo((p.currentPosition + ms).coerceIn(0, (end - 1_000).coerceAtLeast(0)))
+        p.seekTo((position + ms).coerceIn(0, (end - 1_000).coerceAtLeast(0)))
     }
     fun skipTo(index: Int) = withPlayer { p ->
         // Shuffled, the song picked plays next in the order, so Previous comes back to the one playing now.
@@ -1201,11 +1205,12 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     fun setSleepEndOfSong(on: Boolean) {
         _sleepEndOfSong.value = on
         if (on) _sleepAt.value = 0
-        withPlayer { it.pauseAtEndOfMediaItems = on }
+        withPlayer { it.pauseAtEndOfMediaItems = on || (c.castingNow && c.cast.stationWantsPlaying() != null) }
     }
 
     override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
         // Paused at the end of the song for the sleep timer: done; playing on from here goes on as usual.
+        if (c.castingNow && c.cast.stationWantsPlaying() != null) return
         if (!playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM && _sleepEndOfSong.value) setSleepEndOfSong(false)
     }
 
@@ -1266,6 +1271,12 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
 
     // ------------------------------------------------------------ State mirroring
 
+    internal fun onStationClockChanged(clock: com.prism.music.connect.yandex.StationClock?) {
+        if (clock == null) { refresh(); return }
+        _isPlaying.value = clock.playing == true
+        _buffering.value = clock.loading
+    }
+
     private fun refresh() {
         val p = player ?: return
         val item = p.currentMediaItem
@@ -1274,8 +1285,9 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         val wasLive = _current.value?.isLive == true
         if (changed) _videoFailedFor.value = null
         _current.value = song
-        _isPlaying.value = p.isPlaying
-        _buffering.value = p.playbackState == Player.STATE_BUFFERING
+        val receiverClock = if (c.castingNow) c.cast.stationClock.value else null
+        _isPlaying.value = receiverClock?.let { it.playing == true } ?: p.isPlaying
+        _buffering.value = receiverClock?.loading ?: (p.playbackState == Player.STATE_BUFFERING)
         _index.value = p.currentMediaItemIndex
         _shuffle.value = p.shuffleModeEnabled
         _repeat.value = p.repeatMode
