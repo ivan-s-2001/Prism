@@ -73,11 +73,15 @@ class YourMusic(private val c: AppContainer) {
     private fun ok(s: Song) = !s.isEpisode && !s.isLive && !c.library.isDisliked(s.id) && !c.exclusions.blocks(s) && !c.exclusions.isSongExcluded(s.id)
 
     internal data class WaveTaste(val profile: MyWave.Profile, val favorites: List<Song>, val likedSeeds: List<Song>, val likes: List<Song>)
+    private data class WarmTaste(val account: String, val likedIds: Set<String>, val at: Long, val taste: WaveTaste)
+    @Volatile private var warmTaste: WarmTaste? = null
 
     /** Local, recency-weighted taste and listening-context profile, shared by Wave start and refill.
      * Context has a small influence until enough history exists; no guesses about lyrics or activity.
      */
     internal suspend fun waveTaste(): WaveTaste = withContext(Dispatchers.Default) {
+        val account = waveAccount()
+        val likedIds = c.library.likedIds.value.toSet()
         val s = snapshot()
         val now = java.time.ZonedDateTime.now()
         val zone = now.zone
@@ -161,7 +165,10 @@ class YourMusic(private val c: AppContainer) {
             .distinctBy { it.primaryArtist.lowercase().ifBlank { it.id } }.take(4)
         val historySeeds = if (seedPool.isEmpty()) favorites.filter { !it.isLocal && !it.isVideo &&
             !c.recFeedback.turnedDown(it.id, known = false) }.distinctBy { it.primaryArtist.lowercase() }.take(8) else emptyList()
-        WaveTaste(profile, favorites, freshSeeds + durableSeeds + historySeeds, liked.map { it.first })
+        WaveTaste(profile, favorites, freshSeeds + durableSeeds + historySeeds, liked.map { it.first }).also {
+            if (account == waveAccount() && likedIds == c.library.likedIds.value)
+                warmTaste = WarmTaste(account, likedIds, System.currentTimeMillis(), it)
+        }
     }
 
     private data class WavePage(val songs: List<Song>, val continuation: String?, val at: Long)
@@ -242,7 +249,10 @@ class YourMusic(private val c: AppContainer) {
         base: List<Song>, style: MyWave.Style, offset: Int, previous: Song?, existing: List<Song>,
         count: Int = MyWave.HORIZON, fast: Boolean = false,
     ): List<Song> = withContext(Dispatchers.Default) {
-        val taste = waveTaste()
+        val taste = (if (fast) warmTaste?.takeIf {
+            it.account == waveAccount() && it.likedIds == c.library.likedIds.value &&
+                System.currentTimeMillis() - it.at in 0L..60_000L
+        }?.taste else null) ?: waveTaste()
         val offline = !c.network.isOnline()
         val avoid = (existing + listOfNotNull(previous) + c.sessionHeard.oldestFirst()).mapTo(hashSetOf(), LocalRadio::sameSong)
         val ids = existing.mapTo(hashSetOf()) { it.id }
