@@ -16,6 +16,8 @@ import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import java.io.File
 import java.net.DatagramSocket
 import java.net.Inet4Address
@@ -48,15 +50,23 @@ class StationDiagnosticsActivity : ComponentActivity() {
     private var login: Dialog? = null
     private val frames = AtomicLong()
     private val delivered = AtomicLong()
+    private var stage = "Idle"
+    private var lastError = "None"
 
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runOperation("Importing MP3") {
-            session?.close()
-            session = null
+            stage = "Import file"
             val imported = withContext(Dispatchers.IO) { importMp3(uri) }
+            try {
+                // Keep the verified connection when the first file is chosen.
+                if (file != null) session?.stop()
+            } catch (e: Throwable) {
+                imported.delete()
+                throw e
+            }
             file?.delete()
             file = imported
-            report("MP3 ready: ${imported.length()} bytes. Use a short CBR MP3 test file.")
+            report("MP3 ready: ${imported.length()} bytes. ${if (session == null) "Connect Station first." else "Connected; ready to play."}")
         }
     }
 
@@ -87,15 +97,19 @@ class StationDiagnosticsActivity : ComponentActivity() {
         button("Choose local MP3") { picker.launch(arrayOf("audio/mpeg")) }
         button("Play test MP3") {
             runOperation("Sending play command") {
+                stage = "Check connection"
                 val active = session ?: error("Not connected")
+                stage = "Check selected file"
                 val mp3 = file ?: error("No file")
                 val station = connectedStation ?: error("Not connected")
+                stage = "Find phone LAN address"
                 val address = withContext(Dispatchers.IO) {
                     DatagramSocket().use {
                         it.connect(station.address, station.port)
                         it.localAddress as? Inet4Address ?: error("No IPv4 route")
                     }
                 }
+                stage = "Send Glagol / start HTTP server"
                 delivered.set(0)
                 withContext(Dispatchers.IO) {
                     active.play(address, mp3, "Prism audio test") { bytes -> delivered.addAndGet(bytes) }
@@ -106,7 +120,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
         button("Volume 20%") { runOperation("Setting volume") { sessionOrThrow().volume(0.2); report("Volume command queued.") } }
         button("Stop") { runOperation("Stopping") { sessionOrThrow().stop(); report("Stop command queued.") } }
         button("Refresh diagnostics") {
-            report("State frames: ${frames.get()}\nMP3 bytes delivered: ${delivered.get()}\nOnly audible playback confirms success.")
+            report("Connected: ${session != null}\nMP3: ${file?.length() ?: 0} bytes\nState frames: ${frames.get()}\nMP3 bytes delivered: ${delivered.get()}\nLast error: $lastError\nOnly audible playback confirms success.")
         }
         button("Disconnect") {
             if (operation?.isActive == true) { report("Another operation is running."); return@button }
@@ -114,7 +128,14 @@ class StationDiagnosticsActivity : ComponentActivity() {
             session = null
             report("Disconnected. Use Stop first to terminate remote playback.")
         }
-        setContentView(ScrollView(this).apply { addView(column) })
+        val scroll = ScrollView(this).apply { addView(column) }
+        ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
+        setContentView(scroll)
+        ViewCompat.requestApplyInsets(scroll)
     }
 
     private fun selected(): YandexStation = devices.values.elementAtOrNull(chooser.selectedItemPosition)
@@ -150,6 +171,7 @@ class StationDiagnosticsActivity : ComponentActivity() {
     }
 
     private fun connect() = runOperation("Verifying Station with Yandex") {
+        stage = "Select Station"
         val station = selected()
         scan?.cancelAndJoin()
         scan = null
@@ -157,7 +179,9 @@ class StationDiagnosticsActivity : ComponentActivity() {
         session = null
         frames.set(0)
         val api = QuasarStationApi(YandexWebCookieJar())
+        stage = "Quasar device list / certificate"
         val identity = api.verify(station)
+        stage = "TLS WebSocket / device token / ping"
         val next = StationSmokeSession(station, identity, api) { frames.incrementAndGet() }
         try {
             next.ping()
@@ -234,11 +258,25 @@ class StationDiagnosticsActivity : ComponentActivity() {
     private fun runOperation(label: String, action: suspend () -> Unit) {
         if (operation?.isActive == true) { report("Another operation is running."); return }
         operation = lifecycleScope.launch {
+            stage = label
             report(label)
             try { action() }
+            catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                lastError = "$stage: timeout"
+                report(lastError)
+            }
             catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (_: Exception) {
-                report("$label failed. Check account login, device selection, certificate and Wi-Fi; no secrets are logged.")
+            catch (e: Exception) {
+                val safeMessage = e.message.orEmpty().let { msg ->
+                    when {
+                        msg in setOf("Not connected", "No file", "No IPv4 route", "Select a Station", "Station is not in this Yandex account", "No Station certificate in account metadata", "Yandex rejected the device token request", "Station certificate mismatch", "Station connection closed", "Invalid Yandex device list") -> msg
+                        Regex("Quasar HTTP [0-9]{3}").matches(msg) -> msg
+                        else -> e.javaClass.simpleName
+                    }
+                }
+                lastError = "$stage: $safeMessage"
+                report(lastError)
+                android.util.Log.w("PrismStationLab", lastError)
             }
         }
     }
