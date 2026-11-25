@@ -46,7 +46,7 @@ import kotlin.math.sin
 
 /** The Wave has its own route and can start before Home has ever been opened. */
 @Composable
-internal fun MyWaveScreen(bottomPadding: Dp) {
+internal fun MyWaveScreen(bottomPadding: Dp, onOpenPlayer: () -> Unit = {}) {
     val c = LocalContainer.current
     val settings = LocalAppSettings.current
     val favorites by c.library.likedShown.collectAsState()
@@ -93,14 +93,15 @@ internal fun MyWaveScreen(bottomPadding: Dp) {
     }
     Box(Modifier.fillMaxSize().statusBarsPadding().padding(bottom = bottomPadding)) {
         MyWaveCard(recommendations, favorites, recent, online, loading = loading,
-            onRetry = if (failed && recommendations.isEmpty() && !source.isMyWave && online) ({ retry++ }) else null)
+            onRetry = if (failed && recommendations.isEmpty() && !source.isMyWave && online) ({ retry++ }) else null,
+            onOpenPlayer = onOpenPlayer)
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, recent: List<Song>, online: Boolean,
-    heroHeight: Dp = 420.dp, loading: Boolean = false, onRetry: (() -> Unit)? = null) {
+    heroHeight: Dp = 420.dp, loading: Boolean = false, onRetry: (() -> Unit)? = null, onOpenPlayer: () -> Unit = {}) {
     val c = LocalContainer.current
     val scope = rememberCoroutineScope()
     val source by c.queue.source.collectAsState()
@@ -283,8 +284,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (current != null) {
-                Artwork(c.covers.art(SongItem(current)), Modifier.size(44.dp), ui.shape(10.dp), size = 160)
-                Column(Modifier.weight(1f)) {
+                Artwork(c.covers.art(SongItem(current)), Modifier.size(44.dp).clickable(onClick = onOpenPlayer), ui.shape(10.dp), size = 160)
+                Column(Modifier.weight(1f).clickable(onClick = onOpenPlayer)) {
                     Text(current.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(current.primaryArtist, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -314,7 +315,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 Text(l("Сценарии", "Scenarios"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 TextButton(onClick = { scenariosOpen = true }) { Text(l("Все", "All")) }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (!compact) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf(WaveScenarios.Group.DAY to l("День", "Day"), WaveScenarios.Group.ACTIVITY to l("Дела", "Activity"),
                     WaveScenarios.Group.DISCOVERY to l("Вкус", "Taste")).forEach { (value, label) ->
                     FilterChip(selected = group == value, onClick = { group = value }, modifier = Modifier.weight(1f),
@@ -327,6 +328,21 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                         .testTag("wave:scenario:${scenario.id}"), shape = ui.shape(16.dp),
                         color = if (style == scenario.style) scheme.primaryContainer else scheme.surfaceContainerHigh) {
                         Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.Center) {
+                            if (!compact) {
+                                val glyph = when (scenario.glyph) {
+                                    WaveScenarios.Glyph.SUN -> PrismIcons.Sun
+                                    WaveScenarios.Glyph.MOON -> PrismIcons.Moon
+                                    WaveScenarios.Glyph.CAR -> PrismIcons.Car
+                                    WaveScenarios.Glyph.WORK -> PrismIcons.Headphones
+                                    WaveScenarios.Glyph.ENERGY -> PrismIcons.Flame
+                                    WaveScenarios.Glyph.HEART -> PrismIcons.Heart
+                                    WaveScenarios.Glyph.STAR -> PrismIcons.Star
+                                    WaveScenarios.Glyph.DISCOVER -> PrismIcons.SmartShuffle
+                                    WaveScenarios.Glyph.RADIO -> PrismIcons.Equalizer
+                                }
+                                Icon(glyph, null, Modifier.size(20.dp), tint = accent)
+                                Spacer(Modifier.height(4.dp))
+                            }
                             Text(if (ru) scenario.ru else scenario.en, style = MaterialTheme.typography.labelLarge,
                                 maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
