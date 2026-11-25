@@ -4,10 +4,7 @@ import java.io.IOException
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
@@ -17,11 +14,7 @@ internal class StationStopControl {
     private val state = AtomicReference<Reading?>()
 
     fun onState(text: String) {
-        val playing = runCatching {
-            val root = Json.parseToJsonElement(text) as? JsonObject
-            val current = root?.get("state") as? JsonObject
-            (current?.get("playing") as? JsonPrimitive)?.booleanOrNull
-        }.getOrNull() ?: return
+        val playing = StationPlaybackState.parse(text, 0)?.playing ?: return
         state.set(Reading(playing))
     }
 
