@@ -748,6 +748,23 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         service?.maybeAutoplay()
     }
 
+    /** Collection/artist recommendations use original context, not the first generated track. */
+    internal suspend fun playContextVibe(title: String, anchors: List<Song>,
+        provider: suspend () -> List<Song> = { emptyList() }): Boolean = withContext(Dispatchers.Main) {
+        if (c.queue.followingHost) return@withContext false
+        val token = queueStarting()
+        val old = c.queue.source.value
+        val supplied = try { provider() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { emptyList() }
+        val context = com.prism.music.data.foryou.VibeContext.anchors(anchors.ifEmpty { supplied })
+        if (context.isEmpty() || !stillStarting(token) || c.queue.source.value !== old) return@withContext false
+        val picks = c.yourMusic.contextBatch(context, emptyList(), 0, explicitContext = true, provided = supplied + context)
+        if (picks.isEmpty() || !stillStarting(token) || c.queue.followingHost || c.queue.source.value !== old) return@withContext false
+        val source = QueueSource(QueueKind.RADIO, tr(R.string.radio, title), vibeAnchors = context)
+        playQueue(picks, 0, source)
+        c.recFeedback.served(picks.map { it.id })
+        true
+    }
+
     /** Queue items a retune must not replace or duplicate. Offline may reuse previously played downloads. */
     internal fun waveRetuneOccupied(): List<Song> {
         val p = player ?: return emptyList()

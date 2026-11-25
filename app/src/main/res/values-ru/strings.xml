@@ -453,7 +453,7 @@
     <string name="youtube_music_s_sections_that_are">Разделы YouTube Music, где в основном видео</string>
     <string name="leave_off_podcast_sections">Без разделов с подкастами</string>
     <string name="youtube_music_s_sections_of_shows">Разделы YouTube Music с подкастами и выпусками</string>
-    <string name="quick_picks_start_a_radio">«Быстрый выбор» запускает радио</string>
+    <string name="quick_picks_start_a_radio">Быстрый выбор запускает вайб</string>
     <string name="tapping_a_pick_plays_it_then">Нажатие включает трек, а затем похожие песни</string>
     <string name="tapping_a_pick_plays_quick_picks">Нажатие включает «Быстрый выбор» по порядку, начиная с трека</string>
     <string name="speed_dial_youtube_music_s_only">«Быстрый набор»: только от YouTube Music</string>
@@ -495,8 +495,8 @@
     <string name="available_offline">Доступно офлайн</string>
     <string name="you_re_offline_and_this_song">Нет сети, а эта песня не скачана</string>
     <string name="saved_to_your_library">Сохранено в библиотеку</string>
-    <string name="radio">Поток · %1$s</string>
-    <string name="couldn_t_start_the_radio">Не удалось запустить радио</string>
+    <string name="radio">Вайб · %1$s</string>
+    <string name="couldn_t_start_the_radio">Не удалось запустить вайб</string>
     <string name="delete_the_of_from_this_phone">Удалить %1$s из «%2$s» с этого телефона? Их можно скачать снова.</string>
     <string name="downloading">Скачиваем %1$s</string>
     <string name="removed_from">Удалено из «%1$s»</string>
@@ -764,7 +764,7 @@
     <string name="what_prism_leaves_out_of_your">Что Prism не учитывает в твоих рекомендациях</string>
     <string name="bring_back">Вернуть</string>
     <string name="artists_not_to_play">Исполнители, которых не включать</string>
-    <string name="never_in_radios_autoplay_smart_shuffle">Никогда в радио, автовоспроизведении, умном перемешивании, твоих миксах или умных загрузках. Если ты сам их включишь, они сыграют.</string>
+    <string name="never_in_radios_autoplay_smart_shuffle">Исключено из рекомендаций вайба, персональных подборок и умных загрузок. Вручную их можно воспроизводить.</string>
     <string name="playlists_left_out_of_your_taste">Плейлисты вне твоих вкусов</string>
     <string name="they_play_as_usual_but_don">Играют как обычно, но не влияют на рекомендации. В статистике они всё равно учитываются.</string>
     <string name="songs_left_out_of_your_taste">Песни вне твоих вкусов</string>
@@ -1304,7 +1304,7 @@
     <string name="your_first_song_of">Твоя первая песня %1$s года:</string>
     <string name="songs_you_sang">Песни, которые ты пел</string>
     <string name="songs_in_dj_sets">Песни в DJ-сетах</string>
-    <string name="smart_shuffle_finds_played">Находки умного перемешивания</string>
+    <string name="smart_shuffle_finds_played">Прослушано рекомендаций вайба</string>
     <string name="songs_recognized">Распознанные песни</string>
     <string name="release_radar_finds">Находки «Радара новинок»</string>
     <string name="your_year_in_prism">ТВОЙ ГОД В PRISM</string>
@@ -1600,9 +1600,9 @@
     <string name="each_step">Каждый шаг</string>
     <string name="haptics">Виброотклик</string>
     <string name="vibration_vibrate">вибрация вибро</string>
-    <string name="autoplay">Продолжать потоком</string>
+    <string name="autoplay">Продолжать вайбом</string>
     <string name="radio_continue_similar">радио продолжить похожие</string>
-    <string name="autoplay_from">Автовоспроизведение из</string>
+    <string name="autoplay_from">Источники вайба</string>
     <string name="radio_your_music_prism_radio_youtube">радио твоя музыка радио prism youtube офлайн локальные</string>
     <string name="music_videos_audio">клипы аудио</string>
     <string name="everywhere">Везде</string>
@@ -2079,12 +2079,12 @@
     <string name="tap_to_clear">%1$s · нажми, чтобы очистить</string>
     <string name="kept_up_to_400_mb_so">Хранятся (до 400 MB), чтобы в следующий раз запускаться сразу.</string>
     <string name="similar_music_when_the_queue_ends">Похожая музыка, когда очередь закончится</string>
-    <string name="prism_s_own_radio_picked_on">Собственное радио Prism, подобранное на твоём телефоне по тому, что ты слушаешь, лайкаешь и сохраняешь</string>
-    <string name="prism_music_s_radio_for_songs">Радио Prism Music — для песен, которых ты ещё не слышал</string>
+    <string name="prism_s_own_radio_picked_on">Твоя музыка — по истории, лайкам и медиатеке.</string>
+    <string name="prism_music_s_radio_for_songs">Рекомендации новой музыки из каталога.</string>
     <string name="mostly_your_music_with_two_new">Радио Prism Music, а между его песнями — подходящие твои песни</string>
     <string name="offline_it_s_always_your_music">. Без сети — всегда твоя музыка.</string>
-    <string name="autoplay_and_radios_play_songs">Автовоспроизведение и радио включают песни</string>
-    <string name="a_music_video_in_autoplay_or">Клип в автовоспроизведении или радио играет как песня, а видео без версии песни пропускаются.</string>
+    <string name="autoplay_and_radios_play_songs">Вайб воспроизводит песни</string>
+    <string name="a_music_video_in_autoplay_or">Вайб выбирает аудиоверсии клипов и пропускает видео без версии песни.</string>
     <string name="videos_everywhere_play_as_their_song">Видео везде играют как песни</string>
     <string name="music_videos_in_search_albums_playlists">Клипы в поиске, альбомах, плейлистах, понравившихся и скачанном играют как песни, с альбомом и обложкой. Кнопка «Видео» по-прежнему показывает клип; видео без песни играет как есть.</string>
     <string name="after_a_video_the_next_song">После видео следующая песня тоже играет как видео</string>
@@ -2328,7 +2328,7 @@
     <string name="skip_to_the_best_part">Перейти к лучшему моменту</string>
     <string name="set_your_own_best_part">Задать свой лучший момент</string>
     <string name="your_best_part">Твой лучший момент</string>
-    <string name="smart_shuffle_on">Умное перемешивание включено</string>
+    <string name="smart_shuffle_on">Перемешивание с вайбом включено</string>
     <string name="shuffle_on">Перемешивание включено</string>
     <string name="shuffle_off">Перемешивание выключено</string>
     <string name="repeat_all">Повторять все</string>
@@ -2403,8 +2403,8 @@
     <string name="lock_the_order">Заблокировать порядок</string>
     <string name="use_mobile_data">Через мобильный интернет</string>
     <string name="removed">Удалено: «%1$s»</string>
-    <string name="similar_music_plays_next">Рекомендации Потока</string>
-    <string name="similar_music_will_play_after_your">Поток продолжится после очереди</string>
+    <string name="similar_music_plays_next">Рекомендации вайба</string>
+    <string name="similar_music_will_play_after_your">Вайб продолжится после очереди</string>
     <string name="opus">Opus</string>
     <string name="vorbis">Vorbis</string>
     <string name="t_1f_khz" formatted="false">%.1f kHz</string>
@@ -2415,7 +2415,7 @@
     <string name="sample_rate">Частота дискретизации</string>
     <string name="source">Источник</string>
     <string name="video_id">ID видео</string>
-    <string name="stream">Поток</string>
+    <string name="stream">Вайб</string>
     <string name="t_2f_mb" formatted="false"> · %.2f MB</string>
     <string name="format">Формат</string>
     <string name="hz_ch">%1$s Hz · %2$s кан.</string>
@@ -2666,7 +2666,7 @@
     <string name="clear_search">Очистить поиск</string>
     <string name="remove_downloaded_video">Удалить скачанное видео</string>
     <string name="download_video">Скачать видео</string>
-    <string name="radio_2">Поток</string>
+    <string name="radio_2">Вайб</string>
     <string name="play_from_the_best_part">Слушать с лучшего момента</string>
     <string name="go_to_podcast">Перейти к подкасту</string>
     <string name="mark_as_unplayed">Отметить как непрослушанное</string>
@@ -2704,7 +2704,7 @@
     <string name="yet_more_songs_are_still_loading"> — пока: остальные песни ещё загружаются.</string>
     <string name="no_songs">Нет песен: %1$s</string>
     <string name="nothing_here_yet">Здесь пока ничего нет</string>
-    <string name="start_radio">Поток по треку</string>
+    <string name="start_radio">Вайб по треку</string>
     <string name="remove_downloads">Удалить скачанное</string>
     <string name="remove_download">Удалить из скачанного</string>
     <string name="download_all">Скачать все</string>
@@ -2817,7 +2817,7 @@
     <string name="full_screen">Во весь экран</string>
     <string name="remove_from_liked">Убрать из понравившихся</string>
     <string name="exit_full_screen">Выйти из полноэкранного режима</string>
-    <string name="smart_shuffle">Умное перемешивание</string>
+    <string name="smart_shuffle">Перемешивание с вайбом</string>
     <string name="repeat">Повтор</string>
     <string name="close_lyrics">Закрыть текст</string>
     <string name="speed_pitch_pitch_moved">Скорость и тональность, тональность изменена</string>
@@ -2847,7 +2847,7 @@
     <string name="remove_from_the_queue">Удалить из очереди</string>
     <string name="order_locked">Порядок заблокирован</string>
     <string name="drag_to_reorder">Перетащи, чтобы изменить порядок</string>
-    <string name="smart_shuffle_pick">Подборка умного перемешивания</string>
+    <string name="smart_shuffle_pick">Рекомендация вайба</string>
     <string name="this_playlist_2">этот плейлист</string>
     <string name="the_player">Плеер</string>
     <string name="dj_mode_and_crossfade">Режим DJ и плавный переход</string>
@@ -2939,7 +2939,7 @@
     <string name="show_lyrics">Показать текст</string>
     <string name="back_10_seconds">Назад на 10 секунд</string>
     <string name="ahead_30_seconds">Вперёд на 30 секунд</string>
-    <string name="radio_3">Поток · %1$s</string>
+    <string name="radio_3">Вайб · %1$s</string>
     <string name="prism_doesn_t_know_a_best">Prism пока не знает лучший момент «%1$s», поэтому песня играет с начала</string>
     <string name="videos_play_on_this_phone_while">Видео играет на этом телефоне. Во время трансляции колонка или телевизор получают песню</string>
     <string name="couldn_t_get_this_song_ready">Не удалось подготовить эту песню</string>
@@ -4091,7 +4091,7 @@
     <string name="when_the_queue_ends_info">Стоп: музыка заканчивается вместе с очередью. Твоя музыка: собственное радио Prism из того, что ты слушаешь. Твоя музыка и новое: в основном твоя музыка и немного новых песен. Prism Music: радио из каталога Prism Music. Без сети всегда играет твоя музыка.</string>
     <string name="music_videos_label">Клипы</string>
     <string name="play_them">Видео везде</string>
-    <string name="songs_in_radios">Песни в радио</string>
+    <string name="songs_in_radios">Песни в вайбе</string>
     <string name="songs_everywhere">Песни везде</string>
     <string name="music_videos_label_info">Видео везде: клип играет как видео. Песни в радио: автовоспроизведение и радио включают вместо клипа его песню. Песни везде: любой клип, на который ты нажмёшь, играет как песня, а кнопка «Видео» по-прежнему показывает клип.</string>
     <string name="trim_silence">Обрезать тишину в начале и в конце</string>
@@ -4901,9 +4901,9 @@
     <string name="no_videos_on_mobile_data_keywords">клип видео мобильный интернет только звук экономия трафика wifi</string>
     <string name="videos_are_off_on_mobile_data">В мобильном интернете видео отключено</string>
     <string name="video_stopped_on_mobile_data">Сейчас мобильный интернет, поэтому воспроизведение продолжится только со звуком</string>
-    <string name="longest_song_for_autoplay">Самая длинная песня для автовоспроизведения</string>
+    <string name="longest_song_for_autoplay">Максимальная длительность рекомендаций</string>
     <string name="autoplay_no_length_limit">Без ограничения</string>
-    <string name="longest_song_for_autoplay_info">Автовоспроизведение пропускает песни длиннее этой, например часовые миксы. Песни, которые ты выбрал или добавил в очередь сам, и радио, которое ты запустил, играют любой длины.</string>
+    <string name="longest_song_for_autoplay_info">Ограничивает автоматическое продолжение, но не выбранные вручную треки и явно запущенный вайб.</string>
     <string name="longest_song_for_autoplay_keywords">длинные песни миксы сборники длительность длина ограничение</string>
     <string name="skip_silence_choice_info">В песнях Prism пропускает тишину перед первым звуком и после последнего. Паузы внутри песни остаются. В подкастах он также сокращает длинные паузы в речи.</string>
     <string name="lock_screen_title">Плеер на экране блокировки</string>
@@ -4972,7 +4972,7 @@
     <string name="no_repeats_detail">Автовоспроизведение и радио пропускают уже сыгранные песни</string>
     <string name="no_repeats_info">Считается каждая начатая песня, даже пропущенная. Сеанс заканчивается через 6 часов, если ничего не играло. Когда в радио не остаётся нового, Prism переходит к радио другой песни, которую ты слушал, затем к твоей собственной музыке. Только если и это закончится, снова пойдут песни, которые ты слушал давнее всего, и Prism сообщит об этом.</string>
     <string name="no_repeats_ran_out">Новых песен не осталось: некоторые пойдут снова</string>
-    <string name="tune_radios">Настрой радио</string>
+    <string name="tune_radios">Настройки вайба</string>
     <string name="tune_radios_info">Для каждого радио и для автовоспроизведения. В середине радио играет как есть. Каждый ползунок учитывает только то, что телефон действительно знает о песне, и песня, о которой он ничего не знает, не сдвигается.</string>
     <string name="tune_as_it_comes">Как есть</string>
     <string name="tune_familiar_new">Знакомое или новое</string>
@@ -5761,7 +5761,7 @@
     <string name="spot_canvas_offer_title">Показывать анимацию Spotify?</string>
     <string name="spot_canvas_offer_text">Prism может воспроизводить короткое зацикленное видео, которое Spotify показывает с треком, если оно есть. Это неофициально и использует твой вход в Spotify. Для всех остальных треков показывается Prism Canvas. Это можно изменить позже в разделе Плеер, в группе Canvas.</string>
     <!-- 1.8.8 tour and fixes -->
-    <string name="radio_started">Поток запущен</string>
+    <string name="radio_started">Вайб запущен</string>
     <string name="ls_sing_button">Показывать кнопку «Подпевай»</string>
     <string name="ls_sing_button_info">Микрофон под открытым текстом. Если выключено, «Подпевай» остаётся в меню ⋯ плеера.</string>
     <string name="ls_sing_button_keywords">караоке микрофон мик скрыть текст кнопка подпевай</string>
@@ -5819,7 +5819,7 @@
     <string name="tour_188_also_about">Тур покороче и несколько мелочей.</string>
     <string name="tour_188_also_guide">Первые шаги для новичков и Руководство: все советы по темам, в Настройки → Резервная копия и о приложении</string>
     <string name="tour_188_also_sing">%1$s (Тексты и «Подпевай»): скрыть микрофон под текстом</string>
-    <string name="tour_188_also_radio">«%1$s» сообщает, когда запускается радио</string>
+    <string name="tour_188_also_radio">%1$s сообщает о запуске вайба</string>
     <string name="tour_188_also_tv">На телевизоре: Настройки → Хранилище → %1$s. И исправления по вашим сообщениям</string>
     <!-- 1.8.8 tour and fixes -->
     <string name="cover_and_title_blend_too">Обложка и название тоже смешиваются</string>

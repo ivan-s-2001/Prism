@@ -258,9 +258,12 @@ private fun ArtistContent(opened: ArtistOpened, bottomPadding: Dp) {
     }
     val shuffle = { if (ownPool != null) playOwn(ownPool, true) else playList(page.shufflePlaylistId, page.name, page.shuffleVideoId, page.shuffleParams) }
     val mix: () -> Unit = {
-        val seed = (ownPool ?: topSongs).firstOrNull { !it.isEpisode && !it.isLive && !it.isVideo }
-        if (seed != null) c.player.playRadio(seed, announce = true, contextTitle = page.name)
-        else notHere()
+        scope.launch {
+            val ok = c.player.playContextVibe(page.name, ownPool ?: topSongs) {
+                if (offline) emptyList() else page.radioPlaylistId?.let { c.radio(page.radioVideoId, it, page.radioParams).songs }.orEmpty()
+            }
+            if (!ok) notHere()
+        }
     }
     // Kept (with the whole top songs list, once it's in), to open offline later.
     if (!opened.kept) LaunchedEffect(fromYouTube, fullTop) {
@@ -405,7 +408,7 @@ private fun ArtistContent(opened: ArtistOpened, bottomPadding: Dp) {
 
             // Content melts away under the bar into the page's own frost.
             ScrollEdge({ solid }, statusTop + 60.dp + 34.dp, pageHeight) { m -> FrostedBackdrop(frost, palette, heroHeight, heroScroll, m, bleed = true) }
-            TopBar(page, { solid }, hasMix = (ownPool ?: topSongs).any { !it.isEpisode && !it.isLive && !it.isVideo }, favorite = favorite,
+            TopBar(page, { solid }, hasMix = (!offline && page.radioPlaylistId != null) || (ownPool ?: topSongs).any { !it.isEpisode && !it.isLive && !it.isVideo }, favorite = favorite,
                 onMix = mix, onShare = { sharing = true }, onSignature = { showSignature = true }, onFavorite = toggleFavorite,
                 onColor = { pageColor = true }, shareable = !uploads)
         }

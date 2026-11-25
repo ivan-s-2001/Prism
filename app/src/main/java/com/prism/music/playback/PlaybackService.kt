@@ -85,9 +85,10 @@ internal data class SavedQueue(
     val shuffle: Boolean = false, val shuffleOrder: List<Int> = emptyList(), val repeat: Int = Player.REPEAT_MODE_OFF,
     val sourceKind: String? = null, val seedId: String? = null, val originId: String? = null,
     val manualIds: Set<String> = emptySet(), val autoplayStart: Int = -1,
+    val vibeAnchors: List<Song> = emptyList(),
 ) {
     fun source(): QueueSource = QueueSource(
-        QueueKind.entries.firstOrNull { it.name == sourceKind } ?: QueueKind.OTHER, title, seedId, originId,
+        QueueKind.entries.firstOrNull { it.name == sourceKind } ?: QueueKind.OTHER, title, seedId, originId, vibeAnchors = vibeAnchors,
     )
 }
 
@@ -107,7 +108,7 @@ internal fun savedQueueText(
         decoded.take(autoplayStart).count { it != null } else -1
     val q = SavedQueue(songs, index, positionMs, title, shuffle = shuffle, shuffleOrder = if (shuffle && songs.size == songJson.size) order else emptyList(), repeat = repeat,
         sourceKind = source?.kind?.name, seedId = source?.seedId, originId = source?.originId,
-        manualIds = manualIds.intersect(songs.mapTo(hashSetOf()) { it.id }), autoplayStart = adjustedAuto)
+        manualIds = manualIds.intersect(songs.mapTo(hashSetOf()) { it.id }), autoplayStart = adjustedAuto, vibeAnchors = source?.vibeAnchors.orEmpty())
     return InnerTube.json.encodeToString(SavedQueue.serializer(), q)
 }
 
@@ -1897,7 +1898,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             val manual = c.queue.userQueued.value
             val anchor = all.firstOrNull { it.id == src.seedId }
             val originals = all.take(generatedStart).filter { it.id !in manual && !it.isEpisode && !it.isLive }
-            val anchors = (if (radio && anchor != null) listOf(anchor) else originals.takeLast(3))
+            val anchors = (if (src.vibeAnchors.isNotEmpty()) src.vibeAnchors else if (radio && anchor != null) listOf(anchor) else if (originals.isNotEmpty()) com.prism.music.data.foryou.VibeContext.anchors(originals) else emptyList())
                 .ifEmpty { listOfNotNull(all.lastOrNull()) }
             val occupied = if (offline) all.drop(player.currentMediaItemIndex.coerceAtLeast(0)) else all
             val additions = try {

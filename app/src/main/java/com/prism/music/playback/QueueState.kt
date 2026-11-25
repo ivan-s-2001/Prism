@@ -18,9 +18,11 @@ data class QueueSource(
     val originId: String? = null,
     /** The album or playlist itself, as a card that opens it: Home's Recently played can list it (#196). */
     val page: com.prism.music.data.model.BrowseItem? = null,
+    /** Representative tracks of the original artist, album or playlist; never derived from generated results. */
+    val vibeAnchors: List<com.prism.music.data.model.Song> = emptyList(),
 ) {
     /** A radio started from one song: it keeps going with similar music, Autoplay or not. */
-    val isSongRadio: Boolean get() = kind == QueueKind.RADIO && seedId != null
+    val isSongRadio: Boolean get() = kind == QueueKind.RADIO && !isMyWave && (seedId != null || vibeAnchors.isNotEmpty())
     val isMyWave: Boolean get() = kind == QueueKind.RADIO && com.prism.music.data.foryou.MyWave.isOrigin(originId)
     /** The source itself supplies more songs; optional Autoplay is not a separate mode here. */
     val continuousRecommendations: Boolean get() = isMyWave || isSongRadio
@@ -28,7 +30,7 @@ data class QueueSource(
     val allowsOrderModes: Boolean get() = !continuousRecommendations
     /** The same seed in the same context is already running; another track is a new explicit request. */
     fun matchesTrackStream(id: String, context: String): Boolean =
-        isSongRadio && !isMyWave && seedId == id && title == context
+        isSongRadio && vibeAnchors.isEmpty() && seedId == id && title == context
 }
 
 /** Shared queue bookkeeping between the UI-facing [PlayerConnection] and [PlaybackService]. */

@@ -32,12 +32,12 @@
     <string name="prism_stream_calm">Спокойное</string>
     <string name="prism_stream_cancel">Отмена</string>
     <string name="prism_stream_changes_apply_after_confirmation">Применится по кнопке «Готово»</string>
-    <string name="prism_stream_could_not_update_stream">Не удалось обновить поток</string>
+    <string name="prism_stream_could_not_update_stream">Не удалось обновить вайб</string>
     <string name="prism_stream_deep_cuts">Редкое</string>
     <string name="prism_stream_delete">Удалить %1$s</string>
     <string name="prism_stream_discoveries">Открытия</string>
     <string name="prism_stream_discoveries_are_recordings_outside_prism_s_known_history_offline_propo">Баланс любимой музыки и новых треков. Без сети — по скачанной музыке.</string>
-    <string name="prism_stream_discovery_mix">Характер потока</string>
+    <string name="prism_stream_discovery_mix">Характер вайба</string>
     <string name="prism_stream_done">Готово</string>
     <string name="prism_stream_energetic">Бодрое</string>
     <string name="prism_stream_finding_music">Подбираем…</string>
@@ -74,7 +74,7 @@
     <string name="prism_stream_offline_downloaded_music">Офлайн · скачанная музыка</string>
     <string name="prism_stream_on_the_road">В дороге</string>
     <string name="prism_stream_paused">На паузе</string>
-    <string name="prism_stream_personal_stream">Персональный поток</string>
+    <string name="prism_stream_personal_stream">Мой вайб</string>
     <string name="prism_stream_play_pause">Играть / пауза</string>
     <string name="prism_stream_player">Плеер</string>
     <string name="prism_stream_player_card_backdrop">Фон плеера</string>
@@ -96,8 +96,8 @@
     <string name="prism_stream_time_of_day">Время дня</string>
     <string name="prism_stream_track_artwork">По обложке</string>
     <string name="prism_stream_tune">Настройки</string>
-    <string name="prism_stream_tune_stream">Настройки потока</string>
-    <string name="prism_stream_tune_your_stream">Настройки потока</string>
+    <string name="prism_stream_tune_stream">Настройки вайба</string>
+    <string name="prism_stream_tune_your_stream">Настройки вайба</string>
     <string name="prism_stream_updating_your_mix">Обновляем подбор</string>
     <string name="prism_stream_uses_measured_tempo_and_loudness_when_available">Темп и громкость учитываются, если измерены.</string>
     <string name="prism_stream_variety">Разнообразие</string>
@@ -171,4 +171,5 @@
     <string name="prism_stream_language_hint">Язык по названию трека</string>
     <string name="prism_stream_save_scenario">Сохранить сценарий</string>
     <string name="prism_tabler_icon_description">Иконки Tabler с настройками толщины и заливки Prism</string>
+    <string name="vibe_from_collection">Вайб по подборке</string>
 </resources>

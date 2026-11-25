@@ -88,8 +88,9 @@ object TvPlay {
         }
         if (r.songs.isEmpty()) return@tried false
         if (radio) {
-            val seed = r.songs.firstOrNull { !it.isVideo && !it.isEpisode && !it.isLive } ?: return@tried false
-            c.player.playRadio(seed, announce = true, contextTitle = a.name)
+            val original = a.shelves.flatMap { it.items }.filterIsInstance<SongItem>().map { it.song }
+                .filter { it.primaryArtist.equals(a.name, ignoreCase = true) }
+            return@tried c.player.playContextVibe(a.name, original.ifEmpty { r.songs.filter { it.primaryArtist.equals(a.name, true) } }) { r.songs }
         } else c.player.playQueue(r.songs, 0, QueueSource(QueueKind.LIBRARY, a.name, originId = id))
         true
     }

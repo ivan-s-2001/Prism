@@ -17,3 +17,6 @@ Ordinary search results, albums, playlists and library playback retain native or
 
 ### Session continuity
 The native queue file now persists source kind, seed, origin, manual additions and the continuation boundary, with optional fields for backward compatibility. Cold restore and system resumption reconstruct the same Stream context. Stream startup on touch and TV participates in the existing global PlayerConnection request token, so a later ordinary play request cancels an older pending Stream selection. Full media-controller concurrency, smart-shuffle restoration and cross-device session transfer remain separate verification tasks.
+
+### Vibe naming and context preservation
+English/Russian user-facing recommendation terminology is Vibe/Вайб; legacy resource identifiers, serialized origins and actual broadcast terminology stay compatible. Artist/collection starts retain a bounded representative sample of the original collection in the queue and saved session. Provider results are candidates; local relevance scores remain signals in the shared selector. Ordinary play and shuffle are unchanged. Remaining work: translations outside en/ru, all collection card and TV collection action surfaces, exhaustive depletion fallback, full build and device validation.

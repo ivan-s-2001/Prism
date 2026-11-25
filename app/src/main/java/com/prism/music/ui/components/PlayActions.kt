@@ -422,7 +422,13 @@ private suspend fun songsFor(c: AppContainer, target: Playable, shuffle: Boolean
             else if (shuffle && !mix && a.shufflePlaylistId != null) {
                 val songs = c.radio(a.shuffleVideoId, a.shufflePlaylistId, a.shuffleParams).songs
                 songs to QueueSource(QueueKind.LIBRARY, a.name, originId = item.id)
-            } else radio(c, a.radioVideoId, a.radioPlaylistId ?: throw java.io.IOException(tr(R.string.no_mix)), a.radioParams, tr(R.string.radio, a.name))
+            } else {
+                val supplied = c.radio(a.radioVideoId, a.radioPlaylistId ?: throw java.io.IOException(tr(R.string.no_mix)), a.radioParams).songs
+                val original = a.shelves.flatMap { it.items }.filterIsInstance<SongItem>().map { it.song }.filter { it.primaryArtist.equals(a.name, true) }
+                val anchors = com.prism.music.data.foryou.VibeContext.anchors(original.ifEmpty { supplied.filter { it.primaryArtist.equals(a.name, true) } }.ifEmpty { supplied })
+                c.yourMusic.contextBatch(anchors, emptyList(), 0, explicitContext = true, provided = supplied + anchors) to
+                    QueueSource(QueueKind.RADIO, tr(R.string.radio, a.name), vibeAnchors = anchors)
+            }
         }
         else -> emptyList<Song>() to QueueSource(QueueKind.OTHER, item.title)
     }

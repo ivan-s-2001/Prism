@@ -32,7 +32,7 @@
     <string name="prism_stream_calm">Calm</string>
     <string name="prism_stream_cancel">Cancel</string>
     <string name="prism_stream_changes_apply_after_confirmation">Changes apply after confirmation</string>
-    <string name="prism_stream_could_not_update_stream">Could not update Stream</string>
+    <string name="prism_stream_could_not_update_stream">Could not update Vibe</string>
     <string name="prism_stream_deep_cuts">Deep cuts</string>
     <string name="prism_stream_delete">Delete %1$s</string>
     <string name="prism_stream_discoveries">Discoveries</string>
@@ -74,7 +74,7 @@
     <string name="prism_stream_offline_downloaded_music">Offline · downloaded music</string>
     <string name="prism_stream_on_the_road">On the road</string>
     <string name="prism_stream_paused">Paused</string>
-    <string name="prism_stream_personal_stream">Personal stream</string>
+    <string name="prism_stream_personal_stream">Your Vibe</string>
     <string name="prism_stream_play_pause">Play / pause</string>
     <string name="prism_stream_player">Player</string>
     <string name="prism_stream_player_card_backdrop">Player card backdrop</string>
@@ -83,7 +83,7 @@
     <string name="prism_stream_previous">Previous</string>
     <string name="prism_stream_prism_theme">Prism theme</string>
     <string name="prism_stream_refresh">Refresh</string>
-    <string name="prism_stream_refresh_stream">Refresh Stream</string>
+    <string name="prism_stream_refresh_stream">Refresh Vibe</string>
     <string name="prism_stream_reset">Reset</string>
     <string name="prism_stream_russian">Russian</string>
     <string name="prism_stream_save">Save</string>
@@ -96,8 +96,8 @@
     <string name="prism_stream_time_of_day">Time of day</string>
     <string name="prism_stream_track_artwork">Track artwork</string>
     <string name="prism_stream_tune">Tune</string>
-    <string name="prism_stream_tune_stream">Tune Stream</string>
-    <string name="prism_stream_tune_your_stream">Tune your Stream</string>
+    <string name="prism_stream_tune_stream">Vibe settings</string>
+    <string name="prism_stream_tune_your_stream">Vibe settings</string>
     <string name="prism_stream_updating_your_mix">Updating your mix</string>
     <string name="prism_stream_uses_measured_tempo_and_loudness_when_available">Uses measured tempo and loudness when available.</string>
     <string name="prism_stream_variety">Variety</string>
@@ -171,4 +171,5 @@
     <string name="prism_stream_language_hint">Language by track title</string>
     <string name="prism_stream_save_scenario">Save scenario</string>
     <string name="prism_tabler_icon_description">Tabler line icons, with Prism weight and fill settings</string>
+    <string name="vibe_from_collection">Vibe from this collection</string>
 </resources>

@@ -31,4 +31,17 @@ class PlaybackSourceUxTest {
             assertTrue(source.allowsOrderModes)
         }
     }
+
+    @Test fun collectionVibeIsContinuousWithoutASingleSeed() {
+        val songs = (1..30).map { com.prism.music.data.model.Song("id$it", "Track $it") }
+        val anchors = com.prism.music.data.foryou.VibeContext.anchors(songs)
+        val source = QueueSource(QueueKind.RADIO, "Vibe", vibeAnchors = anchors)
+        assertTrue(source.continuousRecommendations)
+        assertFalse(source.allowsOrderModes)
+        assertEquals(12, anchors.size)
+        assertEquals(songs.first(), anchors.first())
+        assertEquals(songs.last(), anchors.last())
+        assertNotEquals(com.prism.music.data.foryou.VibeContext.rotated(anchors, 0),
+            com.prism.music.data.foryou.VibeContext.rotated(anchors, MyWave.HORIZON))
+    }
 }

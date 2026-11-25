@@ -551,13 +551,13 @@ internal fun CollectionContent(type: CollectionType, live: LiveCollection, initi
         CollectionType.PLAYLIST -> live.page.id
         else -> null
     }?.let { "RDAMPL$it" }
+    val canVibe = playable.any { !it.isEpisode && !it.isLive && !it.isVideo }
     val startRadio: () -> Unit = {
-        radioId?.let { rid ->
-            scope.launch {
-                runCatching { c.radio(null, rid) }.onSuccess { r ->
-                    c.player.playQueue(r.songs, 0, QueueSource(QueueKind.RADIO, tr(R.string.radio, page.title)))
-                }.onFailure { Toast.makeText(context, tr(R.string.couldn_t_start_the_radio), Toast.LENGTH_SHORT).show() }
+        scope.launch {
+            val ok = c.player.playContextVibe(page.title, playable) {
+                if (!c.network.isOnline()) emptyList() else radioId?.let { c.radio(null, it).songs }.orEmpty()
             }
+            if (!ok) Toast.makeText(context, tr(R.string.couldn_t_start_the_radio), Toast.LENGTH_SHORT).show()
         }
     }
     // Songs marked to skip don't stand between a list and counting as downloaded (#221).
@@ -1027,7 +1027,7 @@ internal fun CollectionContent(type: CollectionType, live: LiveCollection, initi
             val items = buildList {
                 // D54: always here while the playing song is one of the songs shown.
                 locate.go?.let { go -> add(SheetItem(PrismIcons.Song, tr(R.string.go_to_the_playing_song)) { go() }) }
-                if (radioId != null) add(SheetItem(PrismIcons.Radio, tr(R.string.start_radio)) { startRadio() })
+                if (canVibe) add(SheetItem(PrismIcons.Stream, tr(R.string.vibe_from_collection)) { startRadio() })
                 if (savableId != null && saved != null) add(
                     SheetItem(if (saved == true) PrismIcons.LibraryAdded else PrismIcons.LibraryAdd, if (saved == true) tr(R.string.remove_from_library) else tr(R.string.add_to_library)) { toggleSaved() },
                 )
