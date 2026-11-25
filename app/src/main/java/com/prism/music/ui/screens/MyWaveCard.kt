@@ -156,7 +156,16 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     val base = if (online) recommendations else c.yourMusic.offlinePicks(60)
                     val local = if (current != null) c.yourMusic.radio(listOf(current.id), setOf(current.id), 50, !online).map { it.song } else emptyList()
                     val favoritesRanked = MyWave.fuse(listOf(taste.favorites, favorites, local))
-                    val combined = MyWave.fuse(listOf(base, local))
+                    // On an empty feed, ask one fresh explicit-like seed; never stall an active Station stream.
+                    val seedSong = taste.likedSeeds.firstOrNull { current == null || it.id != current.id }
+                    val related = if (online && base.isEmpty() && !c.castingNow && seedSong != null) {
+                        kotlinx.coroutines.withTimeoutOrNull(1500L) {
+                            try { c.ytm.next(seedSong.id, playlistId = "RDAMVM${seedSong.id}").songs }
+                            catch (e: CancellationException) { throw e }
+                            catch (_: Exception) { emptyList() }
+                        }.orEmpty()
+                    } else emptyList()
+                    val combined = MyWave.fuse(listOf(base, related, local))
                     val known = c.library.likedIds.value
                     val signals = c.discover.radioSignals(combined + favoritesRanked + recent.take(60), selected.tune.copy(newness = 0.5f))
                     MyWave.start(combined, favoritesRanked, recent, c.sessionHeard::has,
