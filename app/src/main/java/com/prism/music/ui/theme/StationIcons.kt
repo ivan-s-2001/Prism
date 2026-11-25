@@ -8,7 +8,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
 
-/** Original 24-unit line silhouettes, matching design/icons/yandex-stations.svg.
+/** Original 24-unit line silhouettes, matching design/stations/yandex-stations.svg.
  * No network image loads or third-party artwork are needed.
  */
 internal object StationIcons {
