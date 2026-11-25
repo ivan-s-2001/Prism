@@ -171,7 +171,7 @@ class YourMusic(private val c: AppContainer) {
     /** Related-song recall from several positively selected seeds, even when Home is populated.
      * Cache is account-scoped and bounded. During casting only one new request per batch is allowed.
      */
-    private suspend fun waveRelated(seeds: List<Song>, offset: Int, avoid: Set<String>): List<Song> {
+    private suspend fun waveRelated(seeds: List<Song>, offset: Int, avoid: Set<String>, known: (Song) -> Boolean): List<Song> {
         if (seeds.isEmpty()) return emptyList()
         val settings = c.settings.current
         val account = "${settings.authUser}|${settings.dataSyncId}|${settings.accountName}"
@@ -184,10 +184,10 @@ class YourMusic(private val c: AppContainer) {
         for (song in chosen) {
             val key = "$account|${song.id}"
             val now = System.currentTimeMillis()
-            val cached = wavePageLock.withLock { wavePages[key]?.takeIf { now - it.at in 0..600_000L } }
+            val cached = wavePageLock.withLock { wavePages[key]?.takeIf { now - it.at in 0L..600_000L } }
             if (cached != null) sources += cached.songs
             val needsMore = cached == null || (cached.continuation != null &&
-                cached.songs.count { LocalRadio.sameSong(it) !in avoid } < 12)
+                cached.songs.count { LocalRadio.sameSong(it) !in avoid && !known(it) } < 12)
             if (!needsMore || requests <= 0 || !c.network.isOnline()) continue
             requests--
             val page = kotlinx.coroutines.withTimeoutOrNull(if (c.castingNow) 1500L else 2000L) {
@@ -221,12 +221,18 @@ class YourMusic(private val c: AppContainer) {
         val ids = existing.mapTo(hashSetOf()) { it.id }
         val knownIds = c.library.likedIds.value
         val history = if (style.discoveryPercent > 0) c.discover.heard() else null
+        val likedKeys = taste.likes.mapTo(hashSetOf(), LocalRadio::sameSong)
+        val known: (Song) -> Boolean = { history?.has(it) != false || it.id in knownIds ||
+            LocalRadio.sameSong(it) in likedKeys }
+        // With no likes, recommendations can still lead to related songs as the session develops.
+        val seeds = (taste.likedSeeds + listOfNotNull(previous).filter { !it.isLocal && !it.isVideo && !it.isEpisode && !it.isLive })
+            .distinctBy { it.id }
         val related = if (style.discoveryPercent > 0 && !offline)
-            waveRelated(taste.likedSeeds, offset, avoid) else emptyList()
+            waveRelated(seeds, offset, avoid, known) else emptyList()
         val candidates = MyWave.fuse(listOf(related, base), 160)
         val signals = c.discover.radioSignals(candidates + taste.likes.take(100), style.tune.copy(newness = 0f))
         val feedback = c.recFeedback
-        MyWave.mix(candidates, taste.likes, isKnown = { history?.has(it) != false || it.id in knownIds },
+        MyWave.mix(candidates, taste.likes, isKnown = known,
             heard = c.sessionHeard::has,
             allowed = { song ->
                 song.id !in ids && ok(song) && !song.isVideo && (!offline || c.availableOffline(song.id)) &&
