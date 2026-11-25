@@ -378,15 +378,28 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                     }
                 }
                 launch {
+                    var tracked: com.prism.music.connect.yandex.ConnectDeviceClient.Lease? = null
+                    var firstFailure: Long? = null
                     while (isActive) {
                         val lease = c.cast.stationConnectLease()
+                        if (tracked !== lease) {
+                            tracked = lease
+                            firstFailure = null
+                        }
                         if (lease != null && active()) {
                             try {
                                 com.prism.music.connect.yandex.ConnectDeviceClient.heartbeat(lease, c.cast.stationConnectSnapshot())
+                                firstFailure = null
                             } catch (e: kotlinx.coroutines.CancellationException) {
                                 throw e
-                            } catch (_: Exception) {
-                                if (c.cast.stationConnectLease() === lease) c.cast.disconnect(keepPlaying = false)
+                            } catch (e: Exception) {
+                                val now = SystemClock.elapsedRealtime()
+                                val since = firstFailure ?: now.also { firstFailure = it }
+                                val denied = e is com.prism.music.connect.yandex.ConnectDeviceClient.ApiError && e.status in setOf(401, 403, 409)
+                                if ((denied || now - since >= 8_000L) && c.cast.stationConnectLease() === lease) {
+                                    android.util.Log.w("PrismStation", "Connect host authorization unavailable; stopping safely")
+                                    c.cast.disconnect(keepPlaying = false)
+                                }
                             }
                         }
                         delay(1800)
@@ -457,7 +470,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         }
         scope.launch { c.settings.flow.map { it.skipSilence to it.sound.skipSilenceEpisodes }.distinctUntilChanged().collect { applySkipSilence() } }
         scope.launch { c.settings.flow.map { it.sound.normalizeTarget to it.sound.normalizeAlbums }.distinctUntilChanged().drop(1).collect { applyNormalization() } }
-        sessionPlayer.gentle = ::gentle
+        sessionPlayer.gentle = { play -> c.cast.requestStationPlaying(play) || gentle(play) }
         scope.launch { c.settings.flow.map { it.behavior.pauseOnMute }.distinctUntilChanged().collect { muteWatch.update() } }
         scope.launch { c.settings.flow.map { it.behavior.faceDownPause }.distinctUntilChanged().collect { faceDownSetting(it) } }
         scope.launch { c.settings.flow.map { it.audioDiagnostics }.distinctUntilChanged().collect { on -> AudioDiagnostics.setEnabled(on) { AudioDiagnostics.about(c) } } }
@@ -638,7 +651,16 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 applyPitch()
             }
 
-            override fun remoteChanged() = sessionPlayer.remoteChanged()
+            override fun remoteChanged() {
+                sessionPlayer.remoteChanged()
+                if (c.cast.stationWantsPlaying() != null && player.mediaItemCount > 0) {
+                    setNotificationClosed(false)
+                    if (!inForeground()) {
+                        runCatching { onUpdateNotification(session, true) }
+                            .onFailure { android.util.Log.w("PrismStation", "Foreground notification failed", it) }
+                    }
+                }
+            }
         })
         restoreQueue()
         c.player.attach(this)
@@ -834,6 +856,10 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         // still connected (the system's media controls, a watch, a widget), sometimes one that couldn't be swiped away.
         // The queue is saved above, and Play from anywhere picks it up again. Marked closed first: the service shows a
         // stopped player's notification otherwise (idle mode ALWAYS), until something plays again.
+        if (c.cast.stationWantsPlaying() != null && player.mediaItemCount > 0) {
+            android.util.Log.i("PrismStation", "Keeping Station session after task removal")
+            return
+        }
         if (!player.playWhenReady || player.mediaItemCount == 0) {
             flushPlayTime()
             saveEpisodePosition()
@@ -1295,6 +1321,11 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             error.errorCodeName,
             generateSequence(error as Throwable) { it.cause }.filterIsInstance<HttpDataSource.InvalidResponseCodeException>().firstOrNull()?.responseCode,
         )
+        // The remote stream has its own decoder; a local shadow error must not change its queue.
+        if (c.cast.stationWantsPlaying() != null) {
+            android.util.Log.w("PrismStation", "Ignoring shadow-player error during Station playback: ${error.errorCodeName}")
+            return
+        }
         val id = player.currentMediaItem?.mediaId ?: return
         // The next song couldn't be had, found as the playing one's last sound is read: the player reports that as the
         // playing song's failure, which would then have its music video looked up and be retried for what isn't its fault.
