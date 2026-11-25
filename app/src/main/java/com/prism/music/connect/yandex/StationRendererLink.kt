@@ -25,6 +25,7 @@ internal class StationRendererLink(
     private var loaded: Pair<String, CastMedia>? = null
     private var requested = false
     private var paused = false
+    private var resumePosition: Long? = null
     private var sentAt = 0L
     private var token: String? = null
     private var tokenAt = 0L
@@ -43,9 +44,10 @@ internal class StationRendererLink(
     override suspend fun load(url: String, didl: String, media: CastMedia) {
         // Current audio_play supports file streams; physical playback on this phone is still unverified.
         require(media.mime in setOf("audio/mpeg", "audio/wav", "audio/x-wav"))
-        if (requested) send(GlagolProtocol.stop())
+        if (requested && !paused) send(GlagolProtocol.stop())
         requested = false
         paused = false
+        resumePosition = null
         loaded = url to media
     }
 
@@ -59,38 +61,54 @@ internal class StationRendererLink(
         if (state?.type == "bluetooth" && state?.playing == true) {
             throw IOException("Station is playing Bluetooth")
         }
-        if (paused) {
-            // Reload the external file, as in the current YandexStation integration.
-            send(GlagolProtocol.playStream(url, media.title, media.artist))
-        } else {
+        val resume = if (paused) resumePosition else null
+        if (!paused) {
             send(GlagolProtocol.stop())
             delay(150)
-            send(GlagolProtocol.playStream(url, media.title, media.artist))
         }
+        // Mark ownership before sending: a cancelled send can still have reached the speaker.
         requested = true
         paused = false
         sentAt = SystemClock.elapsedRealtime()
+        send(GlagolProtocol.playStream(url, media.title, media.artist))
+        if (resume != null && resume > 0) {
+            val deadline = SystemClock.elapsedRealtime() + 5000
+            while (SystemClock.elapsedRealtime() < deadline) {
+                val observed = state
+                if (observed?.matches(url) == true && observed.playing == true && observed.at >= sentAt) {
+                    seek(resume)
+                    resumePosition = null
+                    return
+                }
+                delay(100)
+            }
+            throw IOException("Station resume could not be confirmed")
+        }
     }
 
     override suspend fun pause() {
-        if (!requested) return
-        send(GlagolProtocol.stop())
+        if (!requested || paused) return
+        val current = state
+        resumePosition = current?.takeIf { it.matches(loaded?.first) }?.position
+        stopControl.stop(socket, tokens.tokenFor(identity), allowTextFallback = false)
         paused = true
         sentAt = SystemClock.elapsedRealtime()
     }
 
     override suspend fun stop() {
         try {
-            if (requested) stopControl.stop(socket, tokens.tokenFor(identity))
+            if (requested && !paused) stopControl.stop(socket, tokens.tokenFor(identity))
         } finally {
             requested = false
             paused = false
+            resumePosition = null
             loaded = null
         }
     }
 
     override suspend fun seek(ms: Long) {
         require(ms >= 0)
+        if (paused) { resumePosition = ms; return }
         send(buildJsonObject { put("command", "rewind"); put("position", ms / 1000.0) })
     }
 
@@ -109,6 +127,7 @@ internal class StationRendererLink(
         val mode = when {
             !requested -> "STOPPED"
             matching && s.playing == true -> "PLAYING"
+            paused && s.playing == false -> "PAUSED_PLAYBACK"
             matching && s.playing == false -> "PAUSED_PLAYBACK"
             now - sentAt < 5000 -> "TRANSITIONING"
             else -> "STOPPED"
@@ -122,11 +141,16 @@ internal class StationRendererLink(
         if (requested && track != null && s != null && s.matches(track.first)) {
             return PositionInfo(track.first, s.position, s.duration ?: track.second.durationMs)
         }
+        if (paused && track != null && s?.playing == false) {
+            return PositionInfo(track.first, resumePosition, track.second.durationMs)
+        }
         // A foreign source must not be mistaken for the current Prism stream.
         return PositionInfo(s?.id?.takeIf { s.playing == true }, null, null)
     }
 
-    override suspend fun volume(): Int? = state?.volume
+    fun observed(): StationPlaybackState? = state?.takeIf { SystemClock.elapsedRealtime() - it.at <= 4000 }
+    fun ownsObservedStream(): Boolean = observed()?.matches(loaded?.first) == true
+    override suspend fun volume(): Int? = observed()?.volume
     override suspend fun setVolume(v: Int) = send(GlagolProtocol.volume(v.coerceIn(0, 100) / 100.0))
     override suspend fun sinkMimes(): Set<String> = setOf("audio/mpeg", "audio/wav")
     override suspend fun close() { socket.close(); token = null }
