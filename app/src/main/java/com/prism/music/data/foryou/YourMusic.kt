@@ -167,46 +167,72 @@ class YourMusic(private val c: AppContainer) {
     private data class WavePage(val songs: List<Song>, val continuation: String?, val at: Long)
     private val wavePages = LinkedHashMap<String, WavePage>()
     private val wavePageLock = Mutex()
+    private val waveFetchLock = Mutex()
+
+    private fun waveAccount(): String {
+        val s = c.settings.current
+        return "${s.authUser}|${s.dataSyncId}|${s.accountName}"
+    }
+
+    private suspend fun cachedWaveRelated(): List<Song> {
+        val account = waveAccount() + "|"
+        val now = System.currentTimeMillis()
+        return wavePageLock.withLock {
+            MyWave.fuse(wavePages.filter { (key, page) -> key.startsWith(account) && now - page.at in 0L..600_000L }
+                .values.map { it.songs }, 160)
+        }
+    }
+
+    /** Prepare local taste/history and related candidates while the Wave screen is visible. */
+    internal suspend fun warmWave() {
+        val taste = waveTaste()
+        val history = c.discover.heard()
+        if (!c.network.isOnline() || c.castingNow) return
+        val known = c.library.likedIds.value
+        waveRelated(taste.likedSeeds, 0, emptySet(), { history.has(it) || it.id in known })
+    }
 
     /** Related-song recall from several positively selected seeds, even when Home is populated.
      * Cache is account-scoped and bounded. During casting only one new request per batch is allowed.
      */
-    private suspend fun waveRelated(seeds: List<Song>, offset: Int, avoid: Set<String>, known: (Song) -> Boolean): List<Song> {
-        if (seeds.isEmpty()) return emptyList()
-        val settings = c.settings.current
-        val account = "${settings.authUser}|${settings.dataSyncId}|${settings.accountName}"
+    private suspend fun waveRelated(seeds: List<Song>, offset: Int, avoid: Set<String>, known: (Song) -> Boolean,
+        maxRequests: Int = 3, timeoutMs: Long = 2000L): List<Song> = waveFetchLock.withLock {
+        if (seeds.isEmpty()) return@withLock cachedWaveRelated()
+        val account = waveAccount()
         val turn = (offset / MyWave.HORIZON).coerceAtLeast(0)
         val pool = seeds.distinctBy { it.id }
         val rotated = pool.drop(turn % pool.size) + pool.take(turn % pool.size)
-        val chosen = rotated.take(3)
-        val sources = mutableListOf<List<Song>>()
-        var requests = if (c.castingNow) 1 else 3
-        for (song in chosen) {
-            val key = "$account|${song.id}"
-            val now = System.currentTimeMillis()
-            val cached = wavePageLock.withLock { wavePages[key]?.takeIf { now - it.at in 0L..600_000L } }
-            if (cached != null) sources += cached.songs
-            val needsMore = cached == null || (cached.continuation != null &&
-                cached.songs.count { LocalRadio.sameSong(it) !in avoid && !known(it) } < 12)
-            if (!needsMore || requests <= 0 || !c.network.isOnline()) continue
-            requests--
-            val page = kotlinx.coroutines.withTimeoutOrNull(if (c.castingNow) 1500L else 2000L) {
-                try {
-                    withContext(Dispatchers.IO) {
-                        c.ytm.next(song.id, playlistId = "RDAMVM${song.id}", continuation = cached?.continuation)
-                    }
-                } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-                catch (_: Exception) { null }
-            } ?: continue
-            val merged = (cached?.songs.orEmpty() + page.songs).distinctBy(LocalRadio::sameSong).takeLast(120)
-            wavePageLock.withLock {
-                wavePages.remove(key)
-                wavePages[key] = WavePage(merged, page.continuation, now)
-                while (wavePages.size > 24) wavePages.remove(wavePages.keys.first())
+        val now = System.currentTimeMillis()
+        val pending = mutableListOf<Pair<Song, WavePage?>>()
+        for (song in rotated.take(6)) {
+            val cached = wavePageLock.withLock { wavePages["$account|${song.id}"]?.takeIf { now - it.at in 0L..600_000L } }
+            if (cached == null || (cached.continuation != null &&
+                cached.songs.count { LocalRadio.sameSong(it) !in avoid && !known(it) } < 12)) {
+                pending += song to cached
             }
-            sources += page.songs
         }
-        return MyWave.fuse(sources, 160)
+        val budget = if (c.castingNow) minOf(maxRequests, 1) else maxRequests
+        if (c.network.isOnline() && budget > 0) kotlinx.coroutines.coroutineScope {
+            pending.take(budget).map { (song, cached) ->
+                async(Dispatchers.IO) {
+                    val page = kotlinx.coroutines.withTimeoutOrNull(timeoutMs) {
+                        try {
+                            c.ytm.next(song.id, playlistId = "RDAMVM${song.id}", continuation = cached?.continuation)
+                        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                        catch (_: Exception) { null }
+                    } ?: return@async
+                    if (waveAccount() != account) return@async
+                    val merged = (cached?.songs.orEmpty() + page.songs).distinctBy(LocalRadio::sameSong).takeLast(120)
+                    val key = "$account|${song.id}"
+                    wavePageLock.withLock {
+                        wavePages.remove(key)
+                        wavePages[key] = WavePage(merged, page.continuation, System.currentTimeMillis())
+                        while (wavePages.size > 24) wavePages.remove(wavePages.keys.first())
+                    }
+                }
+            }.awaitAll()
+        }
+        cachedWaveRelated()
     }
 
     /** Shared start/refill path. New means absent from the available local and imported history, not a claim about
@@ -214,6 +240,7 @@ class YourMusic(private val c: AppContainer) {
      */
     internal suspend fun waveBatch(
         base: List<Song>, style: MyWave.Style, offset: Int, previous: Song?, existing: List<Song>,
+        count: Int = MyWave.HORIZON, fast: Boolean = false,
     ): List<Song> = withContext(Dispatchers.Default) {
         val taste = waveTaste()
         val offline = !c.network.isOnline()
@@ -227,12 +254,12 @@ class YourMusic(private val c: AppContainer) {
         // With no likes, recommendations can still lead to related songs as the session develops.
         val seeds = (taste.likedSeeds + listOfNotNull(previous).filter { !it.isLocal && !it.isVideo && !it.isEpisode && !it.isLive })
             .distinctBy { it.id }
-        val related = if (style.discoveryPercent > 0 && !offline)
-            waveRelated(seeds, offset, avoid, known) else emptyList()
-        val candidates = MyWave.fuse(listOf(related, base), 160)
-        val signals = c.discover.radioSignals(candidates + taste.likes.take(100), style.tune.copy(newness = 0f))
         val feedback = c.recFeedback
-        MyWave.mix(candidates, taste.likes, isKnown = known,
+        suspend fun select(related: List<Song>): List<Song> {
+            val candidates = MyWave.fuse(listOf(related, base), 160)
+            val signals = c.discover.radioSignals(candidates + taste.likes.take(100), style.tune.copy(newness = 0f),
+                fetchTops = !fast)
+            return MyWave.mix(candidates, taste.likes, isKnown = known,
             heard = c.sessionHeard::has,
             allowed = { song ->
                 song.id !in ids && ok(song) && !song.isVideo && (!offline || c.availableOffline(song.id)) &&
@@ -240,9 +267,22 @@ class YourMusic(private val c: AppContainer) {
                     com.prism.music.data.ExplicitFilter.plays(c.settings.current.behavior.explicitContent, song)
             },
             seed = System.nanoTime(), style = style, signals = signals, profile = taste.profile,
-            offset = offset, previousSong = previous, avoid = avoid, artistDoubt = feedback::artistDoubt,
+            count = count, offset = offset, previousSong = previous, avoid = avoid, artistDoubt = feedback::artistDoubt,
             servedRecently = { feedback.servedDaysAgo(it.id)?.let { days -> days <= 1 } == true },
             artistEvidence = feedback.waveEvidence())
+        }
+        val cached = if (style.discoveryPercent > 0) cachedWaveRelated() else emptyList()
+        if (fast) {
+            val ready = select(cached)
+            if (ready.isNotEmpty() || offline || style.discoveryPercent == 0) return@withContext ready
+            // Only on a cache miss: a short first lookup, not three full radios.
+            val quick = kotlinx.coroutines.withTimeoutOrNull(900L) {
+                waveRelated(seeds, offset, avoid, known, maxRequests = 1, timeoutMs = 850L)
+            }
+            return@withContext select(quick ?: cachedWaveRelated())
+        }
+        val related = if (style.discoveryPercent > 0 && !offline) waveRelated(seeds, offset, avoid, known) else cached
+        select(related)
     }
 
     /**
