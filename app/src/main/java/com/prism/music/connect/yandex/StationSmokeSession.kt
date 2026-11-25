@@ -124,7 +124,7 @@ internal class StationSmokeSession(
         }
     }
 
-    suspend fun playMusicLive(phoneAddress: Inet4Address, direct: Boolean = false, source: (Int) -> ByteArray = StationAudioTap::read, initialVolume: Int = 20) {
+    suspend fun playMusicLive(phoneAddress: Inet4Address, direct: Boolean = false, source: (Int) -> ByteArray = StationAudioTap::read, initialVolume: Int? = null) {
         liveMusicSession = true
         liveCommandAttempted = false
         liveStoppedBoundary = false
@@ -152,7 +152,7 @@ internal class StationSmokeSession(
             stopControl.stop(socket, tokens.tokenFor(identity), allowTextFallback = false)
             liveStoppedBoundary = true
             delay(150)
-            send(GlagolProtocol.volume(initialVolume.coerceIn(0, 100) / 100.0))
+            initialVolume?.let { send(GlagolProtocol.volume(it.coerceIn(0, 100) / 100.0)) }
             // Encoder fills the playlist while the socket negotiates and the old source stops.
             val ready = if (stream == null) true else kotlinx.coroutines.withTimeoutOrNull(8000L) {
                 while (!stream.ready) {
@@ -207,6 +207,8 @@ internal class StationSmokeSession(
     }
 
     fun liveSummary(): String = liveProbe?.summary() ?: "Live probe not running"
+
+    val reportedVolume: Int? get() = liveState?.volume
 
     suspend fun volume(value: Double) = send(GlagolProtocol.volume(value))
 
