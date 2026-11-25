@@ -76,9 +76,9 @@ class SettingsMapTest {
         assertEquals(listOf("Looks", "Theme & colors", "Text & icons", "Player", "Lyrics & Sing", "Home & Library", "Tabs & mini player"), names(SettingsRootGroup.MAKE_IT_YOURS))
         assertEquals(listOf("Playback", "Sound & quality", "Gestures & buttons"), names(SettingsRootGroup.LISTENING))
         assertEquals(listOf("Downloads & data", "Recommendations & history"), names(SettingsRootGroup.YOUR_MUSIC))
-        assertEquals(listOf("Car", "Speakers, TVs & browser", "Accounts & sharing"), names(SettingsRootGroup.CONNECTIONS))
+        assertEquals(listOf("Car", "Speakers, TVs & browser", "Accounts & sharing", "Яндекс"), names(SettingsRootGroup.CONNECTIONS))
         assertEquals(listOf("Language & region", "Backup & about"), names(SettingsRootGroup.APP))
-        assertEquals(17, pages.size)
+        assertEquals(18, pages.size)
         assertEquals("every page is in a group, once", pages.toSet(), SettingsMap.groups.flatMap { it.second }.toSet())
         // Budget (plan §2.1.7): at most 7 rows a group.
         assertTrue(SettingsMap.groups.all { it.second.size <= 7 })
