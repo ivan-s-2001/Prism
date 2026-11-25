@@ -70,7 +70,9 @@ class YourMusic(private val c: AppContainer) {
 
     @Volatile private var total = -1
 
-    private fun ok(s: Song) = !s.isEpisode && !s.isLive && !c.library.isDisliked(s.id) && !c.exclusions.blocks(s) && !c.exclusions.isSongExcluded(s.id)
+    internal fun recommendable(s: Song): Boolean = RecommendationQuality.allowed(s, s.id in c.library.likedIds.value)
+
+    private fun ok(s: Song) = recommendable(s) && !c.library.isDisliked(s.id) && !c.exclusions.blocks(s) && !c.exclusions.isSongExcluded(s.id)
 
     internal data class WaveTaste(val profile: MyWave.Profile, val favorites: List<Song>, val likedSeeds: List<Song>, val likes: List<Song>)
     private data class WarmTaste(val account: String, val likedIds: Set<String>, val at: Long, val taste: WaveTaste)
@@ -199,10 +201,10 @@ class YourMusic(private val c: AppContainer) {
         if (cached != null) return@withLock cached.songs
         if (!c.network.isOnline()) return@withLock emptyList()
         val page = kotlinx.coroutines.withTimeoutOrNull(2000L) {
-            withContext(Dispatchers.IO) { c.ytm.next(seed.id, playlistId = "RDAMVM${seed.id}") }
+            withContext(Dispatchers.IO) { c.radio(seed.id, playlistId = "RDAMVM${seed.id}") }
         } ?: return@withLock emptyList()
         if (waveAccount() != account) return@withLock emptyList()
-        val songs = page.songs.distinctBy(LocalRadio::sameSong).take(120)
+        val songs = page.songsOnly().songs.filter(::recommendable).distinctBy(LocalRadio::sameSong).take(120)
         wavePageLock.withLock {
             wavePages[key] = WavePage(songs, page.continuation, System.currentTimeMillis())
             while (wavePages.size > 24) wavePages.remove(wavePages.keys.first())
@@ -248,12 +250,12 @@ class YourMusic(private val c: AppContainer) {
                 async(Dispatchers.IO) {
                     val page = kotlinx.coroutines.withTimeoutOrNull(timeoutMs) {
                         try {
-                            c.ytm.next(song.id, playlistId = "RDAMVM${song.id}", continuation = cached?.continuation)
+                            c.radio(song.id, playlistId = "RDAMVM${song.id}", continuation = cached?.continuation)
                         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
                         catch (_: Exception) { null }
                     } ?: return@async
                     if (waveAccount() != account) return@async
-                    val merged = (cached?.songs.orEmpty() + page.songs).distinctBy(LocalRadio::sameSong).takeLast(120)
+                    val merged = (cached?.songs.orEmpty() + page.songsOnly().songs).filter(::recommendable).distinctBy(LocalRadio::sameSong).takeLast(120)
                     val key = "$account|${song.id}"
                     wavePageLock.withLock {
                         wavePages.remove(key)
@@ -290,7 +292,7 @@ class YourMusic(private val c: AppContainer) {
             .distinctBy { it.id }
         val feedback = c.recFeedback
         suspend fun select(related: List<Song>): List<Song> {
-            val candidates = MyWave.fuse(listOf(related, base), 160)
+            val candidates = MyWave.fuse(listOf(related.filter(::recommendable), base.filter(::recommendable)), 160)
             val signals = c.discover.radioSignals(candidates + taste.likes.take(100), style.tune.copy(newness = 0f),
                 fetchTops = !fast)
             return MyWave.mix(candidates, taste.likes, isKnown = known,
@@ -458,7 +460,7 @@ class YourMusic(private val c: AppContainer) {
             com.prism.music.data.ExplicitFilter.plays(c.settings.current.behavior.explicitContent, song)
         val related = if (c.network.isOnline()) waveRelated(taste.likedSeeds, draw.coerceAtLeast(0) * MyWave.HORIZON,
             recentKeys, ::known) else emptyList()
-        val candidates = MyWave.fuse(listOf(related, youtube), 160)
+        val candidates = MyWave.fuse(listOf(related.filter(::recommendable), youtube.filter(::recommendable)), 160)
         val style = MyWave.Style()
         val seed = drawSeed(LocalDate.now().toString(), "personal", draw)
         val signals = RadioSignals(heard = { known(it) })
