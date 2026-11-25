@@ -40,4 +40,25 @@ class VibeLearningTest {
         assertTrue(VibeLearning.sessionWeight(0.0, 2.0) < 1.0)
         assertTrue(VibeLearning.sessionWeight(100.0, 0.0) <= 1.35)
     }
+
+    @Test fun languageIsCalibratedWithinEachDiscoveryStratum() {
+        for (discovery in listOf(0, 10, 33, 50, 70, 99, 100)) {
+            for (language in listOf(0, 10, 50, 73, 100)) {
+                val discoverySlots = (0 until 200).filter { VibeLearning.quotaCount(it + 1, discovery) > VibeLearning.quotaCount(it, discovery) }
+                val familiarSlots = (0 until 200).filterNot { it in discoverySlots }
+                for (group in listOf(discoverySlots, familiarSlots)) {
+                    val requested = VibeLearning.quotaCount(group.size, language).toInt()
+                    assertEquals(requested, group.count { VibeLearning.languageSlot(it, discovery, language) })
+                }
+            }
+        }
+    }
+
+    @Test fun artistPressureIsBoundedAndRecentArtistCountsMore() {
+        val pressure = VibeLearning.artistPressure(listOf("A", "B", "B"))
+        assertTrue(pressure.getValue("b") > pressure.getValue("a"))
+        assertEquals(1.0, VibeLearning.diversityWeight(0.0, 1.0), 1e-9)
+        assertTrue(VibeLearning.diversityWeight(3.0, 1.0) < VibeLearning.diversityWeight(3.0, 0.0))
+        assertTrue(VibeLearning.artistPressure(List(1000) { "A" }).getValue("a") < 6.0)
+    }
 }

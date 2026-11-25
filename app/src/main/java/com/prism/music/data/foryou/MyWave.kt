@@ -167,7 +167,8 @@ internal object MyWave {
         val strict = mix(fresh, localLikes.filterNot(heard), isKnown = { heard(it) || it.id in likedIds },
             heard = { false }, allowed = { true }, seed = seed, style = style, signals = signals,
             profile = profile, count = count, offset = offset, previousSong = previous,
-            artistDoubt = artistDoubt, artistEvidence = artistEvidence)
+            artistDoubt = artistDoubt, artistEvidence = artistEvidence,
+            recentArtists = upcoming.map { it.primaryArtist } + listOfNotNull(previous?.primaryArtist))
         val result = strict.toMutableList()
         val used = strict.mapTo(hashSetOf(), LocalRadio::sameSong)
         // Relax only the unavailable offline quota, not exclusions or queue deduplication.
@@ -178,7 +179,7 @@ internal object MyWave {
                 allowed = { LocalRadio.sameSong(it) !in used }, seed = seed,
                 count = count - result.size, style = fallbackStyle, signals = signals, profile = profile,
                 previousSong = result.lastOrNull() ?: previous, artistDoubt = artistDoubt,
-                artistEvidence = artistEvidence)
+                artistEvidence = artistEvidence, recentArtists = (upcoming + listOfNotNull(previous) + result).map { it.primaryArtist })
             result += rest
             used += rest.map(LocalRadio::sameSong)
         }
@@ -192,6 +193,7 @@ internal object MyWave {
         offset: Int = 0, previousSong: Song? = null, avoid: Set<String> = emptySet(),
         artistDoubt: (String) -> Double = { 0.0 }, servedRecently: (Song) -> Boolean = { false },
         artistEvidence: (String) -> Evidence = { Evidence() },
+        recentArtists: List<String> = emptyList(),
     ): List<Song> {
         val likedKeys = likes.mapTo(hashSetOf(), LocalRadio::sameSong)
         val likedIds = likes.mapTo(hashSetOf()) { it.id }
@@ -200,7 +202,7 @@ internal object MyWave {
             allowed = { allowed(it) && !heard(it) }, seed = seed, count = count, style = style,
             signals = signals, artistDoubt = artistDoubt, servedRecently = servedRecently,
             profile = profile, previousSong = previousSong, avoid = avoid,
-            artistEvidence = artistEvidence, quotaOffset = offset, strictQuota = true)
+            artistEvidence = artistEvidence, quotaOffset = offset, strictQuota = true, recentArtists = recentArtists)
     }
 
     /** Shared personalized score; absent signals remain neutral. */
@@ -232,6 +234,7 @@ internal object MyWave {
         allowArtistRelaxation: Boolean = true,
         candidateWeight: (Song) -> Double = { 1.0 },
         explorationNoise: Double = 0.07,
+        recentArtists: List<String> = emptyList(),
     ): List<Song> {
         if (count <= 0) return emptyList()
         val recentKeys = recent.mapTo(hashSetOf(), LocalRadio::sameSong)
@@ -271,6 +274,7 @@ internal object MyWave {
         val seen = hashSetOf<String>()
         val out = mutableListOf<Song>()
         val artists = hashMapOf<String, Int>()
+        val pressure = VibeLearning.artistPressure(recentArtists)
         var previous = previousSong?.primaryArtist?.lowercase().orEmpty()
         var lastSong = previousSong
         fun take(from: MutableList<Pair<Song, Double>>, strict: Boolean): Song? {
@@ -285,7 +289,8 @@ internal object MyWave {
                 val continuity = (fit?.let { 0.8 + 0.4 * it } ?: 1.0) *
                     VibeLearning.sequenceWeight(lastSong?.let { measuredEnergy[it.id] }, measuredEnergy[song.id])
                 val spread = 1.0 / (1.0 + (0.1 + 0.7 * diversity) * (artists[song.primaryArtist.lowercase()] ?: 0))
-                score * continuity * spread
+                val fatigue = VibeLearning.diversityWeight(pressure[song.primaryArtist.lowercase().trim()] ?: 0.0, diversity)
+                score * continuity * spread * fatigue
             } ?: return null
             return from.removeAt(i).first
         }
@@ -300,17 +305,16 @@ internal object MyWave {
                 else if (preferKnown) listOf(known, picks, last) else listOf(picks, known, last)
             val s = if (quotaOffset != null && style.russianPercent in 1..99) {
                 // Prefer the requested language in the preferred pool, then fall back to the available music.
-                val russian = discoverySlot(quotaOffset + out.size, style.russianPercent)
+                val russian = VibeLearning.languageSlot(quotaOffset + out.size, style.discoveryPercent, style.russianPercent)
                 fun takeLanguage(from: MutableList<Pair<Song, Double>>, strict: Boolean): Song? {
                     val matching = from.filter { russianTitle(it.first) == russian }.toMutableList()
                     val chosen = take(matching, strict) ?: return null
                     from.removeAll { LocalRadio.sameSong(it.first) == LocalRadio.sameSong(chosen) }
                     return chosen
                 }
-                preferred.firstNotNullOfOrNull { takeLanguage(it, true) }
-                    ?: preferred.firstNotNullOfOrNull { takeLanguage(it, false) }
-                    ?: preferred.firstNotNullOfOrNull { take(it, true) }
-                    ?: preferred.firstNotNullOfOrNull { take(it, false) }
+                preferred.firstNotNullOfOrNull { pool ->
+                    takeLanguage(pool, true) ?: take(pool, true) ?: takeLanguage(pool, false) ?: take(pool, false)
+                }
             } else preferred.firstNotNullOfOrNull { take(it, true) }
                 ?: preferred.firstNotNullOfOrNull { take(it, false) }
             if (s == null) break

@@ -462,4 +462,30 @@ class MyWaveTest {
         assertEquals(4, result.count { it in fresh })
         assertEquals(6, result.count { it in known })
     }
+
+    @Test fun matchingSliderPercentagesDoNotCoupleLanguageToDiscovery() {
+        val newRu = (1..12).map { song("nr$it", "NR$it", "Новая $it") }
+        val newEn = (1..12).map { song("ne$it", "NE$it", "New $it") }
+        val likedRu = (1..12).map { song("lr$it", "LR$it", "Любимая $it") }
+        val likedEn = (1..12).map { song("le$it", "LE$it", "Liked $it") }
+        val fresh = newRu + newEn
+        val liked = likedRu + likedEn
+        val result = MyWave.mix(fresh, liked, { false }, { false }, { true }, 11L,
+            style = MyWave.Style(discoveryPercent = 50, russianPercent = 50), signals = com.prism.music.data.foryou.RadioSignals(),
+            profile = MyWave.Profile(), count = 12)
+        assertEquals(6, result.count { it in fresh })
+        assertEquals(3, result.count { it in newRu })
+        assertEquals(3, result.count { it in likedRu })
+    }
+
+    @Test fun recentArtistsDoNotDominateTheNextBatch() {
+        val a = song("a", "A")
+        val b = song("b", "B")
+        val result = MyWave.start(listOf(a, b), emptyList(), emptyList(), { false }, { true }, 12L,
+            count = 1, explorationNoise = 0.0, recentArtists = List(8) { "A" })
+        assertEquals(listOf(b), result)
+        val scarce = MyWave.start(listOf(a), emptyList(), emptyList(), { false }, { true }, 12L,
+            count = 1, recentArtists = List(8) { "A" })
+        assertEquals(listOf(a), scarce)
+    }
 }

@@ -33,6 +33,37 @@ internal object VibeLearning {
         return 1.0 + 0.35 * (a - s) / (a + s + 3.0)
     }
 
+    /** Number of requested slots before this index; arithmetic is bounded even for long sessions. */
+    fun quotaCount(index: Int, percent: Int): Long =
+        (index.coerceAtLeast(0).toLong() * percent.coerceIn(0, 100) + 50) / 100
+
+    /**
+     * Allocate language independently inside familiar and discovery tracks. Two 50% sliders
+     * should not mean every discovery is Russian and every familiar track foreign.
+     * Each stratum has cumulative rounding error at most half a track.
+     */
+    fun languageSlot(index: Int, discovery: Int, language: Int): Boolean {
+        val i = index.coerceIn(0, Int.MAX_VALUE - 1)
+        val before = quotaCount(i, discovery)
+        val next = quotaCount(i + 1, discovery)
+        val within = if (next > before) before else i.toLong() - before
+        val p = language.coerceIn(0, 100).toLong()
+        return ((within + 1) * p + 50) / 100 > (within * p + 50) / 100
+    }
+
+    /** Artist fatigue spans batches, but never acts as a hard exclusion. Most recent carries most weight. */
+    fun artistPressure(artists: List<String>): Map<String, Double> {
+        val result = HashMap<String, Double>()
+        artists.takeLast(12).asReversed().forEachIndexed { index, name ->
+            val key = name.lowercase().trim()
+            if (key.isNotEmpty()) result[key] = (result[key] ?: 0.0) + 0.82.pow(index)
+        }
+        return result
+    }
+
+    fun diversityWeight(pressure: Double, diversity: Double): Double =
+        1.0 / (1.0 + pressure.coerceAtLeast(0.0) * (0.12 + 0.38 * diversity.coerceIn(0.0, 1.0)))
+
     class Session(private val clock: () -> Long = { System.nanoTime() / 1_000_000L }) {
         private data class Event(val artist: String, val outcome: Outcome, val at: Long)
         private val events = ArrayDeque<Event>()

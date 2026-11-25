@@ -195,12 +195,12 @@ class YourMusic(private val c: AppContainer) {
         return "${s.authUser}|${s.dataSyncId}|${s.accountName}"
     }
 
-    private suspend fun cachedWaveRelated(): List<Song> {
+    private suspend fun cachedWaveRelated(avoid: Set<String> = emptySet(), allowed: (Song) -> Boolean = { true }): List<Song> {
         val account = waveAccount() + "|"
         val now = System.currentTimeMillis()
         return wavePageLock.withLock {
             MyWave.fuse(wavePages.filter { (key, page) -> key.startsWith(account) && now - page.at in 0L..600_000L }
-                .values.map { it.songs }, 160)
+                .values.map { page -> page.songs.filter { LocalRadio.sameSong(it) !in avoid && allowed(it) } }, 160)
         }
     }
 
@@ -241,8 +241,10 @@ class YourMusic(private val c: AppContainer) {
      * Cache is account-scoped and bounded. During casting only one new request per batch is allowed.
      */
     private suspend fun waveRelated(seeds: List<Song>, offset: Int, avoid: Set<String>, known: (Song) -> Boolean,
-        maxRequests: Int = 3, timeoutMs: Long = 2000L, scoped: Boolean = false): List<Song> = waveFetchLock.withLock {
-        if (seeds.isEmpty()) return@withLock if (scoped) emptyList() else cachedWaveRelated()
+        maxRequests: Int = 3, timeoutMs: Long = 2000L, scoped: Boolean = false,
+        allowed: (Song) -> Boolean = { true }, preferFresh: Boolean = true): List<Song> = waveFetchLock.withLock {
+        fun eligible(song: Song) = LocalRadio.sameSong(song) !in avoid && allowed(song)
+        if (seeds.isEmpty()) return@withLock if (scoped) emptyList() else cachedWaveRelated(avoid, allowed)
         val account = waveAccount()
         val turn = (offset / MyWave.HORIZON).coerceAtLeast(0)
         val pool = seeds.distinctBy { it.id }
@@ -252,7 +254,7 @@ class YourMusic(private val c: AppContainer) {
         for (song in rotated.take(6)) {
             val cached = wavePageLock.withLock { wavePages["$account|${song.id}"]?.takeIf { now - it.at in 0L..600_000L } }
             if (cached == null || (cached.continuation != null &&
-                cached.songs.count { LocalRadio.sameSong(it) !in avoid && !known(it) } < 12)) {
+                cached.songs.count { eligible(it) && (!preferFresh || !known(it)) } < 12)) {
                 pending += song to cached
             }
         }
@@ -277,10 +279,10 @@ class YourMusic(private val c: AppContainer) {
                 }
             }.awaitAll()
         }
-        if (!scoped) cachedWaveRelated()
+        if (!scoped) cachedWaveRelated(avoid, allowed)
         else wavePageLock.withLock {
             val at = System.currentTimeMillis()
-            MyWave.fuse(pool.mapNotNull { seed -> wavePages["$account|${seed.id}"]?.takeIf { at - it.at in 0L..600_000L }?.songs }, 160)
+            MyWave.fuse(pool.mapNotNull { seed -> wavePages["$account|${seed.id}"]?.takeIf { at - it.at in 0L..600_000L }?.songs?.filter(::eligible) }, 160)
         }
     }
 
@@ -327,39 +329,47 @@ class YourMusic(private val c: AppContainer) {
         val seeds = (taste.likedSeeds + listOfNotNull(previous).filter { !it.isLocal && !it.isVideo && !it.isEpisode && !it.isLive })
             .distinctBy { it.id }
         val feedback = c.recFeedback
+        val recentArtists = existing.takeLast(12).map { it.primaryArtist }
+        fun eligible(song: Song) = LocalRadio.sameSong(song) !in avoid &&
+            recommendationAllowed(song, known(song)) && when (style.russianPercent) {
+                0 -> MyWave.russianTitle(song) == false
+                100 -> MyWave.russianTitle(song) == true
+                else -> true
+            }
         suspend fun select(related: List<Song>, allowSparseProfile: Boolean = false): List<Song> {
-            val candidates = MyWave.fuse(listOf(related.filter(::recommendable), base.filter(::recommendable)), 160)
+            val candidates = MyWave.fuse(listOf(related.filter(::eligible), base.filter(::eligible)), 160)
             val signals = c.discover.radioSignals(candidates + taste.likes.take(100), style.tune.copy(newness = 0f),
                 fetchTops = !fast && !c.castingNow)
             val strict = MyWave.mix(candidates, taste.likes, isKnown = known,
             heard = c.sessionHeard::has,
             allowed = { song ->
-                song.id !in ids && recommendationAllowed(song, known = song.id in knownIds)
+                song.id !in ids && eligible(song)
             },
             seed = System.nanoTime(), style = style, signals = signals, profile = taste.profile,
             count = count, offset = offset, previousSong = previous, avoid = avoid, artistDoubt = feedback::artistDoubt,
             servedRecently = { feedback.servedDaysAgo(it.id)?.let { days -> days <= 1 } == true },
-            artistEvidence = feedback.waveEvidence(vibeFeedbackKey()))
+            artistEvidence = feedback.waveEvidence(vibeFeedbackKey()), recentArtists = recentArtists)
             if (strict.isNotEmpty() || !allowSparseProfile || !VibeContext.sparseProfileFallback(style, taste.likes.isEmpty())) return strict
             // The default mixed preference must still work before the first like. Never relax a 0/100 setting.
-            val pool = MyWave.fuse(listOf(candidates, taste.favorites), 160)
+            val pool = MyWave.fuse(listOf(candidates, taste.favorites.filter(::eligible)), 160)
             return MyWave.start(pool, pool.filter(known), emptyList(), c.sessionHeard::has,
                 { !c.sessionHeard.has(it) && recommendationAllowed(it, known(it)) }, System.nanoTime(),
                 count, style, signals = RadioSignals(heard = { known(it) }, onTopList = signals.onTopList, energy = signals.energy),
                 profile = taste.profile, previousSong = previous, avoid = avoid,
-                artistDoubt = feedback::artistDoubt, artistEvidence = feedback.waveEvidence(vibeFeedbackKey()), quotaOffset = offset)
+                artistDoubt = feedback::artistDoubt, artistEvidence = feedback.waveEvidence(vibeFeedbackKey()), quotaOffset = offset,
+                recentArtists = recentArtists)
         }
-        val cached = if (style.discoveryPercent > 0) cachedWaveRelated() else emptyList()
+        val cached = if (style.discoveryPercent > 0) cachedWaveRelated(avoid, ::eligible) else emptyList()
         if (fast) {
             val ready = select(cached)
             if (ready.isNotEmpty() || style.discoveryPercent == 0) return@withContext ready
             // Only on a cache miss: a short first lookup, not three full radios.
             val quick = kotlinx.coroutines.withTimeoutOrNull(900L) {
-                waveRelated(seeds, offset, avoid, known, maxRequests = 1, timeoutMs = 850L)
+                waveRelated(seeds, offset, avoid, known, maxRequests = 1, timeoutMs = 850L, allowed = ::eligible)
             }
-            return@withContext select(quick ?: cachedWaveRelated(), allowSparseProfile = true)
+            return@withContext select(quick ?: cachedWaveRelated(avoid, ::eligible), allowSparseProfile = true)
         }
-        val related = if (style.discoveryPercent > 0) waveRelated(seeds, offset, avoid, known) else cached
+        val related = if (style.discoveryPercent > 0) waveRelated(seeds, offset, avoid, known, allowed = ::eligible) else cached
         select(related, allowSparseProfile = true)
     }
 
@@ -387,26 +397,6 @@ class YourMusic(private val c: AppContainer) {
         val avoidIds = occupied.mapTo(hashSetOf()) { it.id }
         val noRepeats = smart || settings.behavior.autoplayNoRepeats
         val mode = settings.autoplaySource
-        val remoteSeeds = anchors.filter { !it.isLocal && !it.isLive && !it.isEpisode && !it.isVideo }
-            .distinctBy { it.id }
-        val localOnly = offline || remoteSeeds.isEmpty()
-        val useLocal = localOnly || explicitContext || smart || mode != com.prism.music.data.prefs.AutoplaySource.YOUTUBE
-        val useRemote = !localOnly && (explicitContext || smart || mode != com.prism.music.data.prefs.AutoplaySource.YOURS)
-        val recent = c.sessionHeard.oldestFirst()
-        val seedWindow = VibeContext.rotated(anchors, offset)
-        val own = if (useLocal) radio(seedWindow.map { it.id }, avoidIds, 60, offlineOnly = offline, seedSongs = seedWindow) else emptyList()
-        val remote = if (useRemote) waveRelated(remoteSeeds, offset, avoid, ::known, scoped = true) else emptyList()
-        val local = LocalRadio.besideYouTube(own, onlyYours = !useRemote || (remote.isEmpty() && provided.isEmpty()), radio = remote + provided)
-        val localScore = local.associate { LocalRadio.sameSong(it.song) to it.score }
-        val bestLocal = local.maxOfOrNull { it.score }?.coerceAtLeast(0.001) ?: 1.0
-        val contextArtists = anchors.map { it.primaryArtist.lowercase() }.filter { it.isNotBlank() }.toSet()
-        val suppliedKeys = provided.mapTo(hashSetOf(), LocalRadio::sameSong)
-        fun contextWeight(song: Song): Double = (if (song.primaryArtist.lowercase() in contextArtists) 1.5 else 1.0) *
-            (localScore[LocalRadio.sameSong(song)]?.let { 0.7 + 1.1 * (it / bestLocal).coerceIn(0.0, 1.0) } ?: 1.0) *
-            (if (LocalRadio.sameSong(song) in suppliedKeys) 1.25 else 1.0)
-        val downloads = if (offline) withContext(Dispatchers.IO) { c.downloads.completedSongs() } else emptyList()
-        val pool = MyWave.fuse(listOf(provided, remote, local.map { it.song }, downloads), 160)
-        val signals = c.discover.radioSignals(pool, style.tune.copy(newness = 0f), fetchTops = !offline && !c.castingNow)
         fun eligible(song: Song): Boolean = LocalRadio.sameSong(song) !in avoid &&
             recommendationAllowed(song, known(song), offlineOnly = offline) &&
             (explicitContext || smart || com.prism.music.data.AutoplayLength.fits(song, settings.behavior.autoplayMaxMinutes)) &&
@@ -416,6 +406,28 @@ class YourMusic(private val c: AppContainer) {
                 100 -> MyWave.russianTitle(song) == true
                 else -> true
             }
+        val recentArtists = occupied.takeLast(12).map { it.primaryArtist }
+        val remoteSeeds = anchors.filter { !it.isLocal && !it.isLive && !it.isEpisode && !it.isVideo }
+            .distinctBy { it.id }
+        val localOnly = offline || remoteSeeds.isEmpty()
+        val useLocal = localOnly || explicitContext || smart || mode != com.prism.music.data.prefs.AutoplaySource.YOUTUBE
+        val useRemote = !localOnly && (explicitContext || smart || mode != com.prism.music.data.prefs.AutoplaySource.YOURS)
+        val recent = c.sessionHeard.oldestFirst()
+        val seedWindow = VibeContext.rotated(anchors, offset)
+        val own = if (useLocal) radio(seedWindow.map { it.id }, avoidIds, 60, offlineOnly = offline, seedSongs = seedWindow) else emptyList()
+        val remote = if (useRemote) waveRelated(remoteSeeds, offset, avoid, ::known, scoped = true, allowed = ::eligible,
+            preferFresh = style.discoveryPercent >= 50) else emptyList()
+        val local = LocalRadio.besideYouTube(own, onlyYours = !useRemote || (remote.isEmpty() && provided.isEmpty()), radio = remote + provided)
+        val localScore = local.associate { LocalRadio.sameSong(it.song) to it.score }
+        val bestLocal = local.maxOfOrNull { it.score }?.coerceAtLeast(0.001) ?: 1.0
+        val contextArtists = anchors.map { it.primaryArtist.lowercase() }.filter { it.isNotBlank() }.toSet()
+        val suppliedKeys = provided.mapTo(hashSetOf(), LocalRadio::sameSong)
+        fun contextWeight(song: Song): Double = (if (song.primaryArtist.lowercase() in contextArtists) 1.5 else 1.0) *
+            (localScore[LocalRadio.sameSong(song)]?.let { 0.7 + 1.1 * (it / bestLocal).coerceIn(0.0, 1.0) } ?: 1.0) *
+            (if (LocalRadio.sameSong(song) in suppliedKeys) 1.25 else 1.0)
+        val downloads = if (offline) withContext(Dispatchers.IO) { c.downloads.completedSongs() } else emptyList()
+        val pool = MyWave.fuse(listOf(provided, remote, local.map { it.song }, downloads).map { it.filter(::eligible) }, 160)
+        val signals = c.discover.radioSignals(pool, style.tune.copy(newness = 0f), fetchTops = !offline && !c.castingNow)
         val contextualSignals = RadioSignals(heard = ::known, onTopList = signals.onTopList, energy = signals.energy)
         val current = seedWindow.lastOrNull()
         val fresh = MyWave.start(pool, pool.filter(::known), emptyList(),
@@ -423,21 +435,22 @@ class YourMusic(private val c: AppContainer) {
             seed = System.nanoTime(), count = count, style = style, signals = contextualSignals,
             artistDoubt = feedback::artistDoubt, servedRecently = { (feedback.servedDaysAgo(it.id) ?: 99) <= 1 },
             profile = taste.profile, previousSong = current, avoid = avoid, artistEvidence = feedback.waveEvidence(vibeFeedbackKey()),
-            quotaOffset = offset, candidateWeight = ::contextWeight)
+            quotaOffset = offset, candidateWeight = ::contextWeight, recentArtists = recentArtists)
         if (fresh.isNotEmpty() || smart) return@withContext fresh
         // A narrow radio may run out. Try a bounded second recall from tracks already selected in this context.
         // Never use unrelated global cached pages, or expand a local-only source into the catalog.
         val secondary = if (useRemote && !c.castingNow) {
             val alternatives = VibeContext.alternativeSeeds(anchors, occupied)
             if (alternatives.isEmpty()) emptyList() else waveRelated(alternatives, offset, avoid, ::known,
-                maxRequests = 1, timeoutMs = 1500L, scoped = true)
+                maxRequests = 1, timeoutMs = 1500L, scoped = true, allowed = ::eligible,
+                preferFresh = style.discoveryPercent >= 50)
         } else emptyList()
         if (secondary.isNotEmpty()) {
             val second = MyWave.start(secondary, secondary.filter(::known), emptyList(), c.sessionHeard::has,
                 { eligible(it) && (!noRepeats || !c.sessionHeard.has(it)) }, System.nanoTime(), count, style,
                 signals = contextualSignals, profile = taste.profile, previousSong = current, avoid = avoid,
                 artistDoubt = feedback::artistDoubt, artistEvidence = feedback.waveEvidence(vibeFeedbackKey()), quotaOffset = offset,
-                candidateWeight = ::contextWeight)
+                candidateWeight = ::contextWeight, recentArtists = recentArtists)
             if (second.isNotEmpty()) return@withContext second
         }
         // As in Prism's original radio, repeat the oldest eligible tracks only after recall has run dry.
@@ -453,7 +466,7 @@ class YourMusic(private val c: AppContainer) {
                 (explicitContext || com.prism.music.data.AutoplayLength.fits(it, settings.behavior.autoplayMaxMinutes)) },
             System.nanoTime(), count, style, signals = contextualSignals, artistDoubt = feedback::artistDoubt,
             profile = taste.profile, previousSong = current, avoid = protected, artistEvidence = feedback.waveEvidence(vibeFeedbackKey()),
-            quotaOffset = offset, candidateWeight = ::contextWeight)
+            quotaOffset = offset, candidateWeight = ::contextWeight, recentArtists = recentArtists)
     }
 
     /** Provider mixes are candidate lists, never a second recommendation engine.
