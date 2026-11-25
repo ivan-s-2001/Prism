@@ -115,7 +115,7 @@ internal object MyWave {
             LocalRadio.sameSong(it) !in likedKeys && !isKnown(it) }
         fun rank(items: List<Song>, favorite: Boolean): MutableList<Song> =
             start(if (favorite) emptyList() else items, if (favorite) items else emptyList(), emptyList(),
-                heard, ::eligible, seed, items.size.coerceAtMost(160), style, signals,
+                heard, ::eligible, seed, items.size.coerceAtMost((count * 3).coerceIn(1, 160)), style, signals,
                 artistDoubt, servedRecently, profile, previousSong, avoid, artistEvidence).toMutableList()
         val newPool = rank(fresh, false)
         val likedPool = rank(likes.filter(::eligible), true)
