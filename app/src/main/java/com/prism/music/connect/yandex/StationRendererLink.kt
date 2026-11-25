@@ -28,6 +28,7 @@ internal class StationRendererLink(
     private var requested = false
     private var paused = false
     private var resumePosition: Long? = null
+    private var confirmedPausePosition: Long? = null
     private var sentAt = 0L
     private var token: String? = null
     private var tokenAt = 0L
@@ -53,6 +54,7 @@ internal class StationRendererLink(
         requested = false
         paused = false
         resumePosition = null
+        confirmedPausePosition = null
         loaded = url to media
     }
 
@@ -95,7 +97,8 @@ internal class StationRendererLink(
     override suspend fun pause() {
         if (!requested || paused) return
         val current = state
-        resumePosition = current?.takeIf { it.matches(loaded?.first) }?.position
+        confirmedPausePosition = current?.takeIf { it.matches(loaded?.first) }?.position
+        resumePosition = confirmedPausePosition
         stopControl.stop(socket, currentToken(), allowTextFallback = false)
         paused = true
         sentAt = SystemClock.elapsedRealtime()
@@ -109,6 +112,7 @@ internal class StationRendererLink(
             requested = false
             paused = false
             resumePosition = null
+            confirmedPausePosition = null
             loaded = null
         }
     }
@@ -186,7 +190,7 @@ internal class StationRendererLink(
     private fun positionInfo(s: StationPlaybackState?): PositionInfo {
         val track = loaded
         if (paused && track != null && s?.playing == false) {
-            return PositionInfo(track.first, resumePosition, track.second.durationMs)
+            return PositionInfo(track.first, confirmedPausePosition, track.second.durationMs)
         }
         if (requested && track != null && s != null && s.matches(track.first) && s.at >= sentAt) {
             return PositionInfo(track.first, s.position, s.duration ?: track.second.durationMs)
