@@ -2,6 +2,7 @@ package com.prism.music.connect
 
 import java.security.SecureRandom
 import java.io.OutputStream
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -52,6 +53,21 @@ class MediaServer(preferredPort: Int = PORT) {
             bodies[key] = Entry(body, observedPeer)
             "http://$host:$port/cast/$expectedToken/$key"
         }
+
+    data class StationSlice(val url: String, val offsetMs: Long, val durationMs: Long)
+
+    /** Create a unique finite WAV stream without probing or decoding the song again. */
+    fun stationSlice(originalUrl: String, positionMs: Long): StationSlice = synchronized(bodies) {
+        val uri = java.net.URI(originalUrl)
+        val parts = uri.path.trimStart('/').split('/')
+        if (parts.size != 3 || parts[0] != "cast" || parts[1] != token) throw IOException("Expired media session")
+        val original = bodies[parts[2]] ?: throw IOException("Original audio expired")
+        val pcm = original.body as? PcmBody ?: throw IOException("Station requires seekable PCM")
+        val slice = pcm.sliceFrom(positionMs)
+        val key = "station_" + java.util.UUID.randomUUID().toString() + ".wav"
+        bodies[key] = Entry(slice.body, original.observedPeer)
+        StationSlice("http://${uri.host}:$port/cast/$token/$key", slice.offsetMs, slice.durationMs)
+    }
 
     fun url(host: String, key: String) = "http://$host:$port/cast/$token/$key"
 
