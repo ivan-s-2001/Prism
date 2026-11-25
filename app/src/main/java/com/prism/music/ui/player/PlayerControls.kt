@@ -620,6 +620,10 @@ fun TransportRow(
     isPlaying: Boolean, isLoading: Boolean, previousEnabled: Boolean, nextEnabled: Boolean, compact: Boolean = false, episode: Boolean = false,
     /** Previous and next on the player: What's on the player can hide them (1.8.0). An episode keeps its back / ahead skips. */
     skips: Boolean = true,
+    showModes: Boolean = true,
+    playAction: (() -> Unit)? = null,
+    playAccent: Color? = null,
+    playTag: String? = null,
 ) {
     val pc = LocalContainer.current.player
     val style = LocalAppSettings.current.transportStyle
@@ -628,7 +632,7 @@ fun TransportRow(
     val playTouch = if (compact) 76.dp else if (LocalAppSettings.current.player.shuffleRepeat) 80.dp else 92.dp
     val skipSize = if (compact) 44.dp else 53.dp
     // Settings → Player: shuffle and repeat either side of the transport.
-    val modes = LocalAppSettings.current.player.shuffleRepeat
+    val modes = showModes && LocalAppSettings.current.player.shuffleRepeat
     val shuffle by pc.shuffle.collectAsState()
     val smart by LocalContainer.current.queue.smartShuffle.collectAsState()
     val repeat by pc.repeatMode.collectAsState()
@@ -652,10 +656,10 @@ fun TransportRow(
                     CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp, modifier = Modifier.size(if (compact) 30.dp else 38.dp))
                 }
             } else {
-                TransportGlyph(if (isPlaying) PrismIcons.Pause else PrismIcons.Play, if (isPlaying) tr(R.string.widget_pause) else tr(R.string.widget_play), playSize, playTouch) { pc.togglePlay() }
+                TransportGlyph(if (isPlaying) PrismIcons.Pause else PrismIcons.Play, if (isPlaying) tr(R.string.widget_pause) else tr(R.string.widget_play), playSize, playTouch, modifier = if (playTag == null) Modifier else Modifier.testTag(playTag)) { playAction?.invoke() ?: pc.togglePlay() }
             }
         } else {
-            PlayDisc(isPlaying, isLoading, filled = style == TransportStyle.BUTTON, size = if (compact) 64.dp else 78.dp) { pc.togglePlay() }
+            PlayDisc(isPlaying, isLoading, filled = style == TransportStyle.BUTTON, size = if (compact) 64.dp else 78.dp, accent = playAccent, tag = playTag) { playAction?.invoke() ?: pc.togglePlay() }
         }
         if (skips || episode) {
             if (episode) SkipGlyph(EPISODE_AHEAD_S, ahead = true, touch = 53.dp) { pc.seekBy(EPISODE_AHEAD_S * 1000L) }
@@ -728,20 +732,20 @@ private fun ModeGlyph(icon: ImageVector, description: String, active: Boolean, b
  * there's never a second ring or a gap that reads as one.
  */
 @Composable
-private fun PlayDisc(isPlaying: Boolean, isLoading: Boolean, filled: Boolean, size: Dp, onClick: () -> Unit) {
+private fun PlayDisc(isPlaying: Boolean, isLoading: Boolean, filled: Boolean, size: Dp, accent: Color? = null, tag: String? = null, onClick: () -> Unit) {
     val haptics = rememberHaptics()
     val pressed = remember { MutableInteractionSource() }
     Box(
-        Modifier.size(size + 14.dp).testTag("playDisc").clickable(pressed, indication = null) { haptics.click(); onClick() },
+        Modifier.size(size + 14.dp).testTag(tag ?: "playDisc").clickable(pressed, indication = null) { haptics.click(); onClick() },
         contentAlignment = Alignment.Center,
     ) {
         Box(
             Modifier.size(size).clip(CircleShape)
-                .background(if (filled) Color.White else Color.White.copy(alpha = 0.10f))
+                .background(if (filled) (accent ?: Color.White) else (accent ?: Color.White).copy(alpha = 0.18f))
                 .then(if (com.prism.music.ui.theme.LocalAppSettings.current.view.playRing) Modifier.border(2.dp, com.prism.music.ui.theme.PrismTokens.spectrumRing(), CircleShape) else Modifier),
             contentAlignment = Alignment.Center,
         ) {
-            val tint = if (filled) Color.Black else Color.White
+            val tint = if (filled && (accent ?: Color.White).luminance() >= 0.179f) Color.Black else Color.White
             if (isLoading) CircularProgressIndicator(color = tint, strokeWidth = 1.5.dp, modifier = Modifier.size(size * 0.42f))
             else Crossfade(isPlaying, animationSpec = tween(160), label = "playDisc") { p ->
                 Icon(if (p) PrismIcons.Pause else PrismIcons.Play, if (p) tr(R.string.widget_pause) else tr(R.string.widget_play), tint = tint, modifier = Modifier.size(size * (if (filled) 0.56f else 0.46f)))
