@@ -5,6 +5,9 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import com.prism.music.ui.theme.GlassSurface
+import com.prism.music.ui.components.PrismChip
+import com.prism.music.ui.components.RoundAction
+import com.prism.music.ui.components.pageTitleStyle
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -274,16 +277,16 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     @Composable fun Header() {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title, style = MaterialTheme.typography.headlineMedium, color = scheme.onBackground, maxLines = 1)
+                Text(title, style = pageTitleStyle(), color = scheme.onBackground, maxLines = 1)
                 Text(status, color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1)
             }
-            IconButton(onClick = { if (onRetry != null && !wave) onRetry() else start() },
+            RoundAction(PrismIcons.Refresh, l("Встряхнуть", "Refresh Stream"),
                 enabled = !starting, modifier = Modifier.testTag("home:my_wave:refresh")) {
-                Icon(PrismIcons.Refresh, l("Встряхнуть", "Refresh Stream"))
+                if (onRetry != null && !wave) onRetry() else start()
             }
-            IconButton(onClick = { settingsOpen = true }, modifier = Modifier.testTag("home:my_wave:settings")) {
-                Icon(PrismIcons.Equalizer, l("Настроить поток", "Tune Stream"))
-            }
+            Spacer(Modifier.width(8.dp))
+            RoundAction(PrismIcons.Equalizer, l("Настроить поток", "Tune Stream"),
+                modifier = Modifier.testTag("home:my_wave:settings")) { settingsOpen = true }
         }
     }
     // One player card, not a decorative hero followed by a second mini player.
@@ -428,10 +431,10 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val choices = (listOfNotNull(activeScenario) + quickScenarios).distinctBy { it.id }.take(if (compact) 2 else 3)
                 choices.forEach { scenario ->
-                    FilterChip(selected = style.copy(russianPercent = -1) == scenario.style,
+                    PrismChip(selected = style.copy(russianPercent = -1) == scenario.style,
                         onClick = { start(scenario.style.copy(russianPercent = style.russianPercent)) },
-                        modifier = Modifier.weight(1f).testTag("wave:scenario:${scenario.id}"),
-                        label = { Text(if (ru) scenario.ru else scenario.en, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+                        label = if (ru) scenario.ru else scenario.en,
+                        modifier = Modifier.weight(1f).testTag("wave:scenario:${scenario.id}"))
                 }
             }
             // Keep the controls themselves in the existing tuning sheet. The summary
@@ -474,15 +477,15 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(WaveScenarios.Group.DAY to l("День", "Day"), WaveScenarios.Group.ACTIVITY to l("Дела", "Activity"),
                         WaveScenarios.Group.DISCOVERY to l("Вкус", "Taste")).forEach { (value, label) ->
-                        FilterChip(selected = group == value, onClick = { group = value }, modifier = Modifier.weight(1f), label = { Text(label) })
+                        PrismChip(selected = group == value, onClick = { group = value }, modifier = Modifier.weight(1f), label = label)
                     }
                 }
                 quickScenarios.chunked(2).forEach { row ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         row.forEach { scenario ->
-                            FilterChip(selected = style.copy(russianPercent = -1) == scenario.style, onClick = { scenariosOpen = false; start(scenario.style.copy(russianPercent = style.russianPercent)) },
-                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                                label = { Text(if (ru) scenario.ru else scenario.en, maxLines = 2) })
+                            PrismChip(selected = style.copy(russianPercent = -1) == scenario.style, onClick = { scenariosOpen = false; start(scenario.style.copy(russianPercent = style.russianPercent)) },
+                                modifier = Modifier.weight(1f),
+                                label = if (ru) scenario.ru else scenario.en)
                         }
                         if (row.size == 1) Spacer(Modifier.weight(1f))
                     }
@@ -508,14 +511,14 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(l("Оформление плеера", "Player card backdrop"), style = MaterialTheme.typography.titleSmall)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = !settings.streamThemeColors,
+                        PrismChip(selected = !settings.streamThemeColors,
                             onClick = { c.settings.setStreamThemeColors(false) },
                             modifier = Modifier.weight(1f).testTag("stream:color:artwork"),
-                            label = { Text(l("Обложка трека", "Track artwork")) })
-                        FilterChip(selected = settings.streamThemeColors,
+                            label = l("Обложка трека", "Track artwork"))
+                        PrismChip(selected = settings.streamThemeColors,
                             onClick = { c.settings.setStreamThemeColors(true) },
                             modifier = Modifier.weight(1f).testTag("stream:color:theme"),
-                            label = { Text(l("Тема Prism", "Prism theme")) })
+                            label = l("Тема Prism", "Prism theme"))
                     }
                     WaveChoices(l("Занятие", "Activity"), MyWave.Activity.entries, style.activity, ::activityName) { if (it != style.activity) start(style.copy(activity = it)) }
                     Text(l("Характер потока", "Discovery mix"), style = MaterialTheme.typography.titleSmall)
@@ -543,8 +546,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf(0 to l("Лайки", "Liked"), 50 to l("Баланс", "Balance"),
                             70 to l("Для меня", "For me"), 100 to l("Новое", "New")).forEach { (percent, label) ->
-                            FilterChip(selected = discovery.toInt() == percent, onClick = { discovery = percent.toFloat(); selectPercent(percent) },
-                                label = { Text(label) })
+                            PrismChip(selected = discovery.toInt() == percent, onClick = { discovery = percent.toFloat(); selectPercent(percent) },
+                                label = label)
                         }
                     }
                     Text(l("Открытия — похожие записи, которых нет в известной Prism истории. Лайки не заменяют их при нехватке.",
@@ -554,9 +557,9 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(l("Язык музыки", "Music language"), style = MaterialTheme.typography.titleSmall,
                             modifier = Modifier.weight(1f))
-                        FilterChip(selected = style.russianPercent < 0,
+                        PrismChip(selected = style.russianPercent < 0,
                             onClick = { if (style.russianPercent >= 0) start(style.copy(russianPercent = -1)) },
-                            label = { Text(l("Авто", "Auto")) })
+                            label = l("Авто", "Auto"))
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column {
@@ -613,9 +616,8 @@ private fun <T> WaveChoices(label: String, values: List<T>, selected: T, name: (
         values.chunked(if (values.size > 3) 2 else 3).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 row.forEach { value ->
-                    FilterChip(selected = value == selected, onClick = { onSelect(value) },
-                        label = { Text(name(value), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        modifier = Modifier.weight(1f).heightIn(min = 48.dp))
+                    PrismChip(selected = value == selected, onClick = { onSelect(value) },
+                        label = name(value), modifier = Modifier.weight(1f))
                 }
             }
         }
