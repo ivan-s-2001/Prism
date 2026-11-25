@@ -209,7 +209,7 @@ fun PlayerOptionsSheet(
     // This song
     put(MenuAction.ADD_TO_PLAYLIST, ActionItem(PrismIcons.PlaylistAdd, tr(R.string.add_to_playlist), keepOpen = true) { pickPlaylist = true })
     put(MenuAction.TAGS, ActionItem(PrismIcons.Tag, tr(R.string.add_a_tag), value = com.prism.music.ui.components.tagsValue(songTags), active = songTags.isNotEmpty(), keepOpen = true) { tagging = true })
-    if (!local) put(MenuAction.RADIO, ActionItem(PrismIcons.Radio, tr(R.string.start_radio)) { c.player.playRadio(song, announce = true) })
+    if (!local) put(MenuAction.RADIO, ActionItem(PrismIcons.Stream, tr(R.string.start_radio)) { c.player.playRadio(song, announce = true) })
     if (!local) put(MenuAction.DOWNLOAD, downloadItem)
     put(MenuAction.ALBUM, song.shown.album?.id?.let { id -> ActionItem(PrismIcons.Album, tr(R.string.go_to_album)) { onCollapse(); nav.go(Routes.album(id)) } })
     com.prism.music.ui.components.goToArtists(song) { route -> onCollapse(); nav.go(route) }.takeIf { it.isNotEmpty() }?.let { items[MenuAction.ARTIST] = it }
@@ -403,7 +403,7 @@ private fun ActionItem.tile(a: MenuAction): ActionItem {
 internal fun menuIcon(a: MenuAction): ImageVector = when (a) {
     MenuAction.ADD_TO_PLAYLIST -> PrismIcons.PlaylistAdd
     MenuAction.TAGS -> PrismIcons.Tag
-    MenuAction.RADIO -> PrismIcons.Radio
+    MenuAction.RADIO -> PrismIcons.Stream
     MenuAction.DOWNLOAD -> PrismIcons.Download
     MenuAction.ALBUM -> PrismIcons.Album
     MenuAction.ARTIST -> PrismIcons.Person

@@ -495,7 +495,7 @@
     <string name="available_offline">Доступно офлайн</string>
     <string name="you_re_offline_and_this_song">Нет сети, а эта песня не скачана</string>
     <string name="saved_to_your_library">Сохранено в библиотеку</string>
-    <string name="radio">Радио: %1$s</string>
+    <string name="radio">Поток · %1$s</string>
     <string name="couldn_t_start_the_radio">Не удалось запустить радио</string>
     <string name="delete_the_of_from_this_phone">Удалить %1$s из «%2$s» с этого телефона? Их можно скачать снова.</string>
     <string name="downloading">Скачиваем %1$s</string>
@@ -1600,7 +1600,7 @@
     <string name="each_step">Каждый шаг</string>
     <string name="haptics">Виброотклик</string>
     <string name="vibration_vibrate">вибрация вибро</string>
-    <string name="autoplay">Автовоспроизведение</string>
+    <string name="autoplay">Продолжать потоком</string>
     <string name="radio_continue_similar">радио продолжить похожие</string>
     <string name="autoplay_from">Автовоспроизведение из</string>
     <string name="radio_your_music_prism_radio_youtube">радио твоя музыка радио prism youtube офлайн локальные</string>
@@ -2403,8 +2403,8 @@
     <string name="lock_the_order">Заблокировать порядок</string>
     <string name="use_mobile_data">Через мобильный интернет</string>
     <string name="removed">Удалено: «%1$s»</string>
-    <string name="similar_music_plays_next">Далее играет похожая музыка</string>
-    <string name="similar_music_will_play_after_your">После твоей очереди заиграет похожая музыка</string>
+    <string name="similar_music_plays_next">Рекомендации Потока</string>
+    <string name="similar_music_will_play_after_your">Поток продолжится после очереди</string>
     <string name="opus">Opus</string>
     <string name="vorbis">Vorbis</string>
     <string name="t_1f_khz" formatted="false">%.1f kHz</string>
@@ -2666,7 +2666,7 @@
     <string name="clear_search">Очистить поиск</string>
     <string name="remove_downloaded_video">Удалить скачанное видео</string>
     <string name="download_video">Скачать видео</string>
-    <string name="radio_2">Радио</string>
+    <string name="radio_2">Поток</string>
     <string name="play_from_the_best_part">Слушать с лучшего момента</string>
     <string name="go_to_podcast">Перейти к подкасту</string>
     <string name="mark_as_unplayed">Отметить как непрослушанное</string>
@@ -2704,7 +2704,7 @@
     <string name="yet_more_songs_are_still_loading"> — пока: остальные песни ещё загружаются.</string>
     <string name="no_songs">Нет песен: %1$s</string>
     <string name="nothing_here_yet">Здесь пока ничего нет</string>
-    <string name="start_radio">Включить радио</string>
+    <string name="start_radio">Поток по треку</string>
     <string name="remove_downloads">Удалить скачанное</string>
     <string name="remove_download">Удалить из скачанного</string>
     <string name="download_all">Скачать все</string>
@@ -2939,7 +2939,7 @@
     <string name="show_lyrics">Показать текст</string>
     <string name="back_10_seconds">Назад на 10 секунд</string>
     <string name="ahead_30_seconds">Вперёд на 30 секунд</string>
-    <string name="radio_3">Радио: %1$s</string>
+    <string name="radio_3">Поток · %1$s</string>
     <string name="prism_doesn_t_know_a_best">Prism пока не знает лучший момент «%1$s», поэтому песня играет с начала</string>
     <string name="videos_play_on_this_phone_while">Видео играет на этом телефоне. Во время трансляции колонка или телевизор получают песню</string>
     <string name="couldn_t_get_this_song_ready">Не удалось подготовить эту песню</string>
@@ -5761,7 +5761,7 @@
     <string name="spot_canvas_offer_title">Показывать анимацию Spotify?</string>
     <string name="spot_canvas_offer_text">Prism может воспроизводить короткое зацикленное видео, которое Spotify показывает с треком, если оно есть. Это неофициально и использует твой вход в Spotify. Для всех остальных треков показывается Prism Canvas. Это можно изменить позже в разделе Плеер, в группе Canvas.</string>
     <!-- 1.8.8 tour and fixes -->
-    <string name="radio_started">Радио запущено</string>
+    <string name="radio_started">Поток запущен</string>
     <string name="ls_sing_button">Показывать кнопку «Подпевай»</string>
     <string name="ls_sing_button_info">Микрофон под открытым текстом. Если выключено, «Подпевай» остаётся в меню ⋯ плеера.</string>
     <string name="ls_sing_button_keywords">караоке микрофон мик скрыть текст кнопка подпевай</string>

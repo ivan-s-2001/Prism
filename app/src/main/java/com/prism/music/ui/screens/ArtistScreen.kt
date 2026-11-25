@@ -257,7 +257,11 @@ private fun ArtistContent(opened: ArtistOpened, bottomPadding: Dp) {
         if (pool.isEmpty()) notHere() else c.player.playQueue(pool, 0, QueueSource(QueueKind.OTHER, page.name), shuffle = shuffled)
     }
     val shuffle = { if (ownPool != null) playOwn(ownPool, true) else playList(page.shufflePlaylistId, page.name, page.shuffleVideoId, page.shuffleParams) }
-    val mix = { playList(page.radioPlaylistId, tr(R.string.mix, page.name), page.radioVideoId, page.radioParams) }
+    val mix: () -> Unit = {
+        val seed = (ownPool ?: topSongs).firstOrNull { !it.isEpisode && !it.isLive && !it.isVideo }
+        if (seed != null) c.player.playRadio(seed, announce = true, contextTitle = page.name)
+        else notHere()
+    }
     // Kept (with the whole top songs list, once it's in), to open offline later.
     if (!opened.kept) LaunchedEffect(fromYouTube, fullTop) {
         val top = fullTop?.takeIf { it.size > quickTop.size }?.take(TOP_SONGS)
@@ -401,7 +405,7 @@ private fun ArtistContent(opened: ArtistOpened, bottomPadding: Dp) {
 
             // Content melts away under the bar into the page's own frost.
             ScrollEdge({ solid }, statusTop + 60.dp + 34.dp, pageHeight) { m -> FrostedBackdrop(frost, palette, heroHeight, heroScroll, m, bleed = true) }
-            TopBar(page, { solid }, hasMix = page.radioPlaylistId != null && !offline, favorite = favorite,
+            TopBar(page, { solid }, hasMix = (ownPool ?: topSongs).any { !it.isEpisode && !it.isLive && !it.isVideo }, favorite = favorite,
                 onMix = mix, onShare = { sharing = true }, onSignature = { showSignature = true }, onFavorite = toggleFavorite,
                 onColor = { pageColor = true }, shareable = !uploads)
         }
@@ -558,7 +562,7 @@ private fun TopBar(
             )
             com.prism.music.ui.components.RoundAction(PrismIcons.ArrowBack, tr(R.string.back), Modifier.align(Alignment.CenterStart).padding(start = 12.dp), glass = true) { nav.back() }
             Row(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (hasMix) com.prism.music.ui.components.RoundAction(PrismIcons.Radio, tr(R.string.start_mix, page.name), glass = true, onClick = onMix)
+                if (hasMix) com.prism.music.ui.components.RoundAction(PrismIcons.Stream, tr(R.string.radio, page.name), glass = true, onClick = onMix)
                 Box {
                     com.prism.music.ui.components.RoundAction(PrismIcons.More, tr(R.string.more), glass = true) { menu = true }
                     DropdownMenu(menu, { menu = false }) {

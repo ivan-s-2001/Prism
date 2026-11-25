@@ -26,23 +26,11 @@ import com.prism.music.ui.screens.SettingEntry
 import com.prism.music.ui.screens.SettingsSection
 import com.prism.music.ui.screens.StoryTypeSample
 import com.prism.music.ui.screens.pausedUntilText
-import com.prism.music.ui.screens.worded
 import com.prism.music.ui.theme.LocalAppSettings
 import com.prism.music.ui.theme.LocalContainer
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 
 private val page = SettingsPageId.RECOMMENDATIONS_HISTORY
-
-/** A radio slider's place in words: "As it comes" in the middle, else the end it leans to and how far ("New · 50%"). */
-private fun tuneText(v: Float, low: String, high: String): String = when {
-    abs(v) < 0.05f -> tr(R.string.tune_as_it_comes)
-    v < 0 -> worded(low, -v)
-    else -> worded(high, v)
-}
-
-/** Close to the middle is the middle: "as it comes" has to be easy to get back to. */
-private fun tuneSnap(v: Float) = if (abs(v) < 0.05f) 0f else v
 
 /** "Off", or "Paused until 3:05 PM": what the Pause history row says. */
 private fun pauseText(until: Long): String = if (HistoryPause.isPaused(until)) tr(R.string.hist_paused_line, pausedUntilText(until)) else tr(R.string.off)
@@ -73,8 +61,6 @@ fun RecommendationsHistoryPage(bottomPadding: Dp, find: String? = null, showBack
     val reset = ListeningResets()
     val onOff: (Boolean) -> String = { ListeningResets.onOff(it) }
     val b = s.behavior
-    val tune = b.radioTune
-    val tuneAsItComes = d.behavior.radioTune
     val storyType: (Boolean) -> String = { if (it) tr(R.string.replay_story_font_own) else tr(R.string.replay_story_font_poster) }
     val countAfter = b.playCountSeconds.takeIf { it in PlayCount.CHOICES } ?: PlayCount.DEFAULT_SEC
     val pausedUntil = b.historyPausedUntil.takeIf { HistoryPause.isPaused(it) } ?: 0L
@@ -100,9 +86,6 @@ fun RecommendationsHistoryPage(bottomPadding: Dp, find: String? = null, showBack
     // What differs from how Prism comes, for the rows' dots and for Reset this page (top to bottom, as the page).
     val releasesChanged = reset.add(tr(R.string.new_release_notifications), s.releaseNotifications, d.releaseNotifications, onOff) { prefs.setReleaseNotifications(it) }
     // The three sliders are stored together: any one's reset writes all three as they will be once all are back.
-    val newnessChanged = reset.add(tr(R.string.tune_familiar_new), tune.newness, tuneAsItComes.newness, { tuneText(it, tr(R.string.tune_familiar), tr(R.string.tune_new)) }) { prefs.setRadioTune(tuneAsItComes) }
-    val depthChanged = reset.add(tr(R.string.tune_hits_deep), tune.depth, tuneAsItComes.depth, { tuneText(it, tr(R.string.tune_hits), tr(R.string.tune_deep)) }) { prefs.setRadioTune(tuneAsItComes) }
-    val energyChanged = reset.add(tr(R.string.tune_calm_energetic), tune.energy, tuneAsItComes.energy, { tuneText(it, tr(R.string.tune_calm), tr(R.string.tune_energetic)) }) { prefs.setRadioTune(tuneAsItComes) }
     val pauseChanged = reset.add(tr(R.string.hist_pause), pausedUntil, 0L, ::pauseText) { prefs.setHistoryPausedUntil(it) }
     val countAfterChanged = reset.add(tr(R.string.hist_count_after), countAfter, d.behavior.playCountSeconds, PlayCount::label) { prefs.setPlayCountSeconds(it) }
     val accountChanged = reset.add(tr(R.string.hist_count_account), b.playCountOnAccount, d.behavior.playCountOnAccount, onOff) { prefs.setPlayCountOnAccount(it) }
@@ -135,24 +118,8 @@ fun RecommendationsHistoryPage(bottomPadding: Dp, find: String? = null, showBack
                 Toast.makeText(context, tr(R.string.suggestions_start_fresh), Toast.LENGTH_SHORT).show()
             }
         }
-        // 1.8.2: three sliders over every radio and autoplay, each with both its ends named; each goes by what the
-        // phone really knows, and says so behind its ⓘ. Halfway to an end is a real step (RadioTuner).
-        group(tr(R.string.tune_radios), info = tr(R.string.tune_radios_info)) {
-            SliderRow(
-                tr(R.string.tune_familiar_new), tune.newness, -1f..1f, { tuneText(it, tr(R.string.tune_familiar), tr(R.string.tune_new)) }, steps = 7,
-                info = tr(R.string.tune_familiar_new_info), changed = newnessChanged,
-            ) { prefs.setRadioTune(tune.copy(newness = tuneSnap(it))) }
-            SliderRow(
-                tr(R.string.tune_hits_deep), tune.depth, -1f..1f, { tuneText(it, tr(R.string.tune_hits), tr(R.string.tune_deep)) }, steps = 7,
-                info = tr(R.string.tune_hits_deep_info), changed = depthChanged,
-            ) { prefs.setRadioTune(tune.copy(depth = tuneSnap(it))) }
-            // How much the last one has to go by is a figure: it closes the slider's ⓘ while the slider is in use.
-            val measured = remember { c.mixTempo.measuredCount() }
-            SliderRow(
-                tr(R.string.tune_calm_energetic), tune.energy, -1f..1f, { tuneText(it, tr(R.string.tune_calm), tr(R.string.tune_energetic)) }, steps = 7,
-                info = tr(R.string.tune_calm_energetic_info) + if (tune.energy != 0f) "\n" + tr(R.string.tune_measured_songs, measured) else "",
-                changed = energyChanged,
-            ) { prefs.setRadioTune(tune.copy(energy = tuneSnap(it))) }
+        group(tr(R.string.stream)) {
+            LinkRow(tr(R.string.prism_stream_tune_your_stream)) { nav.go(Routes.MY_WAVE) }
         }
         // 1.8.1: pause history (#296), when a song counts as played (#263), and histories from elsewhere.
         group(tr(R.string.hist_title), info = tr(R.string.hist_info)) {
@@ -269,7 +236,7 @@ val recommendationsHistoryOldGroups: Map<String, String> = emptyMap()
 /** The page's lines in Settings' search (each names the group it is drawn in). */
 val recommendationsHistoryIndex: List<SettingEntry> by lazy {
     val made = tr(R.string.made_for_you)
-    val radios = tr(R.string.tune_radios)
+    val radios = tr(R.string.stream)
     val history = tr(R.string.hist_title)
     val replay = tr(R.string.replay_2)
     val radioWords = radios + " " + tr(R.string.autoplay)
@@ -281,9 +248,7 @@ val recommendationsHistoryIndex: List<SettingEntry> by lazy {
         SettingEntry(page, made, tr(R.string.make_my_mixes_again), tr(R.string.daily_mix_refresh_recommendations)),
         SettingEntry(page, made, tr(R.string.exclusions), tr(R.string.taste_profile_exclude_artist_playlist_don)),
         SettingEntry(page, made, tr(R.string.forget_skipped_suggestions), tr(R.string.skipped_suggestions_keywords) + " " + tr(R.string.let_every_song_be_suggested_again)),
-        SettingEntry(page, radios, tr(R.string.tune_familiar_new), radioWords),
-        SettingEntry(page, radios, tr(R.string.tune_hits_deep), radioWords),
-        SettingEntry(page, radios, tr(R.string.tune_calm_energetic), radioWords),
+        SettingEntry(page, radios, tr(R.string.prism_stream_tune_your_stream), radioWords + " " + tr(R.string.tune_radios) + " " + tr(R.string.tune_familiar_new) + " " + tr(R.string.tune_hits_deep) + " " + tr(R.string.tune_calm_energetic)),
         // 1.8.1: History (#296, #263).
         SettingEntry(page, history, tr(R.string.hist_pause), tr(R.string.hist_pause_keywords)),
         SettingEntry(page, history, tr(R.string.hist_count_after), tr(R.string.hist_count_keywords)),

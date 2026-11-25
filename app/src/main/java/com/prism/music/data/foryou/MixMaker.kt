@@ -81,7 +81,12 @@ class MixMaker(private val sources: Sources) {
         val seeds = Variety.roundRobin(familiar.ifEmpty { candidates.map { it.song } }) { it.primaryArtist }.take(recipe.seeds)
         val mixArtists = candidates.map { it.song.primaryArtist.lowercase() }.toSet()
         val fresh = discover(seeds, recipe, taste, mixArtists, seed, exclude = familiar.map { LocalRadio.sameSong(it) }.toSet())
-        val songs = Variety.arrange(familiar, fresh, recipe.size, recipe.freshShare, recipe.perArtist) { it.primaryArtist.lowercase() }
+        val style = MyWave.Style(discoveryPercent = kotlin.math.round(recipe.freshShare * 100).toInt(),
+            diversity = when { recipe.perArtist <= 2 -> 80; recipe.perArtist >= 4 -> 20; else -> 50 })
+        val songs = MyWave.start(fresh, familiar, emptyList(), { false },
+            { !taste.refused(it, it in familiar) }, seed, recipe.size, style,
+            signals = RadioSignals(heard = { it in familiar }), artistDoubt = taste.artistDoubt,
+            servedRecently = { (taste.servedDaysAgo(it.id) ?: 99) <= 1 }, quotaOffset = 0)
         return Made(songs, familiar, fresh, seeds)
     }
 

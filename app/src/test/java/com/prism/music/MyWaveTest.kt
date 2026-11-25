@@ -394,4 +394,25 @@ class MyWaveTest {
         assertEquals(edited.style.origin, edited.presets.single().origin)
         assertEquals(initial.style.origin, initial.presets.single().origin)
     }
+
+    @Test fun sameSelectorSupportsStrictAndSoftQuotas() {
+        val known = listOf(song("a", "A"), song("b", "B"))
+        val style = MyWave.Style(discoveryPercent = 100)
+        val strict = MyWave.start(emptyList(), known, emptyList(), { false }, { true }, 3L,
+            count = 2, style = style, quotaOffset = 0, strictQuota = true)
+        val soft = MyWave.start(emptyList(), known, emptyList(), { false }, { true }, 3L,
+            count = 2, style = style, quotaOffset = 0)
+        assertTrue(strict.isEmpty())
+        assertEquals(known.toSet(), soft.toSet())
+    }
+
+    @Test fun legacyRadioTuneMigratesIntoStreamStyle() {
+        val tune = com.prism.music.data.foryou.RadioTune(newness = -0.5f, depth = 0.7f, energy = 0.8f)
+        val style = requireNotNull(MyWave.legacyStyle(tune, 25))
+        assertEquals(25, style.discoveryPercent)
+        assertEquals(25, style.russianPercent)
+        assertEquals(MyWave.Mood.ENERGETIC, style.mood)
+        assertEquals(MyWave.Depth.DEEP, style.depth)
+        assertNull(MyWave.legacyStyle(com.prism.music.data.foryou.RadioTune(), -1))
+    }
 }

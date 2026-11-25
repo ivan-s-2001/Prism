@@ -29,6 +29,14 @@ internal object MyWave {
         val tune: RadioTune get() = RadioTune(newness = character.bias,
             energy = if (mood == Mood.ANY) activity.energy else mood.energy, depth = depth.bias)
     }
+    /** Only migrate the legacy radio sliders when no Stream settings have ever been saved. */
+    fun legacyStyle(tune: RadioTune, language: Int): Style? {
+        if (tune.neutral) return null
+        val character = when { tune.newness < -0.95f -> Character.FAMILIAR; tune.newness > 0.95f -> Character.DISCOVERY; else -> Character.BALANCED }
+        return Style(character = character, mood = when { tune.energy < -0.05f -> Mood.CALM; tune.energy > 0.05f -> Mood.ENERGETIC; else -> Mood.ANY },
+            depth = when { tune.depth < -0.05f -> Depth.HITS; tune.depth > 0.05f -> Depth.DEEP; else -> Depth.ANY },
+            discoveryPercent = kotlin.math.round(50f + 50f * tune.newness).toInt().coerceIn(0, 100), russianPercent = language.coerceIn(-1, 100))
+    }
     fun isOrigin(origin: String?) = origin == ORIGIN || origin?.startsWith("$ORIGIN:") == true
 
     /** Queue settings take priority over the saved defaults; older installs saved only language. */
@@ -150,6 +158,7 @@ internal object MyWave {
                 else -> true
             }
         }.ifEmpty { cycle }
+        val fallbackStyle = if (preferred.none { when (style.russianPercent) { 0 -> russianTitle(it) == false; 100 -> russianTitle(it) == true; else -> true } }) style.copy(russianPercent = -1) else style
         val availableIds = preferred.mapTo(hashSetOf()) { it.id }
         val localLikes = likes.filter { it.id in availableIds }
         val likedIds = localLikes.mapTo(hashSetOf()) { it.id }
@@ -166,7 +175,7 @@ internal object MyWave {
             val ids = tier.mapTo(hashSetOf()) { it.id }
             val rest = start(tier, localLikes.filter { it.id in ids }, emptyList(), heard,
                 allowed = { LocalRadio.sameSong(it) !in used }, seed = seed,
-                count = count - result.size, style = style, signals = signals, profile = profile,
+                count = count - result.size, style = fallbackStyle, signals = signals, profile = profile,
                 previousSong = result.lastOrNull() ?: previous, artistDoubt = artistDoubt,
                 artistEvidence = artistEvidence)
             result += rest
@@ -185,41 +194,12 @@ internal object MyWave {
     ): List<Song> {
         val likedKeys = likes.mapTo(hashSetOf(), LocalRadio::sameSong)
         val likedIds = likes.mapTo(hashSetOf()) { it.id }
-        fun eligible(s: Song) = allowed(s) && !heard(s) && LocalRadio.sameSong(s) !in avoid &&
-            when (style.russianPercent) { 0 -> russianTitle(s) == false; 100 -> russianTitle(s) == true; else -> true }
-        val fresh = candidates.filter { eligible(it) && it.id !in likedIds &&
-            LocalRadio.sameSong(it) !in likedKeys && !isKnown(it) }
-        fun rank(items: List<Song>, favorite: Boolean): MutableList<Song> =
-            start(if (favorite) emptyList() else items, if (favorite) items else emptyList(), emptyList(),
-                heard, ::eligible, seed, items.size.coerceAtMost(if (style.russianPercent in 0..100) 160 else (count * 3).coerceIn(1, 160)), style, signals,
-                artistDoubt, servedRecently, profile, previousSong, avoid, artistEvidence).toMutableList()
-        val newPool = rank(fresh, false)
-        val likedPool = rank(likes.filter(::eligible), true)
-        val result = mutableListOf<Song>()
-        val seen = hashSetOf<String>()
-        val artistCounts = hashMapOf<String, Int>()
-        var last = previousSong?.primaryArtist?.lowercase().orEmpty()
-        repeat(count.coerceAtLeast(0)) { slot ->
-            val pool = if (discoverySlot(offset + slot, style.discoveryPercent)) newPool else likedPool
-            val available = pool.indices.filter { LocalRadio.sameSong(pool[it]) !in seen }
-            val possible = if (style.russianPercent in 1..99) {
-                val russian = discoverySlot(offset + slot, style.russianPercent)
-                available.filter { russianTitle(pool[it]) == russian }
-                    .ifEmpty { available.filter { russianTitle(pool[it]) == null } }
-                    .ifEmpty { available }
-            } else available
-            val index = possible.firstOrNull {
-                val artist = pool[it].primaryArtist.lowercase()
-                artist != last && (artistCounts[artist] ?: 0) < when { style.diversity >= 75 -> 2; style.diversity <= 25 -> 4; else -> 3 }
-            } ?: possible.firstOrNull { pool[it].primaryArtist.lowercase() != last }
-                ?: possible.firstOrNull() ?: return result
-            val song = pool.removeAt(index)
-            seen += LocalRadio.sameSong(song)
-            last = song.primaryArtist.lowercase()
-            artistCounts[last] = (artistCounts[last] ?: 0) + 1
-            result += song
-        }
-        return result
+        val fresh = candidates.filter { it.id !in likedIds && LocalRadio.sameSong(it) !in likedKeys && !isKnown(it) }
+        return start(fresh, likes, emptyList(), heard,
+            allowed = { allowed(it) && !heard(it) }, seed = seed, count = count, style = style,
+            signals = signals, artistDoubt = artistDoubt, servedRecently = servedRecently,
+            profile = profile, previousSong = previousSong, avoid = avoid,
+            artistEvidence = artistEvidence, quotaOffset = offset, strictQuota = true)
     }
 
     /** Shared personalized score; absent signals remain neutral. */
@@ -246,6 +226,7 @@ internal object MyWave {
         avoid: Set<String> = emptySet(),
         artistEvidence: (String) -> Evidence = { Evidence() },
         quotaOffset: Int? = null,
+        strictQuota: Boolean = false,
     ): List<Song> {
         if (count <= 0) return emptyList()
         val recentKeys = recent.mapTo(hashSetOf(), LocalRadio::sameSong)
@@ -256,7 +237,8 @@ internal object MyWave {
         val energyBias = style.tune.energy
         val favoriteKeys = favorites.mapTo(hashSetOf(), LocalRadio::sameSong)
         fun familiar(s: Song): Boolean? = if (LocalRadio.sameSong(s) in favoriteKeys || LocalRadio.sameSong(s) in recentKeys || heard(s)) true else signals.heard(s)
-        fun pool(songs: List<Song>) = songs.filter { allowed(it) && LocalRadio.sameSong(it) !in avoid }
+        fun pool(songs: List<Song>) = songs.filter { allowed(it) && LocalRadio.sameSong(it) !in avoid &&
+            when (style.russianPercent) { 0 -> russianTitle(it) == false; 100 -> russianTitle(it) == true; else -> true } }
             .distinctBy(LocalRadio::sameSong)
             .mapIndexed { index, s ->
                 // Preserve ranking from the candidate generator; explore by bounded noise, not a uniform shuffle.
@@ -273,8 +255,8 @@ internal object MyWave {
             }
             .sortedByDescending { it.second }
             .toMutableList()
-        val picks = pool(recommendations.filter { familiar(it) != true })
-        val known = pool(favorites + recommendations.filter { familiar(it) == true })
+        val picks = pool(recommendations.filter { if (strictQuota) LocalRadio.sameSong(it) !in favoriteKeys else familiar(it) != true })
+        val known = pool(if (strictQuota) favorites else favorites + recommendations.filter { familiar(it) == true })
         val last = pool(recent)
         val seen = hashSetOf<String>()
         val out = mutableListOf<Song>()
@@ -303,7 +285,8 @@ internal object MyWave {
                 Character.DISCOVERY -> out.size % 5 == 4
                 Character.BALANCED -> out.size % 3 == 1
             }
-            val preferred = if (preferKnown) listOf(known, picks, last) else listOf(picks, known, last)
+            val preferred = if (strictQuota) listOf(if (preferKnown) known else picks)
+                else if (preferKnown) listOf(known, picks, last) else listOf(picks, known, last)
             val s = if (quotaOffset != null && style.russianPercent in 1..99) {
                 // Prefer the requested language in the preferred pool, then fall back to the available music.
                 val russian = discoverySlot(quotaOffset + out.size, style.russianPercent)
@@ -314,8 +297,8 @@ internal object MyWave {
                     return chosen
                 }
                 preferred.firstNotNullOfOrNull { takeLanguage(it, true) }
-                    ?: preferred.firstNotNullOfOrNull { take(it, true) }
                     ?: preferred.firstNotNullOfOrNull { takeLanguage(it, false) }
+                    ?: preferred.firstNotNullOfOrNull { take(it, true) }
                     ?: preferred.firstNotNullOfOrNull { take(it, false) }
             } else preferred.firstNotNullOfOrNull { take(it, true) }
                 ?: preferred.firstNotNullOfOrNull { take(it, false) }

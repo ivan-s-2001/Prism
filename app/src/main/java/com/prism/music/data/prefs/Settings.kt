@@ -3111,7 +3111,10 @@ class SettingsRepository(
             streamThemeColors = p[K.streamThemeColors] ?: d.streamThemeColors,
             streamRussianPercent = (p[K.streamRussianPercent] ?: d.streamRussianPercent).coerceIn(-1, 100),
             streamPresets = readStreamPresets(p[K.streamPresets]),
-            streamStyleOrigin = p[K.streamStyleOrigin]?.takeIf(com.prism.music.data.foryou.MyWave::isOrigin),
+            streamStyleOrigin = p[K.streamStyleOrigin]?.takeIf(com.prism.music.data.foryou.MyWave::isOrigin)
+                ?: com.prism.music.data.foryou.MyWave.legacyStyle(com.prism.music.data.foryou.RadioTune(
+                    (p[K.radioNewness] ?: 0f).coerceIn(-1f, 1f), (p[K.radioDepth] ?: 0f).coerceIn(-1f, 1f),
+                    (p[K.radioEnergy] ?: 0f).coerceIn(-1f, 1f)), p[K.streamRussianPercent] ?: d.streamRussianPercent)?.origin,
             streamScenarioId = p[K.streamScenarioId]?.takeIf { id -> com.prism.music.data.foryou.WaveScenarios.all.any { it.id == id } || readStreamPresets(p[K.streamPresets]).any { it.id == id } },
             streamScenarioStyles = readStreamScenarioStyles(p[K.streamScenarioStyles]),
             performanceMode = p[K.performanceMode] ?: d.performanceMode,

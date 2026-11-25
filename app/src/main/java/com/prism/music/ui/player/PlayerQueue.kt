@@ -500,7 +500,7 @@ private fun Heading(title: String, modifier: Modifier = Modifier) {
 @Composable
 private fun AutoplayHeading(hasTracks: Boolean) {
     Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(PrismIcons.Autoplay, null, tint = Color.White.copy(alpha = 0.75f), modifier = Modifier.size(18.dp))
+        Icon(PrismIcons.Stream, null, tint = Color.White.copy(alpha = 0.75f), modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))
         Column {
             Text(tr(R.string.autoplay), style = MaterialTheme.typography.titleMedium, color = Color.White)
