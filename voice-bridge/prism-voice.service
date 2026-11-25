@@ -5,6 +5,8 @@ After=network.target
 [Service]
 Type=simple
 DynamicUser=yes
+StateDirectory=prism-voice
+StateDirectoryMode=0700
 EnvironmentFile=/etc/prism-voice.env
 WorkingDirectory=/opt/prism-voice
 ExecStart=/usr/bin/python3 /opt/prism-voice/server.py
