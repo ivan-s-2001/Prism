@@ -27,6 +27,7 @@ import com.prism.music.connect.RendererKind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun StationAccountRow(ink: Color) {
@@ -40,6 +41,7 @@ internal fun StationAccountRow(ink: Color) {
     var error by remember { mutableStateOf<String?>(null) }
     var confirmLogout by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
+    val accountScope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) { StationConnectAccount.initialize(context.applicationContext) }
@@ -82,6 +84,7 @@ internal fun StationAccountRow(ink: Color) {
         }
         Icon(if (signedIn) PrismIcons.Logout else PrismIcons.ChevronRight, null, tint = ink)
     }
+    if (signedIn) ConnectAccountControls(ink)
     if (show) AlertDialog(
         onDismissRequest = { show = false },
         title = { Text(label("Вход в Яндекс", "Yandex sign-in")) },
@@ -122,7 +125,15 @@ internal fun StationAccountRow(ink: Color) {
                 (state as? CastState.Connecting)?.renderer?.kind == RendererKind.YANDEX_STATION) {
                 c.cast.disconnect(keepPlaying = false)
             }
-            StationConnectAccount.clear()
+            accountScope.launch {
+                try {
+                    com.prism.music.connect.yandex.ConnectDeviceClient.revoke(context)
+                    withContext(Dispatchers.IO) { StationConnectAccount.clear() }
+                } catch (e: CancellationException) { throw e }
+                catch (_: Exception) {
+                    android.widget.Toast.makeText(context, label("Сначала дождитесь отключения Станции и повторите выход.", "Wait for the Station to disconnect and try again."), android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
         }) { Text(label("Выйти", "Sign out")) } },
         dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text(label("Отмена", "Cancel")) } },
     )
