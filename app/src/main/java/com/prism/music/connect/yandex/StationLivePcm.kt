@@ -31,7 +31,7 @@ internal class StationLivePcm(phone: Inet4Address, station: Inet4Address,
     private val consumer = AtomicReference<HttpResponse?>(null)
     private val requests = AtomicLong()
     private val delivered = AtomicLong()
-    private val nextOffset = AtomicLong(44L)
+    private val replay = LivePcmReplay(RATE * FRAME_BYTES * 12)
     @Volatile private var lastWrite = 0L
     private val path = "/live/${UUID.randomUUID()}/stream.wav"
     private val http = HttpServer("prism-live-pcm", 0, maxBody = 0,
@@ -76,10 +76,9 @@ internal class StationLivePcm(phone: Inet4Address, station: Inet4Address,
         try {
             if (closed.get()) return
             val pcmStart = maxOf(first, 44L)
-            if (pcmStart != nextOffset.get() || (pcmStart - 44) % FRAME_BYTES != 0L ||
-                (last + 1 - 44) % FRAME_BYTES != 0L) {
+            if (!replay.contains(pcmStart - 44)) {
                 res.text(416, "Live range unavailable", mapOf("Content-Range" to "bytes */$LENGTH"))
-                android.util.Log.w("PrismLive", "PCM non-sequential range $first-$last next=${nextOffset.get()}")
+                android.util.Log.w("PrismLive", "PCM range outside replay window $first-$last available=${44 + replay.start}..${44 + replay.end}")
                 return
             }
             val out = res.start(status, responseHeaders, length)
@@ -96,13 +95,21 @@ internal class StationLivePcm(phone: Inet4Address, station: Inet4Address,
             var nonZero = 0L
             while (!closed.get() && pos <= last) {
                 val n = minOf(CHUNK.toLong(), last - pos + 1).toInt()
-                val pcm = source(n)
-                check(pcm.size == n) { "Unexpected PCM chunk size" }
+                val offset = pos - 44
+                val needed = offset + n - replay.end
+                if (needed > 0) {
+                    // HTTP may split a stereo frame; the source never does.
+                    val aligned = ((needed + FRAME_BYTES - 1) / FRAME_BYTES * FRAME_BYTES).toInt()
+                    val fresh = source(aligned)
+                    check(fresh.size == aligned) { "Unexpected PCM chunk size" }
+                    // Retain before writing: even a failed socket write can be retried byte-exactly.
+                    replay.append(fresh)
+                }
+                val pcm = replay.read(offset, n)
                 nonZero += pcm.count { it != 0.toByte() }
                 out.write(pcm)
                 out.flush()
                 pos += n
-                nextOffset.set(pos)
                 delivered.addAndGet(n.toLong())
                 lastWrite = android.os.SystemClock.elapsedRealtime()
                 val now = System.nanoTime()
@@ -120,7 +127,7 @@ internal class StationLivePcm(phone: Inet4Address, station: Inet4Address,
             android.util.Log.w("PrismLive", "PCM HTTP ended: ${e.javaClass.simpleName}; bytes=${delivered.get()}")
         } finally {
             consumer.compareAndSet(res, null)
-            android.util.Log.i("PrismLive", "Direct PCM request closed; bytes=${delivered.get()} next=${nextOffset.get()}")
+            android.util.Log.i("PrismLive", "Direct PCM request closed; bytes=${delivered.get()} next=${44 + replay.end}")
         }
     }
 
