@@ -1,6 +1,6 @@
 # Prism Connect: Yandex Station (experimental)
 
-This branch contains an experimental local transport for Prism's existing Connect interface. A debug-only hardware diagnostic activity now includes experimental first-party WebView sign-in. Production playback and production account sign-in are not wired. The code has not been built or tested on hardware.
+This branch contains an experimental local transport for Prism's existing Connect interface. A debug-only hardware diagnostic activity now includes experimental external-browser OAuth device-code sign-in. Production playback and production account sign-in are not wired. The code has not been built or tested on hardware.
 
 ## Milestone 1
 - Glagol command envelope, ping, stop, volume and radio_play encoder.
@@ -9,7 +9,7 @@ This branch contains an experimental local transport for Prism's existing Connec
 
 ## Added transport components
 - Android NSD discovery (IPv4 private/link-local addresses only).
-- Quasar API adapter consuming an authenticated cookie jar; verifies device ID/platform against the account list.
+- Quasar API adapter consuming an OAuth token; verifies device ID/platform against the account list.
 - Device-certificate-pinned WSS transport; fails closed if certificate metadata is unavailable or does not match.
 - Per-session finite MP3 HTTP endpoint bound to the phone LAN address and restricted to selected Station IP; fresh random URL and byte-range support.
 - StationSmokeSession composes these components and exposes ping, volume, play and stop. A queued frame or downloaded bytes does not prove audible playback.
@@ -49,7 +49,7 @@ adb shell am start -n com.prism.music.station/com.prism.music.connect.yandex.Sta
 
 1. Connect phone and Station to the same Wi-Fi (no guest isolation).
 2. Open the debug diagnostics via ADB; the activity is protected by the DUMP permission and absent from release builds.
-3. Sign in directly on Yandex's page. The debug experiment uses first-party WebView cookies for the two Quasar hosts only; it does not export passwords or cookie values. Yandex may reject embedded login; if so, stop and implement a device authorization flow. Use a test account if possible.
+3. Request a device code, open the official Yandex page in the system browser and approve access. The experimental OAuth token is held in memory only. No WebView cookies are used.
 4. Scan, select a Station, verify account ownership and connect. If verification fails, do not bypass certificate verification.
 5. Select a short local CBR MP3 test file and Play test MP3.
 6. Refresh diagnostics, note frame/byte counters and confirm audible playback. Stop before disconnect.
@@ -57,4 +57,16 @@ adb shell am start -n com.prism.music.station/com.prism.music.connect.yandex.Sta
 
 The existing Prism Cast implementation uses RendererLink, MediaServer and shadow playback. Production integration should reuse those once hardware confirms the protocol, with explicit capability handling for unsupported seek, queue preloading and pause. The diagnostic does not alter Prism's playback queue or expose a production route.
 
-Build and hardware status: not yet verified.
+Previous debug APK compiled and installed on the test phone; LAN discovery was confirmed. The old Quasar hostname failed DNS resolution. New OAuth and quasar.yandex.net changes have not yet been built or tested.
+
+## Production acceptance: normal Prism listening on Station
+
+The Station must be an output device in the existing Prism Connect picker, not a separate MP3 player. While connected, users must be able to:
+- Search the existing Prism catalog, start any playable song, album, playlist or radio, and edit the normal queue without disconnecting.
+- Use play/pause, previous/next, volume, notification controls and lock-screen controls; expose seek only when verified.
+- Preserve lyrics, progress, queue order and autoplay; reconcile remote interruptions and prevent double playback on phone and Station.
+- Switch outputs back to the phone without losing the queue. Do not silently restart playback after a network failure.
+- Use the existing Prism source resolution pipeline and MediaServer/RendererLink where compatible. Transcode or serve a finite compatible audio representation only after validating the receiver format.
+- Confirm that the account does not require Plus for external playback. Voice commands for catalog search through Alice are a separate feature and not part of the initial acceptance.
+
+Do not treat diagnostic playback or command acknowledgements as proof of this production acceptance.
