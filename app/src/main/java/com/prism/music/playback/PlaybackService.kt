@@ -315,6 +315,50 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 AudioDiagnostics.log("control", "Android refused to bring playback to the foreground (started from the background)")
         })
 
+        if (com.prism.music.BuildConfig.DEBUG) {
+            scope.launch {
+                val active = {
+                    (c.cast.state.value as? com.prism.music.connect.CastState.Casting)?.renderer?.kind ==
+                        com.prism.music.connect.RendererKind.YANDEX_STATION
+                }
+                com.prism.music.connect.yandex.VoiceBridgeClient.run(active) { command ->
+                    when (command.action) {
+                        "next" -> if (player.hasNextMediaItem()) player.seekToNextMediaItem()
+                        "previous" -> if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem()
+                        "pause" -> player.pause()
+                        "resume" -> player.play()
+                        "seek_relative" -> command.value?.takeIf { it in -3600..3600 }?.let {
+                            val max = player.duration.takeIf { duration -> duration > 0 } ?: Long.MAX_VALUE
+                            player.seekTo((player.currentPosition + it * 1000L).coerceIn(0L, max))
+                        }
+                        "volume" -> command.value?.let { c.cast.setVolume(it.coerceIn(0, 100)) }
+                        "volume_delta" -> command.value?.takeIf { it in -20..20 }?.let { delta ->
+                            c.cast.volume?.let { c.cast.setVolume((it + delta).coerceIn(0, 100)) }
+                        }
+                        "search_play" -> {
+                            val query = command.query?.takeIf { it.isNotBlank() && it.length <= 200 }
+                            if (query != null) {
+                                val request = VoiceSearch.parse(query, null)
+                                val pick = tree.voice(request)
+                                if (active() && pick != null && pick.songs.isNotEmpty()) {
+                                    c.queue.autoplayStart.value = -1
+                                    c.queue.autoplayContinuation = null
+                                    c.queue.source.value = if (pick.radio) {
+                                        QueueSource(QueueKind.SINGLE, pick.title, seedId = pick.songs.first().id)
+                                    } else QueueSource(QueueKind.PLAYLIST, pick.title)
+                                    val list = if (pick.radio) pick.songs.take(1) else pick.songs
+                                    player.shuffleModeEnabled = false
+                                    player.setMediaItems(list.map { it.toMediaItem() }, pick.start.coerceIn(0, list.lastIndex), 0L)
+                                    player.prepare()
+                                    player.play()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         effects.attach(player.audioSessionId)
         // #519: the effects are made once the session has a track on it, never on an empty one (AudioEffects' note).
         player.addAnalyticsListener(object : AnalyticsListener {
