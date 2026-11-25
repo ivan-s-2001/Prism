@@ -1824,7 +1824,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         // Tuned towards the familiar, a song's radio takes in your own music too.
         val useYours = wave || offline || seedLocal || (!radio && mode != com.prism.music.data.prefs.AutoplaySource.YOUTUBE) || tune.newness < 0f
         val useYouTube = !offline && !seedLocal && (radio || mode != com.prism.music.data.prefs.AutoplaySource.YOURS)
-        val seeds = (maxOf(0, player.mediaItemCount - 3) until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.filter { it.isNotBlank() }
+        val seedEnd = if (wave) (player.currentMediaItemIndex + 1).coerceIn(1, player.mediaItemCount) else player.mediaItemCount
+        val seeds = (maxOf(0, seedEnd - 3) until seedEnd).map { player.getMediaItemAt(it).mediaId }.filter { it.isNotBlank() }
         c.queue.autoplayLoading = true
         autoplayFor = src
         val job = scope.launch {
@@ -1858,7 +1859,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 existing, heardLately, turnedDown = { fb.turnedDown(it.id, known = wave && it.id in c.library.likedIds.value) },
                 allowed = {
                     !c.library.isDisliked(it.id) && !c.exclusions.blocks(it) && com.prism.music.data.ExplicitFilter.plays(explicit, it) &&
-                        (!wave || (!c.exclusions.isSongExcluded(it.id) && !fb.turnedDown(it.id, known = it.id in c.library.likedIds.value) && !it.isEpisode && !it.isLive)) &&
+                        (!wave || (!c.exclusions.isSongExcluded(it.id) && !fb.turnedDown(it.id, known = it.id in c.library.likedIds.value) && !it.isEpisode && !it.isLive && !it.isVideo)) &&
                         // #299: Autoplay's own songs only: a radio the listener started is left as it is.
                         (radio || com.prism.music.data.AutoplayLength.fits(it, behavior.autoplayMaxMinutes))
                 },
@@ -1890,15 +1891,23 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             c.queue.autoplayContinuation = answer.continuation
             if (answer.seed != previousSeed) c.queue.reseed(src, answer.seed)
             android.util.Log.i("PrismRadio", "autoplay after ${answer.seed}: ${mine.size} of yours, ${r?.songs?.size ?: 0} from YouTube, adding ${answer.add.size} ($mode${if (offline) ", offline" else ""}${if (noRepeats) ", no repeats" else ""}${if (answer.cameRound) ", coming round" else ""})")
-            val additions = if (!wave || answer.cameRound) answer.add else {
+            val additions = if (!wave) answer.add else if (answer.cameRound) answer.add.filter { rules.allowed(it) && !rules.turnedDown(it) } else {
                 val known = c.library.likedIds.value
+                val taste = try { c.yourMusic.waveTaste().profile }
+                    catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (_: Exception) { com.prism.music.data.foryou.MyWave.Profile() }
+                val previous = player.getMediaItemAt(player.mediaItemCount - 1).toSong()
+                val avoid = (0 until player.mediaItemCount).mapNotNull { player.getMediaItemAt(it).toSong() }
+                    .mapTo(hashSetOf(), com.prism.music.data.foryou.LocalRadio::sameSong)
                 val familiar = answer.add.filter { it.id in known || signals.heard(it) == true }
                 val fresh = answer.add.filter { it !in familiar }
                 com.prism.music.data.foryou.MyWave.start(fresh, familiar, emptyList(), session::has, rules.allowed,
                     seed = System.nanoTime(), count = answer.add.size, style = waveStyle, signals = signals,
                     artistDoubt = fb::artistDoubt,
-                    servedRecently = { fb.servedDaysAgo(it.id)?.let { days -> days <= 1 } == true })
+                    servedRecently = { fb.servedDaysAgo(it.id)?.let { days -> days <= 1 } == true },
+                    profile = taste, previousSong = previous, avoid = avoid)
             }
+            if (!isActive || c.queue.source.value !== src) return@launch
             if (additions.isNotEmpty()) {
                 if (c.queue.autoplayStart.value < 0) c.queue.autoplayStart.value = player.mediaItemCount
                 player.addMediaItems(additions.map { it.toMediaItem() })
