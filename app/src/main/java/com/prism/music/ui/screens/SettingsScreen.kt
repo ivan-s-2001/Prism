@@ -359,6 +359,7 @@ internal fun AccountCard() {
             Icon(PrismIcons.Add, null, Modifier.size(18.dp), tint = ink); Spacer(Modifier.width(6.dp)); Text(tr(R.string.add_a_google_account), color = ink)
         }
     }
+    if (com.prism.music.BuildConfig.DEBUG) StationAccountRow(ink)
     // #372, #373, #377: YouTube's own answers say it isn't taking Prism's requests as this account.
     val accountSeen by c.innerTube.seen.collectAsState()
     if (s.isLoggedIn && accountSeen?.signedIn == false) Text(
