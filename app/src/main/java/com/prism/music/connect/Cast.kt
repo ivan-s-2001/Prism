@@ -19,6 +19,7 @@ import com.prism.music.AppContainer
 import com.prism.music.BuildConfig
 import com.prism.music.connect.yandex.ConnectDeviceClient
 import kotlinx.serialization.json.*
+import com.prism.music.connect.yandex.StationClock
 import com.prism.music.connect.yandex.StationNames
 import com.prism.music.connect.yandex.StationConnectAccount
 import com.prism.music.connect.yandex.StationDiscoveryEvent
@@ -89,6 +90,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _state = MutableStateFlow<CastState>(CastState.Idle)
     val state: StateFlow<CastState> = _state.asStateFlow()
+    private val _stationClock = MutableStateFlow<StationClock?>(null)
+    internal val stationClock = _stationClock.asStateFlow()
     private val _renderers = MutableStateFlow<List<Renderer>>(emptyList())
     /** Renderers on this network (while something is looking: [startDiscovery]). */
     val renderers: StateFlow<List<Renderer>> = _renderers.asStateFlow()
@@ -681,6 +684,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             return
         }
         session = null
+        _stationClock.value = null
         casting = false
         letGoOfNetwork()
         com.prism.music.playback.AudioDiagnostics.log("cast", "stopped casting${message?.let { ": $it" } ?: ""}${s.lastFailure?.let { " (last error: $it)" } ?: ""}")
@@ -822,6 +826,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
     private fun goLocalForLive(s: Session) {
         if (session !== s) return
         liveLocal = true
+        _stationClock.value = null
         s.current = null
         s.preparingSong = null
         s.stationPrepared = null
@@ -926,6 +931,9 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         s.wantPlaying = play
         s.preparingSong = song.id
         s.preparingPosition = startMs
+        if (s.renderer.kind == RendererKind.YANDEX_STATION) {
+            _stationClock.value = StationClock(song.id, durationMs = (song.durationSec * 1000L).takeIf { it > 0 })
+        }
         seekJob?.cancel()
         s.lastCommandAt = SystemClock.elapsedRealtime()
         resetAnchor(s)
@@ -1068,6 +1076,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                     runCatching { onPoll(s, ti, pi, rtt) }.onFailure { Log.w(TAG, "following ${s.renderer.name} failed", it) }
                 }.onFailure { e ->
                     if (e is CancellationException) throw e
+                    if (station != null) _stationClock.value = _stationClock.value?.copy(playing = null, loading = s.wantPlaying)
                     s.lastFailure = "${e.javaClass.simpleName}: ${e.message?.take(80)}"
                     val lost = s.misses.failed(blocked = netBlocked)
                     com.prism.music.playback.AudioDiagnostics.log("cast", "no answer (${s.misses.count}/$MAX_FAILURES${if (netBlocked) ", network held back: not counted" else ""}) after ${rtt * 2} ms: ${s.lastFailure}")
@@ -1107,6 +1116,14 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         if (s.preparingSong != null) return // An old track cannot drive the phone during preparation.
         val cur = s.current ?: return
         val key = keyOf(pi.trackUri)
+        if (s.renderer.kind == RendererKind.YANDEX_STATION) {
+            val old = _stationClock.value ?: StationClock(cur.song.id)
+            _stationClock.value = if (key == cur.key) {
+                old.withObservation(cur.song.id, pi.relMs, pi.durationMs ?: cur.durationMs,
+                    when { ti.playing -> true; ti.paused || ti.stopped -> false; else -> null },
+                    ti.transitioning || (!cur.started && !ti.playing && s.wantPlaying))
+            } else old.copy(playing = null, loading = s.wantPlaying)
+        }
         // The renderer moved on to the lined-up song by itself (gapless): the phone goes along if it hasn't yet.
         val next = s.next
         if (next != null && key == next.key && key != cur.key) {
