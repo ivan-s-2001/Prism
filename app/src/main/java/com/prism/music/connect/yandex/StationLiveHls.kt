@@ -65,7 +65,7 @@ internal class StationLiveHls(
     @Volatile var failure: String? = null
         private set
     val ready: Boolean get() = synchronized(segments) { segments.size >= READY_SEGMENTS }
-    val receiving: Boolean get() = delivered.get() > 0 && android.os.SystemClock.elapsedRealtime() - lastDelivery < 15000L
+    val receiving: Boolean get() = !closed.get() && failure == null && delivered.get() > 0 && android.os.SystemClock.elapsedRealtime() - lastDelivery < 15000L
     private val http = HttpServer("prism-live-hls", 0, maxBody = 0, allow = { it == station }, handler = ::handle)
     val url: String
     private val worker: Thread
@@ -126,9 +126,10 @@ internal class StationLiveHls(
             var frames = 0
             var seq = 0L
             var segment = ByteArrayOutputStream()
-            val start = System.nanoTime()
+            val clock = LivePacer(RATE, System.nanoTime())
             while (!closed.get()) {
                 val input = enc.dequeueInputBuffer(5000)
+                var advanced = false
                 if (input >= 0) {
                     val pcm = source(FRAME_BYTES)
                     val pts = submitted * FRAME * 1_000_000L / RATE
@@ -137,6 +138,7 @@ internal class StationLiveHls(
                     buffer.put(pcm)
                     enc.queueInputBuffer(input, 0, pcm.size, pts, 0)
                     submitted++
+                    advanced = true
                 }
                 while (!closed.get()) {
                     val index = enc.dequeueOutputBuffer(info, 0)
@@ -163,9 +165,7 @@ internal class StationLiveHls(
                         }
                     } finally { enc.releaseOutputBuffer(index, false) }
                 }
-                val due = start + submitted * FRAME * 1_000_000_000L / RATE
-                val wait = due - System.nanoTime()
-                if (wait > 0) Thread.sleep(wait / 1_000_000L, (wait % 1_000_000L).toInt())
+                if (advanced) clock.waitAfter(FRAME)
             }
         } catch (e: InterruptedException) {
             // closed

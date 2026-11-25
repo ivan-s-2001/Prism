@@ -27,6 +27,7 @@ internal object StationConnectAccount {
     private var storage: AtomicFile? = null
     private val _signedIn = MutableStateFlow(false)
     val signedIn = _signedIn.asStateFlow()
+    internal fun sessionId(): Long? = synchronized(this) { generation.takeIf { credentials != null } }
 
     @Synchronized fun initialize(context: Context) {
         if (storage != null) return

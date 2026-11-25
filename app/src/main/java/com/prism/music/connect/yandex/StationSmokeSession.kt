@@ -73,8 +73,8 @@ internal class StationSmokeSession(
     }
     private var server: StationMp3Server? = null
     private var liveProbe: StationLiveProbe? = null
-    private var liveHls: StationLiveHls? = null
-    private var livePcm: StationLivePcm? = null
+    @Volatile private var liveHls: StationLiveHls? = null
+    @Volatile private var livePcm: StationLivePcm? = null
     private var liveRequestedAt = 0L
     private var liveTitle = "Prism Live"
 

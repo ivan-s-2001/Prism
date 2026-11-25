@@ -6,6 +6,10 @@ import com.prism.music.data.imports.ParsedLibrary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.Response
 import kotlinx.serialization.json.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -33,13 +37,28 @@ internal class YandexLibraryImport(private val token: suspend (String?) -> Strin
             ids?.let { addQueryParameter("track-ids", it.joinToString(",")) }
         }.build()
         val req = Request.Builder().url(url).header("Authorization", "OAuth $access").get().build()
-        client.newCall(req).execute().use { response ->
-            if (response.code == 401) throw Unauthorized()
-            if (!response.isSuccessful) throw IOException("Yandex Music HTTP ${response.code}")
-            val source = response.body?.source() ?: throw IOException("Empty response")
-            if (source.request(16_777_217L)) throw IOException("Library response exceeds limit")
-            val result = Json.parseToJsonElement(source.readUtf8()) as? JsonObject ?: throw IOException("Invalid response")
-            result["result"]?.takeUnless { it is JsonNull } ?: throw IOException("Missing library data")
+        suspendCancellableCoroutine { continuation ->
+            val call = client.newCall(req)
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    continuation.resumeWith(Result.failure(e))
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    val result = runCatching {
+                        response.use {
+                            if (it.code == 401) throw Unauthorized()
+                            if (!it.isSuccessful) throw IOException("Yandex Music HTTP ${it.code}")
+                            val source = it.body?.source() ?: throw IOException("Empty response")
+                            if (source.request(16_777_217L)) throw IOException("Library response exceeds limit")
+                            val json = Json.parseToJsonElement(source.readUtf8()) as? JsonObject ?: throw IOException("Invalid response")
+                            json["result"]?.takeUnless { value -> value is JsonNull } ?: throw IOException("Missing library data")
+                        }
+                    }
+                    continuation.resumeWith(result)
+                }
+            })
         }
     }
 
@@ -53,11 +72,12 @@ internal class YandexLibraryImport(private val token: suspend (String?) -> Strin
         if (liked) {
             val refs = get(base + listOf("likes", "tracks")).obj()?.get("library").obj()?.get("tracks").arr()
             require(refs.size <= 30000) { "Library exceeds 30000 tracks" }
-            val ids = refs.mapNotNull { it.obj()?.str("id")?.takeIf { id -> id.matches(Regex("[0-9]{1,24}")) } }
-            missing += refs.size - ids.size
+            val validIds = refs.mapNotNull { it.obj()?.str("id")?.takeIf { id -> id.matches(Regex("[0-9]{1,24}")) } }
+            missing += refs.size - validIds.size
+            val ids = validIds.distinct()
             for ((i, chunk) in ids.chunked(80).withIndex()) {
                 coroutineContext.ensureActive()
-                progress("Liked: ${minOf(i * 80, ids.size)} / ${ids.size}")
+                progress("${if (java.util.Locale.getDefault().language == "ru") "Любимые" else "Liked"}: ${minOf(i * 80, ids.size)} / ${ids.size}")
                 val tracks = get(listOf("tracks"), chunk).arr().mapNotNull { track(it.obj()) }.associateBy { it.sourceId }
                 for (id in chunk) tracks["yandex:$id"]?.let { likes += it } ?: run { missing++ }
             }
@@ -67,7 +87,7 @@ internal class YandexLibraryImport(private val token: suspend (String?) -> Strin
             require(entries.size <= 500) { "Library exceeds 500 playlists" }
             for ((i, entry) in entries.withIndex()) {
                 coroutineContext.ensureActive()
-                progress("Playlists: ${i + 1} / ${entries.size}")
+                progress("${if (java.util.Locale.getDefault().language == "ru") "Плейлисты" else "Playlists"}: ${i + 1} / ${entries.size}")
                 val kind = entry.obj()?.str("kind")?.takeIf { it.matches(Regex("[0-9]{1,18}")) } ?: throw IOException("Invalid playlist ID")
                 if (kind == "3") continue // Favorites are imported independently.
                 val full = get(base + listOf("playlists", kind)).obj() ?: throw IOException("Invalid playlist")

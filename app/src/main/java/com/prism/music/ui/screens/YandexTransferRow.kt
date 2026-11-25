@@ -24,6 +24,8 @@ internal fun YandexTransferRow(ink: Color) {
     var liked by remember { mutableStateOf(true) }
     var playlists by remember { mutableStateOf(true) }
     var preview by remember { mutableStateOf<YandexLibraryImport.Preview?>(null) }
+    var previewSession by remember { mutableStateOf<Long?>(null) }
+    val signedIn by StationConnectAccount.signedIn.collectAsState()
     var busy by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
@@ -75,14 +77,14 @@ internal fun YandexTransferRow(ink: Color) {
             Text(l("Перенос медиатеки", "Library transfer"), style = MaterialTheme.typography.titleMedium)
             Text(l("Любимые треки и собственные плейлисты из Яндекс Музыки.", "Liked songs and your playlists from Yandex Music."), style = MaterialTheme.typography.bodyMedium)
         }
-        Button(onClick = {
-            preview = null; message = null; done = false; busy = false; opened = true
+        Button(enabled = signedIn, onClick = {
+            preview = null; previewSession = null; message = null; done = false; busy = false; opened = true
         }, modifier = Modifier.fillMaxWidth().testTag("account:yandex:transfer")) {
             Text(if ((p?.lastRead ?: 0L) > 0L) l("Обновить библиотеку", "Refresh library") else l("Перенести музыку", "Import music"))
         }
     }
     if (opened) AlertDialog(
-        onDismissRequest = { if (!busy) close() },
+        onDismissRequest = { if (!busy || preview == null) close() },
         title = { Text(l("Перенос музыки", "Import music")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -122,9 +124,19 @@ internal fun YandexTransferRow(ink: Color) {
                 work = scope.launch {
                     try {
                         if (selected == null) {
+                            val accountSession = StationConnectAccount.sessionId() ?: error("Sign in first")
                             val api = StationConnectAccount.libraryImport() ?: error("Sign in first")
-                            preview = api.read(liked, playlists) { progress = it }
+                            val result = api.read(liked, playlists) { progress = it }
+                            check(StationConnectAccount.sessionId() == accountSession) { "Account changed" }
+                            previewSession = accountSession
+                            preview = result
                         } else {
+                            if (previewSession == null || StationConnectAccount.sessionId() != previewSession) {
+                                preview = null
+                                previewSession = null
+                                message = l("Аккаунт изменился. Проверьте медиатеку заново.", "Account changed. Preview the library again.")
+                                return@launch
+                            }
                             progress = l("Добавляем в очередь импорта…", "Queuing import…")
                             val news = c.imports.bringYandexLibrary(selected.library, selected.missing)
                             done = true
@@ -137,6 +149,6 @@ internal fun YandexTransferRow(ink: Color) {
                 }
             }) { Text(if (preview == null) l("Проверить медиатеку", "Preview library") else l("Перенести", "Import")) }
         },
-        dismissButton = { if (!done) TextButton(enabled = !busy, onClick = { close() }) { Text(l("Отмена", "Cancel")) } },
+        dismissButton = { if (!done) TextButton(enabled = !busy || preview == null, onClick = { close() }) { Text(l("Отмена", "Cancel")) } },
     )
 }

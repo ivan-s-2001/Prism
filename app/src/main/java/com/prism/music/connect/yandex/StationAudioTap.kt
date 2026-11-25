@@ -32,6 +32,7 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
         internal var lastRight = 0
         internal var fadingIn = true
         internal var recoveries = 0L
+        internal var stableFrames = 0L
         fun read(length: Int): ByteArray = StationAudioTap.readFor(this, length)
         fun summary(): String = StationAudioTap.readerSummary(this)
         fun rejoinLiveEdge() = StationAudioTap.rejoin(this)
@@ -39,8 +40,9 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
     }
 
     @Synchronized fun openReader(): Reader {
-        // First station retains existing startup behavior. Joining stations start near the live edge.
-        val start = if (readers.isEmpty()) written - size else maxOf(written - size, written - RATE * 4 * 350 / 1000)
+        // Every room starts from the same bounded live reservoir, not an old
+        // two-second capture accumulated during connection negotiation.
+        val start = maxOf(written - size, written - RATE * 4 * 350 / 1000)
         return Reader(start).also { readers.add(it) }
     }
 
@@ -50,6 +52,7 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
         reader.skippedBytes += (target - reader.cursor).coerceAtLeast(0)
         reader.cursor = maxOf(reader.cursor, target)
         reader.recovering = true
+        reader.stableFrames = 0L
         reader.fadingIn = true
     }
 
@@ -88,8 +91,16 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
             reader.recovering = true
             reader.fadingIn = true
         }
-        val available = written - reader.cursor
+        var available = written - reader.cursor
         if (reader.recovering) {
+            reader.stableFrames = 0L
+            val target = maxOf(reader.targetBytes, length).toLong()
+            if (available > target + RATE * 4 / 4) {
+                val skip = available - target
+                reader.cursor += skip
+                reader.skippedBytes += skip
+                available -= skip
+            }
             if (available < maxOf(reader.targetBytes.toLong(), length.toLong())) {
                 reader.underrunBytes += length
                 padded += length
@@ -103,7 +114,7 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
             // rebuffer. Conceal at most 5 ms by stretching the remaining PCM;
             // longer gaps still take the normal bounded recovery path.
             val missing = length - available
-            if (length == RATE * 4 / 50 && missing <= RATE * 4 / 200 &&
+            if (length in (RATE * 4 / 100)..(RATE * 4 / 25) && missing <= RATE * 4 / 200 &&
                 available >= 8 && available % 4L == 0L) {
                 val input = readAt(available.toInt(), reader.cursor) { reader.cursor = it }
                 reader.underrunBytes += missing
@@ -117,12 +128,17 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
             padded += length
             return smooth(reader, ByteArray(length), false)
         }
-        // Correct only persistent clock drift with at most one stereo frame per
-        // 20 ms. A tiny linear interpolation avoids a discontinuous sample drop.
-        val adjust = if (length == RATE * 4 / 50 && available >= length + 4) {
+        // Use the same conservative clock correction for PCM and AAC packets.
+        // A deadband avoids resampling ordinary decoder bursts around the target.
+        reader.stableFrames += length / 4
+        if (reader.stableFrames >= RATE * 30L) {
+            reader.targetBytes = (reader.targetBytes - RATE * 4 / 20).coerceAtLeast(RATE * 4 * 350 / 1000)
+            reader.stableFrames = 0L
+        }
+        val adjust = if (length in (RATE * 4 / 100)..(RATE * 4 / 25) && available >= length + 4) {
             when {
-                available < reader.targetBytes -> -1
-                available > reader.targetBytes + RATE * 4 / 4 -> 1
+                available < reader.targetBytes - RATE * 4 / 10 -> -1
+                available > reader.targetBytes + RATE * 4 / 5 -> 1
                 else -> 0
             }
         } else 0
@@ -225,7 +241,7 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
         head = 0
         size = 0
         defaultCursor = written
-        readers.forEach { it.cursor = written; it.recovering = true; it.fadingIn = true }
+        readers.forEach { it.cursor = written; it.recovering = true; it.stableFrames = 0L; it.fadingIn = true }
         phase = 0
     }
 

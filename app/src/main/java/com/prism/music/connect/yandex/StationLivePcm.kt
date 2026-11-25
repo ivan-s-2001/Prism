@@ -20,7 +20,6 @@ internal class StationLivePcm(phone: Inet4Address, station: Inet4Address,
         private const val RATE = 44100
         private const val FRAME_BYTES = 4
         private const val CHUNK = RATE * FRAME_BYTES / 50
-        private const val CHUNK_NS = 20_000_000L
         private const val STARTUP_BYTES = RATE * FRAME_BYTES * 600 / 1000
         private const val REPLAY_SECONDS = 30
         private const val MAX_READERS = 4
@@ -60,9 +59,9 @@ internal class StationLivePcm(phone: Inet4Address, station: Inet4Address,
     }
 
     private fun produce() {
-        var due = System.nanoTime()
-        var nextLog = due + 5_000_000_000L
-        var late = 0L
+        val start = System.nanoTime()
+        val clock = LivePacer(RATE, start)
+        var nextLog = start + 5_000_000_000L
         try {
             while (!closed.get()) {
                 val fresh = source(CHUNK)
@@ -74,20 +73,12 @@ internal class StationLivePcm(phone: Inet4Address, station: Inet4Address,
                     lastProduced = android.os.SystemClock.elapsedRealtime()
                     lock.notifyAll()
                 }
-                due += CHUNK_NS
+                clock.waitAfter(CHUNK / FRAME_BYTES)
                 val now = System.nanoTime()
-                // Keep a monotonic cadence despite ordinary scheduler jitter. After
-                // a real scheduling stall, don't produce seconds of catch-up audio.
-                if (now - due > CHUNK_NS * 3) {
-                    late++
-                    due = now
-                }
                 if (now >= nextLog) {
-                    android.util.Log.i("PrismLive", "PCM clock late=$late; ${summary()}; ${StationAudioTap.formatSummary()}")
+                    android.util.Log.i("PrismLive", "PCM clock late=${clock.late}; ${summary()}; ${StationAudioTap.formatSummary()}")
                     nextLog = now + 5_000_000_000L
                 }
-                val wait = due - now
-                if (wait > 0) Thread.sleep(wait / 1_000_000L, (wait % 1_000_000L).toInt())
             }
         } catch (e: InterruptedException) {
             if (!closed.get()) producerError = "interrupted"

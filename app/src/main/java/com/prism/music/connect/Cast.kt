@@ -640,12 +640,17 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 var recoveryAttempts = 0
                 var healthySince = android.os.SystemClock.elapsedRealtime()
                 var lastCaptured = tap.captured
+                var lastHealthLog = 0L
                 while (true) {
                     delay(1500)
                     if (!StationConnectAccount.signedIn.value || player !== p) error("Live disconnected")
                     val captured = tap.captured
                     stalled = if (p.isPlaying && captured == lastCaptured) stalled + 1 else 0
-                    Log.i("PrismLive", "${r.name}: Live health delta=${captured - lastCaptured}; ${input.summary()}; ${active.liveStatus()}")
+                    val healthNow = android.os.SystemClock.elapsedRealtime()
+                    if (healthNow - lastHealthLog >= 5_000L || stalled == 3 || failures > 0) {
+                        Log.i("PrismLive", "${r.name}: Live health delta=${captured - lastCaptured}; ${input.summary()}; ${active.liveStatus()}")
+                        lastHealthLog = healthNow
+                    }
                     lastCaptured = captured
                     // Source buffering is not proof that a room disconnected.
                     if (stalled == 3 || stalled % 10 == 0 && stalled > 0)
