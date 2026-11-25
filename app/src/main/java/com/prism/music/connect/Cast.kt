@@ -566,8 +566,14 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 } == true
                 // Direct PCM first; keep known-working HLS as a one-time fallback.
                 // Never mute the phone merely on command acknowledgement.
-                withContext(Dispatchers.IO) { active.playMusicLive(address, direct = true) }
-                val directConfirmed = awaitStream(9000L)
+                val directConfirmed = try {
+                    withContext(Dispatchers.IO) { active.playMusicLive(address, direct = true) }
+                    awaitStream(9000L)
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) {
+                    Log.w("PrismLive", "Direct PCM start failed: ${e.message}")
+                    false
+                }
                 if (!directConfirmed) {
                     Log.w("PrismLive", "Direct PCM not confirmed; falling back to HLS: ${active.liveStatus()}")
                     withContext(Dispatchers.IO) { active.playMusicLive(address, direct = false) }
@@ -581,10 +587,16 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                 hooks?.remoteChanged()
                 Log.i("PrismLive", "Live connected; captured=${tap.captured}")
                 var failures = 0
+                var stalled = 0
+                var lastCaptured = tap.captured
                 while (true) {
                     delay(1500)
                     if (!StationConnectAccount.signedIn.value || player !== p) error("Live disconnected")
-                    // No remote seek/next/pause commands. Monitor only connection health.
+                    val captured = tap.captured
+                    stalled = if (p.isPlaying && captured == lastCaptured) stalled + 1 else 0
+                    Log.i("PrismLive", "Live health playing=${p.isPlaying} state=${p.playbackState} delta=${captured - lastCaptured}; ${tap.formatSummary()}; ${active.liveStatus()}")
+                    lastCaptured = captured
+                    if (stalled >= 3) error("PCM source stalled while playing: ${tap.formatSummary()}")
                     val ok = active.liveReceiving()
                     failures = if (ok) 0 else failures + 1
                     if (failures >= 4) error("Live HTTP stream ended: ${active.liveStatus()}")
@@ -994,7 +1006,10 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
     private fun applyLocalMode() {
         val p = player ?: return
         // A song a Prism TV can't play (a file on the phone) plays here meanwhile.
-        val remote = liveStreaming || (session != null && !liveLocal) || tv?.local == false
+        // Live is a local decoder and clock with a silent output processor.
+        // Keep its audio sink volume and focus configuration unchanged on handoff.
+        com.prism.music.connect.yandex.StationAudioTap.muteOutput = liveStreaming
+        val remote = (session != null && !liveLocal) || tv?.local == false
         val holdAtEnd = stationWantsPlaying() != null || c.player.sleepEndOfSong.value
         if (p.pauseAtEndOfMediaItems != holdAtEnd) p.pauseAtEndOfMediaItems = holdAtEnd
         if (remote) {
