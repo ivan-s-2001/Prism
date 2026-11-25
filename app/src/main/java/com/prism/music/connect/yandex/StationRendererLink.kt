@@ -140,29 +140,48 @@ internal class StationRendererLink(
             if (!fresh) throw IOException("Station state timed out")
         }
         val s = state ?: throw IOException("No Station state")
-        val currentUrl = loaded?.first
-        val matching = s.matches(currentUrl)
+        return transportInfo(s)
+    }
+
+    private var lastPingAt = 0L
+
+    /** Fast periodic read: never wait for a reply while holding Cast's command mutex. */
+    suspend fun pollState(): Pair<TransportInfo, PositionInfo> {
+        val now = SystemClock.elapsedRealtime()
+        val before = state
+        val interval = if (requested && !paused && before?.matches(loaded?.first) != true) 350L else 750L
+        if ((before == null || now - before.at >= interval) && now - lastPingAt >= interval) {
+            lastPingAt = now
+            send(GlagolProtocol.ping())
+        }
+        val fresh = state ?: throw IOException("No Station state")
+        if (SystemClock.elapsedRealtime() - fresh.at > 4000) throw IOException("Station state is stale")
+        return transportInfo(fresh) to positionInfo(fresh)
+    }
+
+    private fun transportInfo(s: StationPlaybackState): TransportInfo {
+        val matching = s.matches(loaded?.first)
         val mode = when {
             !requested -> "STOPPED"
-            matching && s.playing == true && s.at >= sentAt -> "PLAYING"
             paused && s.playing == false -> "PAUSED_PLAYBACK"
-            matching && s.playing == false -> "PAUSED_PLAYBACK"
-            now - sentAt < 5000 -> "TRANSITIONING"
+            matching && s.playing == true && s.at >= sentAt -> "PLAYING"
+            matching && s.playing == false && s.at >= sentAt -> "PAUSED_PLAYBACK"
+            SystemClock.elapsedRealtime() - sentAt < 5000 -> "TRANSITIONING"
             else -> "STOPPED"
         }
         return TransportInfo(mode, "OK")
     }
 
-    override suspend fun position(): PositionInfo {
-        val s = state
+    override suspend fun position(): PositionInfo = positionInfo(state)
+
+    private fun positionInfo(s: StationPlaybackState?): PositionInfo {
         val track = loaded
-        if (requested && track != null && s != null && s.matches(track.first)) {
-            return PositionInfo(track.first, s.position, s.duration ?: track.second.durationMs)
-        }
         if (paused && track != null && s?.playing == false) {
             return PositionInfo(track.first, resumePosition, track.second.durationMs)
         }
-        // A foreign source must not be mistaken for the current Prism stream.
+        if (requested && track != null && s != null && s.matches(track.first) && s.at >= sentAt) {
+            return PositionInfo(track.first, s.position, s.duration ?: track.second.durationMs)
+        }
         return PositionInfo(s?.id?.takeIf { s.playing == true }, null, null)
     }
 
