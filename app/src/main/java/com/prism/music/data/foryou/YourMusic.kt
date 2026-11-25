@@ -72,7 +72,7 @@ class YourMusic(private val c: AppContainer) {
 
     private fun ok(s: Song) = !s.isEpisode && !s.isLive && !c.library.isDisliked(s.id) && !c.exclusions.blocks(s) && !c.exclusions.isSongExcluded(s.id)
 
-    internal data class WaveTaste(val profile: MyWave.Profile, val favorites: List<Song>, val likedSeeds: List<Song>)
+    internal data class WaveTaste(val profile: MyWave.Profile, val favorites: List<Song>, val likedSeeds: List<Song>, val likes: List<Song>)
 
     /** Local, recency-weighted taste and listening-context profile, shared by Wave start and refill.
      * Context has a small influence until enough history exists; no guesses about lyrics or activity.
@@ -153,10 +153,90 @@ class YourMusic(private val c: AppContainer) {
             .filter { ok(it) && !it.isVideo }
             .sortedByDescending { (0.35 * s.model.score(it) + 0.65 * likeAffinity(it)) * rest(s, it.id) }
             .distinctBy(LocalRadio::sameSong).take(100)
-        val seeds = liked.map { it.first }.filter { !it.isLocal && !it.isLive && !it.isEpisode &&
+        val seedPool = liked.map { it.first }.filter { !it.isLocal && !it.isLive && !it.isEpisode &&
             !c.recFeedback.turnedDown(it.id, known = true) }
-            .distinctBy { it.primaryArtist.lowercase().ifBlank { it.id } }.take(12)
-        WaveTaste(profile, favorites, seeds)
+        val freshSeeds = seedPool.distinctBy { it.primaryArtist.lowercase().ifBlank { it.id } }.take(8)
+        val durableSeeds = seedPool.sortedByDescending { s.model.score(it) }
+            .filter { candidate -> freshSeeds.none { it.primaryArtist.equals(candidate.primaryArtist, true) } }
+            .distinctBy { it.primaryArtist.lowercase().ifBlank { it.id } }.take(4)
+        val historySeeds = if (seedPool.isEmpty()) favorites.filter { !it.isLocal && !it.isVideo &&
+            !c.recFeedback.turnedDown(it.id, known = false) }.distinctBy { it.primaryArtist.lowercase() }.take(8) else emptyList()
+        WaveTaste(profile, favorites, freshSeeds + durableSeeds + historySeeds, liked.map { it.first })
+    }
+
+    private data class WavePage(val songs: List<Song>, val continuation: String?, val at: Long)
+    private val wavePages = LinkedHashMap<String, WavePage>()
+    private val wavePageLock = Mutex()
+
+    /** Related-song recall from several positively selected seeds, even when Home is populated.
+     * Cache is account-scoped and bounded. During casting only one new request per batch is allowed.
+     */
+    private suspend fun waveRelated(seeds: List<Song>, offset: Int, avoid: Set<String>): List<Song> {
+        if (seeds.isEmpty()) return emptyList()
+        val settings = c.settings.current
+        val account = "${settings.authUser}|${settings.dataSyncId}|${settings.accountName}"
+        val turn = (offset / MyWave.HORIZON).coerceAtLeast(0)
+        val pool = seeds.distinctBy { it.id }
+        val rotated = pool.drop(turn % pool.size) + pool.take(turn % pool.size)
+        val chosen = rotated.take(3)
+        val sources = mutableListOf<List<Song>>()
+        var requests = if (c.castingNow) 1 else 3
+        for (song in chosen) {
+            val key = "$account|${song.id}"
+            val now = System.currentTimeMillis()
+            val cached = wavePageLock.withLock { wavePages[key]?.takeIf { now - it.at in 0..600_000L } }
+            if (cached != null) sources += cached.songs
+            val needsMore = cached == null || (cached.continuation != null &&
+                cached.songs.count { LocalRadio.sameSong(it) !in avoid } < 12)
+            if (!needsMore || requests <= 0 || !c.network.isOnline()) continue
+            requests--
+            val page = kotlinx.coroutines.withTimeoutOrNull(if (c.castingNow) 1500L else 2000L) {
+                try {
+                    withContext(Dispatchers.IO) {
+                        c.ytm.next(song.id, playlistId = "RDAMVM${song.id}", continuation = cached?.continuation)
+                    }
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (_: Exception) { null }
+            } ?: continue
+            val merged = (cached?.songs.orEmpty() + page.songs).distinctBy(LocalRadio::sameSong).takeLast(120)
+            wavePageLock.withLock {
+                wavePages.remove(key)
+                wavePages[key] = WavePage(merged, page.continuation, now)
+                while (wavePages.size > 24) wavePages.remove(wavePages.keys.first())
+            }
+            sources += page.songs
+        }
+        return MyWave.fuse(sources, 160)
+    }
+
+    /** Shared start/refill path. New means absent from the available local and imported history, not a claim about
+     * every service the listener has ever used. A failed history read cannot turn known songs into discoveries.
+     */
+    internal suspend fun waveBatch(
+        base: List<Song>, style: MyWave.Style, offset: Int, previous: Song?, existing: List<Song>,
+    ): List<Song> = withContext(Dispatchers.Default) {
+        val taste = waveTaste()
+        val offline = !c.network.isOnline()
+        val avoid = (existing + listOfNotNull(previous) + c.sessionHeard.oldestFirst()).mapTo(hashSetOf(), LocalRadio::sameSong)
+        val ids = existing.mapTo(hashSetOf()) { it.id }
+        val knownIds = c.library.likedIds.value
+        val history = if (style.discoveryPercent > 0) c.discover.heard() else null
+        val related = if (style.discoveryPercent > 0 && !offline)
+            waveRelated(taste.likedSeeds, offset, avoid) else emptyList()
+        val candidates = MyWave.fuse(listOf(related, base), 160)
+        val signals = c.discover.radioSignals(candidates + taste.likes.take(100), style.tune.copy(newness = 0f))
+        val feedback = c.recFeedback
+        MyWave.mix(candidates, taste.likes, isKnown = { history?.has(it) != false || it.id in knownIds },
+            heard = c.sessionHeard::has,
+            allowed = { song ->
+                song.id !in ids && ok(song) && !song.isVideo && (!offline || c.availableOffline(song.id)) &&
+                    !feedback.turnedDown(song.id, known = song.id in knownIds) &&
+                    com.prism.music.data.ExplicitFilter.plays(c.settings.current.behavior.explicitContent, song)
+            },
+            seed = System.nanoTime(), style = style, signals = signals, profile = taste.profile,
+            offset = offset, previousSong = previous, avoid = avoid, artistDoubt = feedback::artistDoubt,
+            servedRecently = { feedback.servedDaysAgo(it.id)?.let { days -> days <= 1 } == true },
+            artistEvidence = feedback.waveEvidence())
     }
 
     /**
