@@ -48,7 +48,7 @@ internal class StationRendererLink(
         // Current audio_play supports file streams; physical playback on this phone is still unverified.
         require(media.mime in setOf("audio/mpeg", "audio/wav", "audio/x-wav"))
         // Anonymous stream reports require a confirmed stopped boundary before replacing playback.
-        if (requested && !paused) stopControl.stop(socket, currentToken(), allowTextFallback = false)
+        if (requested && !paused && observed()?.takeIf { it.at >= sentAt }?.playing != false) stopControl.stop(socket, currentToken(), allowTextFallback = false)
         evidence.clear()
         requested = false
         paused = false
@@ -75,7 +75,7 @@ internal class StationRendererLink(
         paused = false
         sentAt = SystemClock.elapsedRealtime()
         evidence.begin(url, delivery(url), sentAt)
-        val reply = socket.request(currentToken(), GlagolProtocol.playStream(url, media.title, media.artist))
+        val reply = socket.request(currentToken(), GlagolProtocol.playStream(url, media.title, media.artist), timeoutMs = 600L)
         if (reply != null && !reply.equals("SUCCESS", ignoreCase = true)) throw IOException("Station rejected audio_play")
         if (resume != null && resume > 0) {
             val deadline = SystemClock.elapsedRealtime() + 5000
