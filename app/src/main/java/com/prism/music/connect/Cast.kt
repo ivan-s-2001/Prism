@@ -383,6 +383,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         var connectLease: ConnectDeviceClient.Lease? = null
         var connectResult: JsonObject? = null
         var current: Loaded? = null
+        var preparingSong: String? = null
+        var preparingPosition = 0L
         var next: Loaded? = null
         var nextSupported = true
         var waiting: Waiting? = null
@@ -817,9 +819,12 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         if (session !== s) return
         liveLocal = true
         s.current = null
+        s.preparingSong = null
         s.next = null
         s.waiting = null
         loadGen++
+        loadJob?.cancel()
+        seekJob?.cancel()
         applyLocalMode()
         scope.launch { runCatching { onWire { s.ctl.stop() } } }
         _events.tryEmit(tr(R.string.live_streams_play_on_this_phone, s.renderer.name))
@@ -857,7 +862,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         }
         val key = keyFor(song, format)
         val url = server.publish(key, body, s.host)
-        val art = runCatching { artFor(song) }.getOrNull()?.let { server.publish("art_" + key.substringBeforeLast('.') + ".jpg", it, s.host) }
+        // Glagol does not consume DIDL or its artwork URL. Avoid a blocking artwork download on every skip.
+        val art = if (s.renderer.kind == RendererKind.YANDEX_STATION) null else runCatching { artFor(song) }.getOrNull()?.let { server.publish("art_" + key.substringBeforeLast('.') + ".jpg", it, s.host) }
         val length = ((body as? PcmBody)?.let { it.frames * 1000 / it.rate }) ?: durationMs
         val artist = song.artistText.takeUnless { song.artists.isEmpty() }.orEmpty()
         val meta = Didl.song(
@@ -904,6 +910,9 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         s.waiting = null
         s.next = null
         s.wantPlaying = play
+        s.preparingSong = song.id
+        s.preparingPosition = startMs
+        seekJob?.cancel()
         s.lastCommandAt = SystemClock.elapsedRealtime()
         resetAnchor(s)
         nextJob?.cancel()
@@ -917,7 +926,9 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             } catch (e: Exception) {
                 Log.w(TAG, "couldn't get ${song.id} ready to cast", e)
                 if (gen == loadGen && session === s) {
-                    publish(s, loading = false)
+                    s.preparingSong = null
+                    if (s.renderer.kind == RendererKind.YANDEX_STATION) disconnect(keepPlaying = false)
+                    else publish(s, loading = false)
                     _events.tryEmit(tr(R.string.couldn_t_send_to, song.title, s.renderer.name, e.message ?: tr(R.string.it_didn_t_load)))
                 }
                 return@launch
@@ -943,7 +954,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
             }
             if (sent.getOrNull() != true) return@launch
             loaded.loadedAt = SystemClock.elapsedRealtime()
-            loaded.startMs = startMs
+            loaded.startMs = s.preparingPosition
+            s.preparingSong = null
             s.current = loaded
             s.lastCommandAt = loaded.loadedAt
             Log.i(TAG, "sent ${song.id} as ${loaded.format} (${loaded.durationMs} ms), play=$play")
@@ -1046,6 +1058,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         val now = SystemClock.elapsedRealtime()
         val prev = s.lastTransport
         s.lastTransport = ti
+        if (s.preparingSong != null) return // An old track cannot drive the phone during preparation.
         val cur = s.current ?: return
         val key = keyOf(pi.trackUri)
         // The renderer moved on to the lined-up song by itself (gapless): the phone goes along if it hasn't yet.
@@ -1066,6 +1079,15 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         }
         if (key != null && key != cur.key) {
             // Someone else's music on it now (another app, the TV's own menu): after a while, that's the end of casting.
+            if (s.renderer.kind == RendererKind.YANDEX_STATION && !cur.started && s.wantPlaying) {
+                if (now - cur.loadedAt > START_TIMEOUT_MS) refuse(s, cur)
+                else if (!cur.playRetried && now - cur.loadedAt > PLAY_AGAIN_MS) {
+                    cur.playRetried = true
+                    val generation = loadGen
+                    scope.launch { runCatching { onWire { if (session === s && generation == loadGen && s.wantPlaying) s.ctl.play() } } }
+                }
+                return
+            }
             if (key == FOREIGN && now - cur.loadedAt > 8_000) {
                 if (++s.foreign >= 4) disconnect(tr(R.string.is_playing_something_else_now, s.renderer.name), keepPlaying = false)
             }
@@ -1080,7 +1102,9 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                     publish(s, loading = false)
                     // Sent mid-song (casting started there): the renderer goes to where the phone is. A song sent from its
                     // start has the phone follow the renderer instead (one step back, as the renderer took a moment).
-                    if (onSong && cur.startMs > 2_500) seekRenderer(s, p.currentPosition + 200)
+                    if (onSong && cur.startMs > (if (s.renderer.kind == RendererKind.YANDEX_STATION) 0L else 2500L)) {
+                        seekRenderer(s, if (s.renderer.kind == RendererKind.YANDEX_STATION) cur.startMs else p.currentPosition + 200)
+                    }
                     armNext(s)
                 }
                 if (onSong && !p.playWhenReady && now - s.lastCommandAt > GRACE_MS) {
@@ -1110,7 +1134,8 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
                     !cur.started && s.wantPlaying && !cur.playRetried && now - cur.loadedAt > PLAY_AGAIN_MS -> {
                         // Some renderers need Play once loading has finished.
                         cur.playRetried = true
-                        scope.launch { runCatching { onWire { s.ctl.play() } } }
+                        val generation = loadGen
+                        scope.launch { runCatching { onWire { if (session === s && generation == loadGen && s.wantPlaying) s.ctl.play() } } }
                     }
                     !cur.started && s.wantPlaying && now - cur.loadedAt > START_TIMEOUT_MS -> refuse(s, cur)
                 }
@@ -1150,9 +1175,16 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         s.lastCommandAt = s.lastSeekAt
         resetAnchor(s)
         seekJob?.cancel()
+        val generation = loadGen
         seekJob = scope.launch {
             delay(120)
-            runCatching { onWire { s.ctl.seek(ms) } }.onFailure { Log.w(TAG, "seek on ${s.renderer.name} failed: ${it.message}") }
+            try {
+                onWire { if (session === s && generation == loadGen) s.ctl.seek(ms) }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                Log.w(TAG, "seek on ${s.renderer.name} failed: ${e.message}")
+                if (session === s && generation == loadGen && s.renderer.kind == RendererKind.YANDEX_STATION) _events.tryEmit("Не удалось перемотать Яндекс Станцию")
+            }
             s.lastSeekAt = SystemClock.elapsedRealtime()
         }
     }
@@ -1182,9 +1214,9 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         }
         val cur = s.current
         // Already there (the renderer moved on first, or the same song was swapped for its other form).
-        if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT && cur?.song?.id == song.id) { s.waiting = null; return }
+        if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT && s.preparingSong == null && cur?.song?.id == song.id) { s.waiting = null; return }
         val natural = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT
-        if (natural && cur?.started == true) {
+        if (natural && cur?.started == true && s.preparingSong == null) {
             // The phone reached the end first: the renderer finishes its song (or moves on to the lined-up one by itself).
             val left = remainingOnRenderer(s)
             val lined = s.next?.song?.id == song.id
@@ -1205,6 +1237,7 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         resetAnchor(s)
         val cur = s.current
         val song = p.currentMediaItem?.toSong()
+        if (s.preparingSong != null) return // load() reads the latest requested play/pause state.
         if (cur == null || song == null || cur.song.id != song.id) {
             if (playWhenReady && song != null && !song.isLive) load(s, song, p.currentPosition, true)
             return
@@ -1236,6 +1269,10 @@ class Cast(private val app: Application, private val c: AppContainer) : Player.L
         // The phone following the renderer: nothing to send back.
         if (target != null && abs(newPosition.positionMs - target) < 400) return
         if (liveLocal) return
+        if (s.preparingSong != null) {
+            if (player?.currentMediaItem?.mediaId == s.preparingSong) s.preparingPosition = newPosition.positionMs
+            return
+        }
         val cur = s.current ?: return
         if (player?.currentMediaItem?.mediaId != cur.song.id) return
         // Not going yet (sent while paused): it starts there instead.
