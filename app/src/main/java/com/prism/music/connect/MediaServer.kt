@@ -104,14 +104,17 @@ class MediaServer(preferredPort: Int = PORT) {
         }
     }
 
-    private fun observedOutput(entry: Entry, req: HttpRequest, out: OutputStream): OutputStream {
+    private fun observedOutput(entry: Entry, req: HttpRequest, out: OutputStream, start: Long): OutputStream {
         if (entry.observedPeer == null || req.remote.hostAddress != entry.observedPeer) return out
         return object : OutputStream() {
             private var started = false
-            override fun write(b: Int) { out.write(b); mark() }
+            private var position = start
+            private val firstAudioByte = if ((entry.body as? PcmBody)?.wav == true) 44L else 0L
+            override fun write(b: Int) { out.write(b); position++; if (position > firstAudioByte) mark() }
             override fun write(b: ByteArray, off: Int, len: Int) {
                 out.write(b, off, len)
-                if (len > 0) mark()
+                position += len
+                if (len > 0 && position > firstAudioByte) mark()
             }
             override fun flush() = out.flush()
             private fun mark() {
@@ -131,10 +134,10 @@ class MediaServer(preferredPort: Int = PORT) {
         if (parts.size != 3 || parts[0] != "cast") { res.text(404, "Not found"); return }
         val key = parts[2]
         val entry = synchronized(bodies) { if (parts[1] == token) bodies[key] else null } ?: run { res.text(404, "Not found"); return }
-        synchronized(bodies) {
-            if (entry.retired) { res.text(404, "Not found"); return }
-            entry.clients.add(res)
+        val registered = synchronized(bodies) {
+            if (entry.retired) false else { entry.clients.add(res); true }
         }
+        if (!registered) { res.text(404, "Not found"); return }
         try {
         val body = entry.body
         val total = body.length
@@ -152,12 +155,12 @@ class MediaServer(preferredPort: Int = PORT) {
             ByteRange.Unsatisfiable -> res.send(416, null, ByteArray(0), headers + ("Content-Range" to "bytes */$total"))
             ByteRange.Whole -> {
                 val out = res.start(200, headers, total)
-                if (req.method == "GET") body.write(0, total - 1, observedOutput(entry, req, out))
+                if (req.method == "GET") body.write(0, total - 1, observedOutput(entry, req, out, 0))
                 out.flush()
             }
             is ByteRange.Part -> {
                 val out = res.start(206, headers + ("Content-Range" to "bytes ${range.start}-${range.end}/$total"), range.length)
-                if (req.method == "GET") body.write(range.start, range.end, observedOutput(entry, req, out))
+                if (req.method == "GET") body.write(range.start, range.end, observedOutput(entry, req, out, range.start))
                 out.flush()
             }
         }
