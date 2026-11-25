@@ -115,6 +115,12 @@ internal object StationConnectAccount {
         return QuasarStationApi { rejected -> accessToken(session, rejected) }
     }
 
+    fun libraryImport(): YandexLibraryImport? {
+        val session = generation
+        if (credentials == null) return null
+        return YandexLibraryImport { rejected -> accessToken(session, rejected) }
+    }
+
     private suspend fun accessToken(session: Long, rejected: String?): String = refreshLock.withLock {
         val current = credentials?.takeIf { generation == session } ?: throw YandexAuthException("Sign in again", true)
         val due = current.expiresAt?.let { it - System.currentTimeMillis() < 120000 } == true
