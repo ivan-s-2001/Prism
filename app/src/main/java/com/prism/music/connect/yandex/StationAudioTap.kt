@@ -26,6 +26,12 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
         internal var underrunBytes = 0L
         internal var skippedBytes = 0L
         internal var adjustedFrames = 0L
+        internal var recovering = true
+        internal var targetBytes = RATE * 4 * 350 / 1000
+        internal var lastLeft = 0
+        internal var lastRight = 0
+        internal var fadingIn = true
+        internal var recoveries = 0L
         fun read(length: Int): ByteArray = StationAudioTap.readFor(this, length)
         fun summary(): String = StationAudioTap.readerSummary(this)
         override fun close() = StationAudioTap.removeReader(this)
@@ -33,35 +39,69 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
 
     @Synchronized fun openReader(): Reader {
         // First station retains existing startup behavior. Joining stations start near the live edge.
-        val start = if (readers.isEmpty()) written - size else maxOf(written - size, written - RATE * 4 / 5)
+        val start = if (readers.isEmpty()) written - size else maxOf(written - size, written - RATE * 4 * 350 / 1000)
         return Reader(start).also { readers.add(it) }
     }
 
     @Synchronized private fun removeReader(reader: Reader) { readers.remove(reader) }
     @Synchronized private fun readerSummary(reader: Reader): String =
-        "queuedMs=${(written - reader.cursor).coerceAtMost(size.toLong()) * 1000 / (RATE * 4)} underrunBytes=${reader.underrunBytes} skippedBytes=${reader.skippedBytes} adjustedFrames=${reader.adjustedFrames}"
+        "queuedMs=${(written - reader.cursor).coerceAtMost(size.toLong()) * 1000 / (RATE * 4)} underrunBytes=${reader.underrunBytes} skippedBytes=${reader.skippedBytes} adjustedFrames=${reader.adjustedFrames} recoveries=${reader.recoveries} targetMs=${reader.targetBytes * 1000 / (RATE * 4)}"
 
-    @Synchronized private fun readFor(reader: Reader, length: Int): ByteArray {
+    // Only the HTTP/encoder worker waits, never the audio thread. Short decoder
+    // scheduling gaps should not immediately turn into zero-filled PCM packets.
+    private fun readFor(reader: Reader, length: Int): ByteArray {
         require(length >= 0 && length % 4 == 0)
-        if (reader !in readers || !active || !running) return ByteArray(length)
+        val deadline = System.nanoTime() + 45_000_000L
+        while (true) {
+            val result = synchronized(this) {
+                if (reader !in readers || !active || !running || reader.recovering ||
+                    written - maxOf(reader.cursor, written - size) >= length ||
+                    System.nanoTime() >= deadline) readForLocked(reader, length) else null
+            }
+            if (result != null) return result
+            Thread.sleep(4)
+        }
+    }
+
+    private fun readForLocked(reader: Reader, length: Int): ByteArray {
+        require(length >= 0 && length % 4 == 0)
+        if (reader !in readers || !active || !running) return smooth(reader, ByteArray(length), false)
         val oldest = written - size
         if (reader.cursor < oldest) {
             reader.skippedBytes += oldest - reader.cursor
             reader.cursor = oldest
+            reader.fadingIn = true
         }
         val available = written - reader.cursor
+        if (reader.recovering) {
+            if (available < maxOf(reader.targetBytes.toLong(), length.toLong())) {
+                reader.underrunBytes += length
+                padded += length
+                return smooth(reader, ByteArray(length), false)
+            }
+            reader.recovering = false
+            reader.fadingIn = true
+        }
+        if (available < length) {
+            reader.recoveries++
+            reader.targetBytes = (reader.targetBytes + RATE * 4 / 10).coerceAtMost(RATE * 4 * 650 / 1000)
+            reader.recovering = true
+            reader.underrunBytes += length
+            padded += length
+            return smooth(reader, ByteArray(length), false)
+        }
         // Correct only persistent clock drift with at most one stereo frame per
         // 20 ms. A tiny linear interpolation avoids a discontinuous sample drop.
         val adjust = if (length == RATE * 4 / 50 && available >= length + 4) {
             when {
-                available < RATE * 4 / 12 -> -1
-                available > RATE * 4 * 3 / 4 -> 1
+                available < reader.targetBytes -> -1
+                available > reader.targetBytes + RATE * 4 / 4 -> 1
                 else -> 0
             }
         } else 0
         if (adjust == 0) {
             reader.underrunBytes += (length - available).coerceAtLeast(0L)
-            return readAt(length, reader.cursor) { reader.cursor = it }
+            return smooth(reader, readAt(length, reader.cursor) { reader.cursor = it }, true)
         }
         val input = readAt(length + adjust * 4, reader.cursor) { reader.cursor = it }
         reader.adjustedFrames += adjust.toLong()
@@ -84,6 +124,30 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
                 out[index + 1] = (value shr 8).toByte()
             }
         }
+        return smooth(reader, out, true)
+    }
+
+    // Fade only discontinuities (short ~5ms ramps). Ordinary PCM is untouched.
+    private fun smooth(reader: Reader, out: ByteArray, music: Boolean): ByteArray {
+        val frames = out.size / 4
+        if (frames == 0) return out
+        val ramp = minOf(frames, RATE / 200)
+        fun sample(at: Int): Int = (out[at].toInt() and 255) or (out[at + 1].toInt() shl 8)
+        fun put(at: Int, value: Int) {
+            out[at] = value.toByte()
+            out[at + 1] = (value shr 8).toByte()
+        }
+        if (!music || reader.fadingIn) {
+            for (i in 0 until ramp) {
+                val f = (i + 1).toDouble() / ramp
+                val at = i * 4
+                put(at, (reader.lastLeft * (1 - f) + sample(at) * f).toInt())
+                put(at + 2, (reader.lastRight * (1 - f) + sample(at + 2) * f).toInt())
+            }
+        }
+        reader.lastLeft = sample(out.size - 4)
+        reader.lastRight = sample(out.size - 2)
+        reader.fadingIn = !music
         return out
     }
     private var inputRate = 0
@@ -129,7 +193,7 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
         head = 0
         size = 0
         defaultCursor = written
-        readers.forEach { it.cursor = written }
+        readers.forEach { it.cursor = written; it.recovering = true; it.fadingIn = true }
         phase = 0
     }
 
