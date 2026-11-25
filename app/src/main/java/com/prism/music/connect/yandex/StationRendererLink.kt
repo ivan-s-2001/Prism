@@ -22,7 +22,9 @@ internal class StationRendererLink(
         val at: Long,
     )
     @Volatile private var state: Snapshot? = null
+    private val stopControl = StationStopControl()
     private val socket = GlagolSocket(station, identity.certificatePem) { text ->
+        stopControl.onState(text)
         runCatching {
             val root = Json.parseToJsonElement(text).jsonObject["state"] as? JsonObject ?: return@runCatching
             val p = root["playerState"] as? JsonObject
@@ -30,7 +32,7 @@ internal class StationRendererLink(
             state = Snapshot(
                 p.field("playerType")?.contentOrNull,
                 p.field("title")?.contentOrNull,
-                p.field("hasPause")?.booleanOrNull,
+                root.field("playing")?.booleanOrNull,
                 p.field("progress")?.doubleOrNull?.takeIf { it.isFinite() && it >= 0 }?.let { (it * 1000).toLong() },
                 p.field("duration")?.doubleOrNull?.takeIf { it.isFinite() && it > 0 }?.let { (it * 1000).toLong() },
                 root.field("volume")?.doubleOrNull?.takeIf { it in 0.0..1.0 }?.let { (it * 100).toInt() },
@@ -76,8 +78,8 @@ internal class StationRendererLink(
             throw IOException("Station is playing Bluetooth")
         }
         if (paused) {
-            // Resume support varies; do not fake a successful seek.
-            send(command("play"))
+            // Reload the external file, as in the current YandexStation integration.
+            send(GlagolProtocol.playStream(url, media.title, media.artist))
         } else {
             send(GlagolProtocol.stop())
             delay(150)
@@ -90,16 +92,19 @@ internal class StationRendererLink(
 
     override suspend fun pause() {
         if (!requested) return
-        send(command("pause"))
+        send(GlagolProtocol.stop())
         paused = true
         sentAt = SystemClock.elapsedRealtime()
     }
 
     override suspend fun stop() {
-        if (requested) send(GlagolProtocol.stop())
-        requested = false
-        paused = false
-        loaded = null
+        try {
+            if (requested) stopControl.stop(socket, tokens.tokenFor(identity))
+        } finally {
+            requested = false
+            paused = false
+            loaded = null
+        }
     }
 
     override suspend fun seek(ms: Long) {
