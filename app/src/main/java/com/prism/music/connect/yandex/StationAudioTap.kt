@@ -17,6 +17,27 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
     private val ring = ByteArray(RATE * 4 * 2)
     private var head = 0
     private var size = 0
+    private var written = 0L
+    private var defaultCursor = 0L
+    private val readers = mutableSetOf<Reader>()
+
+    /** Each station sees the same PCM, with an independent non-destructive read cursor. */
+    class Reader internal constructor(internal var cursor: Long) : java.io.Closeable {
+        fun read(length: Int): ByteArray = StationAudioTap.readFor(this, length)
+        override fun close() = StationAudioTap.removeReader(this)
+    }
+
+    @Synchronized fun openReader(): Reader {
+        // First station retains existing startup behavior. Joining stations start near the live edge.
+        val start = if (readers.isEmpty()) written - size else maxOf(written - size, written - RATE * 4 / 5)
+        return Reader(start).also { readers.add(it) }
+    }
+
+    @Synchronized private fun removeReader(reader: Reader) { readers.remove(reader) }
+    @Synchronized private fun readFor(reader: Reader, length: Int): ByteArray {
+        if (reader !in readers) return ByteArray(length)
+        return readAt(length, reader.cursor) { reader.cursor = it }
+    }
     private var inputRate = 0
     private var channels = 0
     private var encoding = C.ENCODING_INVALID
@@ -59,6 +80,8 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
     @Synchronized fun clear() {
         head = 0
         size = 0
+        defaultCursor = written
+        readers.forEach { it.cursor = written }
         phase = 0
     }
 
@@ -96,24 +119,29 @@ internal object StationAudioTap : TeeAudioProcessor.AudioBufferSink {
                     ring[end + 3] = (right shr 8).toByte()
                     size += 4
                     captured += 4
+                    written += 4
                 }
             }
         }
     }
 
-    /** Always produces the requested duration: a paused or starved player contributes silence. */
-    @Synchronized fun read(length: Int): ByteArray {
+    /** Legacy/probe reader, independent of all station readers. */
+    @Synchronized fun read(length: Int): ByteArray = readAt(length, defaultCursor) { defaultCursor = it }
+
+    private fun readAt(length: Int, cursor: Long, advance: (Long) -> Unit): ByteArray {
         require(length >= 0 && length % 4 == 0)
         val out = ByteArray(length)
         if (!active || !running) return out
-        val available = minOf(length, size)
+        val oldest = written - size
+        val at = maxOf(cursor, oldest)
+        val available = minOf(length.toLong(), written - at).toInt()
+        val index = (head + (at - oldest).toInt()) % ring.size
+        val first = minOf(available, ring.size - index)
+        ring.copyInto(out, 0, index, index + first)
+        if (available > first) ring.copyInto(out, first, 0, available - first)
         consumed += available
         padded += length - available
-        val first = minOf(available, ring.size - head)
-        ring.copyInto(out, 0, head, head + first)
-        if (available > first) ring.copyInto(out, first, 0, available - first)
-        head = (head + available) % ring.size
-        size -= available
+        advance(at + available)
         return out
     }
 }
