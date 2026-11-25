@@ -20,6 +20,8 @@ import com.prism.music.playback.QueueKind
 import com.prism.music.playback.QueueSource
 import com.prism.music.ui.components.Artwork
 import com.prism.music.ui.components.scenarioEdgeFade
+import com.prism.music.ui.components.WavePresetNameDialog
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.prism.music.ui.theme.LocalContainer
 import com.prism.music.ui.theme.PrismIcons
 import kotlinx.coroutines.CancellationException
@@ -34,6 +36,10 @@ internal fun TvWavePlace(nav: TvNav) {
     val scope = rememberCoroutineScope()
     val source by c.queue.source.collectAsState()
     val scenarioScroll = rememberScrollState()
+    val appSettings by c.settings.flow.collectAsState()
+    val savedPresets = appSettings.streamPresets
+    var namingPreset by rememberSaveable { mutableStateOf(false) }
+    var chosenPresetId by rememberSaveable { mutableStateOf<String?>(null) }
     val scenarioOrder = remember {
         val clock = java.util.Calendar.getInstance()
         WaveScenarios.stripOrder(clock.get(java.util.Calendar.HOUR_OF_DAY),
@@ -51,6 +57,8 @@ internal fun TvWavePlace(nav: TvNav) {
     }
     var style by remember(source.originId) { mutableStateOf(restored()) }
     var draft by remember { mutableStateOf(style) }
+    val activeSaved = savedPresets.firstOrNull { it.id == chosenPresetId && it.origin == style.origin }
+        ?: savedPresets.firstOrNull { chosenPresetId == null && it.origin == style.origin }
     var tuning by remember { mutableStateOf(false) }
     var starting by remember { mutableStateOf(false) }
     var job by remember { mutableStateOf<Job?>(null) }
@@ -134,28 +142,49 @@ internal fun TvWavePlace(nav: TvNav) {
                         { draft = draft.copy(russianPercent = -1) }, Modifier.tvItem("tv_wave/auto"), primary = draft.russianPercent < 0)
                     Text(l("Язык определяется приблизительно по названиям.", "Language is estimated from titles."),
                         style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-                    TvButton(l("Применить", "Apply"), { val chosen = draft; toggleTuning(false); start(chosen) },
-                        Modifier.tvItem("tv_wave/apply"), primary = true)
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        TvButton(l("Применить", "Apply"), { val chosen = draft; toggleTuning(false); start(chosen) },
+                            Modifier.weight(1f).tvItem("tv_wave/apply"), primary = true)
+                        TvButton(l("Сохранить", "Save"), { namingPreset = true },
+                            Modifier.weight(1f).tvItem("tv_wave/save"), icon = PrismIcons.Add)
+                    }
                 }
-                var group by remember { mutableStateOf(WaveScenarios.Group.DAY) }
-                var page by remember(group) { mutableIntStateOf(0) }
-                val options = WaveScenarios.all.filter { it.group == group }
-                val pages = options.chunked(4)
+                var groupIndex by remember { mutableIntStateOf(0) }
+                var page by remember(groupIndex) { mutableIntStateOf(0) }
+                val group = WaveScenarios.Group.entries.getOrNull(groupIndex)
+                val pages = WaveScenarios.all.filter { it.group == group }.chunked(4)
+                val customPages = savedPresets.chunked(3)
+                val pageCount = if (group == null) customPages.size else pages.size
+                val visiblePage = page.coerceAtMost((pageCount - 1).coerceAtLeast(0))
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)) {
                     Text(l("Сценарии", "Scenarios"), style = MaterialTheme.typography.headlineSmall)
                     TvButton(when(group) {
                         WaveScenarios.Group.DAY -> l("Время дня", "Time of day")
                         WaveScenarios.Group.ACTIVITY -> l("Занятие", "Activity")
                         WaveScenarios.Group.DISCOVERY -> l("Вкус", "Taste")
-                    }, { group = WaveScenarios.Group.entries[(group.ordinal + 1) % WaveScenarios.Group.entries.size] },
+                        null -> l("Мои пресеты", "My presets")
+                    }, { groupIndex = (groupIndex + 1) % (WaveScenarios.Group.entries.size + 1) },
                         Modifier.fillMaxWidth().tvItem("tv_wave/group"))
-                    pages.getOrElse(page) { emptyList() }.forEach { preset ->
+                    if (group == null) {
+                        if (savedPresets.isEmpty()) Text(l("Нет сохранённых пресетов", "No saved presets"), color = scheme.onSurfaceVariant)
+                        customPages.getOrElse(visiblePage) { emptyList() }.forEach { preset ->
+                            key(preset.id) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    TvButton(preset.name, { chosenPresetId = preset.id; draft = MyWave.style(preset.origin) },
+                                        Modifier.weight(1f).tvItem("tv_wave/custom/${preset.id}"), icon = PrismIcons.Bookmark,
+                                        primary = draft.origin == preset.origin)
+                                    TvIconButton(PrismIcons.Delete, l("Удалить ", "Delete ") + preset.name,
+                                        { c.settings.deleteStreamPreset(preset.id) }, Modifier.tvItem("tv_wave/delete/${preset.id}"))
+                                }
+                            }
+                        }
+                    } else pages.getOrElse(visiblePage) { emptyList() }.forEach { preset ->
                         TvButton(if (ru) preset.ru else preset.en,
-                            { draft = preset.style.copy(russianPercent = draft.russianPercent) },
+                            { chosenPresetId = preset.id; draft = preset.style.copy(russianPercent = draft.russianPercent) },
                             Modifier.fillMaxWidth().tvItem("tv_wave/preset/${preset.id}"),
                             primary = draft.copy(russianPercent = -1) == preset.style, icon = PrismIcons.waveScenario(preset.glyph))
                     }
-                    if (pages.size > 1) TvButton(l("Ещё", "More"), { page = (page + 1) % pages.size },
+                    if (pageCount > 1) TvButton(l("Ещё", "More"), { page = (visiblePage + 1) % pageCount },
                         Modifier.tvItem("tv_wave/more"))
                 }
             }
@@ -211,15 +240,28 @@ internal fun TvWavePlace(nav: TvNav) {
                         .horizontalScroll(scenarioScroll).padding(vertical = 8.dp, horizontal = 14.dp)
                         .rememberedFocus().focusGroup(),
                         horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        savedPresets.forEach { preset ->
+                            key(preset.id) {
+                                TvScenarioDisc(preset.name, PrismIcons.Bookmark, activeSaved?.id == preset.id,
+                                    { chosenPresetId = preset.id; start(MyWave.style(preset.origin)) }, Modifier.tvItem("tv_wave/custom/${preset.id}"))
+                            }
+                        }
                         scenarioOrder.forEach { preset ->
                             TvScenarioDisc(label = if (ru) preset.ru else preset.en,
-                                icon = PrismIcons.waveScenario(preset.glyph), selected = active?.id == preset.id,
-                                onClick = { start(preset.style.copy(russianPercent = style.russianPercent)) },
+                                icon = PrismIcons.waveScenario(preset.glyph), selected = activeSaved == null && active?.id == preset.id,
+                                onClick = { chosenPresetId = preset.id; start(preset.style.copy(russianPercent = style.russianPercent)) },
                                 modifier = Modifier.tvItem("tv_wave/quick/${preset.id}"))
                         }
                     }
                 }
             }
         }
+    }
+    if (tuning && namingPreset) WavePresetNameDialog(ru, savedPresets.map { it.name }, { namingPreset = false }) { name ->
+        chosenPresetId = c.settings.saveStreamPreset(name, draft.origin)
+        namingPreset = false
+        val chosen = draft
+        toggleTuning(false)
+        start(chosen)
     }
 }

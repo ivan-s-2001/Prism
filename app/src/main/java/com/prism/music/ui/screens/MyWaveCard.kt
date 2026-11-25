@@ -8,6 +8,8 @@ import com.prism.music.ui.theme.GlassSurface
 import com.prism.music.ui.components.PrismChip
 import com.prism.music.ui.components.PrismScenarioDisc
 import com.prism.music.ui.components.scenarioEdgeFade
+import com.prism.music.ui.components.WavePresetNameDialog
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import com.prism.music.ui.components.RoundAction
@@ -151,6 +153,19 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             calendar.get(java.util.Calendar.DAY_OF_WEEK) in listOf(java.util.Calendar.SATURDAY, java.util.Calendar.SUNDAY))
     }
     val scenarioScroll = androidx.compose.foundation.lazy.rememberLazyListState()
+    val savedPresets = settings.streamPresets
+    var namingPreset by rememberSaveable { mutableStateOf(false) }
+    var chosenPresetId by rememberSaveable { mutableStateOf<String?>(null) }
+    var revealPresetId by rememberSaveable { mutableStateOf<String?>(null) }
+    val activeSaved = savedPresets.firstOrNull { it.id == chosenPresetId && it.origin == style.origin }
+        ?: savedPresets.firstOrNull { chosenPresetId == null && it.origin == style.origin }
+    LaunchedEffect(savedPresets, revealPresetId) {
+        val index = savedPresets.indexOfFirst { it.id == revealPresetId }
+        if (index >= 0) {
+            scenarioScroll.scrollToItem(index)
+            revealPresetId = null
+        }
+    }
     var selectionJob by remember { mutableStateOf<Job?>(null) }
     var requestVersion by remember { mutableIntStateOf(0) }
     fun characterName(v: MyWave.Character) = when (v) {
@@ -431,12 +446,18 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 state = scenarioScroll,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                items(savedPresets, key = { it.id }) { preset ->
+                    PrismScenarioDisc(label = preset.name, icon = PrismIcons.Bookmark,
+                        selected = activeSaved?.id == preset.id,
+                        onClick = { chosenPresetId = preset.id; start(MyWave.style(preset.origin)) },
+                        modifier = Modifier.testTag("wave:custom:${preset.id}"))
+                }
                 items(scenarioOrder, key = { it.id }) { scenario ->
                     PrismScenarioDisc(
                         label = if (ru) scenario.ru else scenario.en,
                         icon = PrismIcons.waveScenario(scenario.glyph),
-                        selected = style.copy(russianPercent = -1) == scenario.style,
-                        onClick = { start(scenario.style.copy(russianPercent = style.russianPercent)) },
+                        selected = activeSaved == null && style.copy(russianPercent = -1) == scenario.style,
+                        onClick = { chosenPresetId = scenario.id; start(scenario.style.copy(russianPercent = style.russianPercent)) },
                         modifier = Modifier.testTag("wave:scenario:${scenario.id}"))
                 }
             }
@@ -465,6 +486,26 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 }
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(l("Мои пресеты", "My presets"), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                        PrismChip(selected = false, onClick = { namingPreset = true }, icon = PrismIcons.Add,
+                            label = l("Сохранить", "Save"), modifier = Modifier.height(44.dp).testTag("wave:preset:save"))
+                    }
+                    if (savedPresets.isEmpty()) Text(l("Сохрани текущие настройки как отдельный сценарий.", "Save the current settings as your own scenario."),
+                        style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                    savedPresets.forEach { preset ->
+                        key(preset.id) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                PrismChip(selected = activeSaved?.id == preset.id, label = preset.name, icon = PrismIcons.Bookmark,
+                                    modifier = Modifier.weight(1f).height(44.dp),
+                                    onClick = { chosenPresetId = preset.id; start(MyWave.style(preset.origin)); settingsOpen = false })
+                                IconButton(onClick = { c.settings.deleteStreamPreset(preset.id) }) {
+                                    Icon(PrismIcons.Delete, l("Удалить ", "Delete ") + preset.name)
+                                }
+                            }
+                        }
+                    }
+                    HorizontalDivider(color = scheme.outlineVariant)
                     Text(l("Оформление плеера", "Player card backdrop"), style = MaterialTheme.typography.titleSmall)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         PrismChip(selected = !settings.streamThemeColors,
@@ -562,6 +603,13 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 }
             }
         }
+    }
+    if (settingsOpen && namingPreset) WavePresetNameDialog(ru, savedPresets.map { it.name }, { namingPreset = false }) { name ->
+        val id = c.settings.saveStreamPreset(name, style.origin)
+        chosenPresetId = id
+        revealPresetId = id
+        namingPreset = false
+        settingsOpen = false
     }
 }
 

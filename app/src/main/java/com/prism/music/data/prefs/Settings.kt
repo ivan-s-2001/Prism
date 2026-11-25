@@ -78,6 +78,10 @@ enum class HomeShortcut(val label: String) {
 @Serializable
 data class PinnedPlaylist(val id: String, val title: String, val thumbnail: String? = null)
 
+/** Named Stream mix, using the version-compatible MyWave origin format. */
+@Serializable
+data class SavedWavePreset(val id: String, val name: String, val origin: String)
+
 /** Where Autoplay finds what to play next. */
 enum class AutoplaySource(val label: String) { MIXED(tr(R.string.both)), YOURS(tr(R.string.your_music)), YOUTUBE(tr(R.string.prism_music)) }
 
@@ -1911,6 +1915,7 @@ data class AppSettings(
     val replayThemeColors: Boolean = false,
     val streamThemeColors: Boolean = false,
     val streamRussianPercent: Int = -1,
+    val streamPresets: List<SavedWavePreset> = emptyList(),
     /**
      * Performance mode (1.7.6): Prism drawn as lightly as 1.6 was, for slower phones ([effective]). Every feature stays;
      * only the effects that cost the phone the most each frame are paused, and the listener's own choices come back
@@ -2316,6 +2321,7 @@ class SettingsRepository(
         val replayThemeColors = booleanPreferencesKey("replay_theme_colors")
         val streamThemeColors = booleanPreferencesKey("stream_theme_colors")
         val streamRussianPercent = intPreferencesKey("stream_russian_percent")
+        val streamPresets = stringPreferencesKey("stream_presets")
         // 1.7.8: the player's look ([ViewLook]) and Prism's behaviour ([BehaviorPrefs]).
         val panelPlayer = stringPreferencesKey("panel_player")
         val queueHeadings = booleanPreferencesKey("queue_headings")
@@ -2519,7 +2525,7 @@ class SettingsRepository(
         /** Settings that aren't part of a Look: what you listen to and how, your account, Home's contents. */
         val notLook: Set<String> by lazy {
             setOf(
-                "performance_mode", "performance_offered", "share_youtube_links", "mix_keep_albums",
+                "stream_presets", "performance_mode", "performance_offered", "share_youtube_links", "mix_keep_albums",
                 "player_menu_hidden", "player_menu_tiles",
                 "lyrics_file_words", "lyrics_file_translation",
                 "merge_liked_videos", "volume_control", "app_volume", "speed_dial_youtube_only", "swipe_tabs",
@@ -3098,6 +3104,7 @@ class SettingsRepository(
             replayThemeColors = p[K.replayThemeColors] ?: d.replayThemeColors,
             streamThemeColors = p[K.streamThemeColors] ?: d.streamThemeColors,
             streamRussianPercent = (p[K.streamRussianPercent] ?: d.streamRussianPercent).coerceIn(-1, 100),
+            streamPresets = readStreamPresets(p[K.streamPresets]),
             performanceMode = p[K.performanceMode] ?: d.performanceMode,
             performanceOffered = p[K.performanceOffered] ?: d.performanceOffered,
         )
@@ -3940,6 +3947,26 @@ class SettingsRepository(
     fun setReplayThemeColors(v: Boolean) = edit { it[K.replayThemeColors] = v }
     fun setStreamThemeColors(v: Boolean) = edit { it[K.streamThemeColors] = v }
     fun setStreamRussianPercent(v: Int) = edit { it[K.streamRussianPercent] = v.coerceIn(-1, 100) }
+
+    private fun readStreamPresets(raw: String?): List<SavedWavePreset> =
+        raw?.let { runCatching { json.decodeFromString<List<SavedWavePreset>>(it) }.getOrNull() }
+            .orEmpty().filter { it.id.isNotBlank() && it.name.isNotBlank() && com.prism.music.data.foryou.MyWave.isOrigin(it.origin) }
+            .distinctBy { it.id }
+
+    internal fun saveStreamPreset(name: String, origin: String): String {
+        val cleaned = name.trim().take(40)
+        require(cleaned.isNotEmpty() && com.prism.music.data.foryou.MyWave.isOrigin(origin))
+        val preset = SavedWavePreset(java.util.UUID.randomUUID().toString(), cleaned, origin)
+        edit { p ->
+            val previous = readStreamPresets(p[K.streamPresets])
+            p[K.streamPresets] = json.encodeToString<List<SavedWavePreset>>(previous + preset)
+        }
+        return preset.id
+    }
+
+    internal fun deleteStreamPreset(id: String) = edit { p ->
+        p[K.streamPresets] = json.encodeToString<List<SavedWavePreset>>(readStreamPresets(p[K.streamPresets]).filterNot { it.id == id })
+    }
     fun setPerformanceMode(v: Boolean) = edit { it[K.performanceMode] = v; it[K.performanceOffered] = true }
     fun setPerformanceOffered() = edit { it[K.performanceOffered] = true }
 
