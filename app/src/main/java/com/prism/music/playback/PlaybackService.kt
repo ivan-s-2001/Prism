@@ -1905,7 +1905,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                     seed = System.nanoTime(), count = com.prism.music.data.foryou.MyWave.HORIZON, style = waveStyle, signals = signals,
                     artistDoubt = fb::artistDoubt,
                     servedRecently = { fb.servedDaysAgo(it.id)?.let { days -> days <= 1 } == true },
-                    profile = taste, previousSong = previous, avoid = avoid)
+                    profile = taste, previousSong = previous, avoid = avoid, artistEvidence = fb.waveEvidence())
             }
             if (!isActive || c.queue.source.value !== src) return@launch
             if (additions.isNotEmpty()) {
