@@ -346,10 +346,47 @@ class HistoryImports(private val c: AppContainer) {
         matching.withLock {
             withContext(Dispatchers.IO) {
                 val news = addLibrary(lib, LibraryJob.LibraryChoice(albums = false, artists = false))
-                ImportMatchWorker.enqueue(c.app, _matchOnMobile.value)
+                val tracks = (lib.liked + lib.playlists.flatMap { it.tracks }).distinctBy { it.key }
+                val dao = c.db.imports()
+                for (chunk in tracks.chunked(400)) {
+                    val byKey = chunk.associateBy { it.key }
+                    val retry = dao.matches(byKey.keys.toList()).mapNotNull { old ->
+                        val t = byKey.getValue(old.songKey)
+                        if (old.status !in setOf(MatchStatus.NONE.name, MatchStatus.PENDING.name, MatchStatus.REVIEW.name)) null
+                        else old.copy(artist = (t.artistCredit ?: t.artist).take(500),
+                            durationMs = t.durationMs.takeIf { it > 0 } ?: old.durationMs,
+                            isrc = t.isrc ?: old.isrc, sourceId = t.sourceId,
+                            status = MatchStatus.PENDING.name, matchedId = null, candidates = null, checkedAt = 0L)
+                    }
+                    if (retry.isNotEmpty()) dao.putMatches(retry)
+                }
+                prefs.edit().putStringSet("yandex_last_keys", tracks.map { it.key }.toSet())
+                    .putInt("yandex_last_playlists", lib.playlists.size)
+                    .putLong("yandex_last_read", System.currentTimeMillis()).apply()
+                applyLibraryNow()
+                ImportMatchWorker.enqueue(c.app, _matchOnMobile.value, explicitTransfer = true)
                 news
             }
         }
+    }
+
+    data class YandexProgress(
+        val lastRead: Long, val total: Int, val matched: Int, val pending: Int,
+        val review: Int, val missing: Int, val skipped: Int, val likesPlaced: Int, val playlistsPlaced: Int,
+    )
+
+    suspend fun yandexProgress(): YandexProgress = withContext(Dispatchers.IO) {
+        val keys = prefs.getStringSet("yandex_last_keys", emptySet()).orEmpty().toList()
+        val rows = keys.chunked(400).flatMap { c.db.imports().matches(it) }
+        val job = LibraryJob.load(jobFile)
+        val matched = rows.filter { MatchStatus.of(it.status).matched && it.matchedId != null }.map { it.songKey }.toSet()
+        YandexProgress(prefs.getLong("yandex_last_read", 0L), keys.size, matched.size,
+            rows.count { it.status == MatchStatus.PENDING.name } + (keys.size - rows.size).coerceAtLeast(0),
+            rows.count { it.status == MatchStatus.REVIEW.name },
+            rows.count { it.status == MatchStatus.NONE.name },
+            rows.count { it.status == MatchStatus.SKIPPED.name },
+            job.likedDone.count { it in matched },
+            job.playlists.count { it.uri?.startsWith("yandex:") == true && it.prismId != null && it.keys.any { key -> key in keys } })
     }
 
     /** Lines [lib] up (as far as [choice] says); returns what of it is new. */
@@ -410,6 +447,19 @@ class HistoryImports(private val c: AppContainer) {
     private val matcher = TrackMatcher { q ->
         c.ytm.search(q, SearchFilter.SONGS).items.filterIsInstance<SongItem>().map { it.song }
     }
+    private val yandexFallback = TrackMatcher { q ->
+        val songs = c.ytm.search(q, SearchFilter.TOP).items.filterIsInstance<SongItem>().map { it.song }
+        if (songs.isNotEmpty()) songs
+        else c.ytm.search(q, SearchFilter.VIDEOS).items.filterIsInstance<SongItem>().map { it.song }
+    }
+
+    private suspend fun matchImported(m: com.prism.music.data.db.ImportMatchEntity): MatchResult {
+        val t = m.toTrack()
+        val first = matcher.match(t)
+        if (m.sourceId?.startsWith("yandex:") != true || first.status == MatchStatus.SURE) return first
+        val fallback = yandexFallback.match(t)
+        return if (fallback.status == MatchStatus.SURE || first.status == MatchStatus.NONE) fallback else first
+    }
 
     /**
      * Matches songs until none are left or [until] (a time), a few searches at a time with a pause between, so YouTube
@@ -422,11 +472,11 @@ class HistoryImports(private val c: AppContainer) {
         var done = 0
         var failures = 0
         while (System.currentTimeMillis() < until && !stopped()) {
-            val batch = dao.toMatch(week, 30)
+            val batch = dao.toMatchYandex(week, 30).ifEmpty { dao.toMatch(week, 30) }
             if (batch.isEmpty()) break
             for (group in batch.chunked(AT_ONCE)) {
                 val answers = coroutineScope {
-                    group.map { m -> async { m to runCatching { matcher.match(m.toTrack()) } } }.awaitAll()
+                    group.map { m -> async { m to runCatching { matchImported(m) }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it } } }.awaitAll()
                 }
                 for ((m, r) in answers) {
                     val result = r.getOrNull()
@@ -436,7 +486,8 @@ class HistoryImports(private val c: AppContainer) {
                     done++
                 }
                 // Offline or refused a few times running: stop for now, WorkManager tries again later.
-                if (failures >= AT_ONCE * 3) return@withContext false
+                if (failures >= AT_ONCE * 3) { applyLibraryNow(); return@withContext false }
+                if (done > 0 && done % AT_ONCE == 0) applyLibraryNow()
                 progress(done, total)
                 delay(PAUSE_MS)
                 if (System.currentTimeMillis() >= until || stopped()) break
