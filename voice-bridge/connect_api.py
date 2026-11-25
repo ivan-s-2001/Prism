@@ -33,7 +33,7 @@ class ConnectApi:
         self.devices = PairedDevices(path)
         self.sessions = ConnectSessions()
         self.lock = threading.RLock()
-        self.last_host = None
+        self.last_host = self.devices.reserved()
 
     def approve(self, code, request_id):
         with self.lock:
@@ -69,6 +69,7 @@ class ConnectApi:
                 if path == "/v2/claim":
                     if self.last_host not in (None, did):
                         raise Conflict("host_reserved")
+                    self.devices.reserve(did)
                     g = self.sessions.claim(a, did)
                     self.last_host = did
                     return 200, {"generation": g}
@@ -105,6 +106,7 @@ class ConnectApi:
                     current = self.sessions.view(a)
                     if current is not None:
                         self.sessions.release(a, did, data.get("generation"))
+                    self.devices.release(did)
                     self.last_host = None
                     return 200, {"ok": True}
                 if path == "/v2/revoke":
