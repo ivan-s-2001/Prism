@@ -1,6 +1,5 @@
 package com.prism.music.ui.screens
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -16,9 +15,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import com.prism.music.ui.components.Artwork
 import com.prism.music.data.model.SongItem
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,8 +37,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.PI
-import kotlin.math.sin
 
 /** The Wave has its own route and can start before Home has ever been opened. */
 @Composable
@@ -234,78 +228,139 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             }
         }
     }
+    // One player card, not a decorative hero followed by a second mini player.
     @Composable fun Hero(modifier: Modifier, compact: Boolean) {
-        Box(modifier.clip(ui.shape(28.dp))
-            .background(Brush.verticalGradient(listOf(scheme.surfaceContainerHigh, accent.copy(alpha = 0.17f), scheme.surface)))
-            .testTag("home:my_wave"), contentAlignment = Alignment.Center) {
-            Canvas(Modifier.fillMaxSize()) {
-                val width = size.width
-                val height = size.height
-                drawCircle(Brush.radialGradient(listOf(accent.copy(alpha = if (playing && wave) 0.36f else 0.22f),
-                    accent.copy(alpha = 0.04f), androidx.compose.ui.graphics.Color.Transparent),
-                    center = center, radius = maxOf(width, height) * 0.6f), radius = maxOf(width, height) * 0.6f)
-                for (n in 0..7) {
-                    val path = Path()
-                    val offset = n * height * 0.042f
-                    for (j in 0..100) {
-                        val t = j / 100f
-                        val envelope = sin(t * PI).toFloat()
-                        val y = height * 0.33f + offset +
-                            (sin(t * 2.0 * PI + n * 0.35) * 0.12 * height * envelope).toFloat()
-                        if (j == 0) path.moveTo(t * width, y) else path.lineTo(t * width, y)
+        BoxWithConstraints(modifier.clip(ui.shape(24.dp)).background(scheme.surfaceContainerHigh)
+            .padding(12.dp).testTag("home:my_wave")) {
+            val short = maxHeight < 350.dp
+            @Composable fun Cover(modifier: Modifier) {
+                if (current != null) {
+                    Artwork(c.covers.art(SongItem(current)), modifier.clip(ui.shape(16.dp)).clickable(onClick = onOpenPlayer),
+                        ui.shape(16.dp), size = 512)
+                } else {
+                    Box(modifier.clip(ui.shape(16.dp)).background(scheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
+                        Icon(PrismIcons.Equalizer, null, Modifier.size(44.dp), tint = scheme.primary)
                     }
-                    drawPath(path, accent.copy(alpha = (if (playing && wave) 0.32f else 0.19f) - n * 0.016f),
-                        style = Stroke((if (n % 2 == 0) 2.dp else 1.dp).toPx()))
                 }
             }
-            Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 10.dp)) {
-                Text(activeScenario?.let { if (ru) it.ru else it.en } ?: l("Музыка в твоём ритме", "Music in your rhythm"),
-                    color = scheme.onSurface, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            @Composable fun Metadata() {
+                Column(Modifier.fillMaxWidth().then(if (current != null) Modifier.clickable(onClick = onOpenPlayer) else Modifier)) {
+                    Text(current?.title ?: l("Музыка в твоём ритме", "Music in your rhythm"),
+                        style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(current?.primaryArtist ?: l("Начни слушать", "Start listening"),
+                        style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            @Composable fun Feedback() {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { current?.let { c.library.toggleLike(it) } }, enabled = current != null) {
+                        val on = current?.id in liked
+                        Icon(if (on) PrismIcons.HeartFilled else PrismIcons.Heart, l("Нравится", "Like"),
+                            tint = if (on) accent else scheme.onSurface)
+                    }
+                    IconButton(onClick = {
+                        current?.let {
+                            val on = it.id in disliked
+                            c.library.setDisliked(it, !on)
+                            if (!on && c.player.hasNext.value) c.player.next()
+                        }
+                    }, enabled = current != null) {
+                        Icon(if (current?.id in disliked) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown,
+                            l("Не моё", "Not for me"), tint = if (current?.id in disliked) accent else scheme.onSurface)
+                    }
+                    IconButton(onClick = { if (onRetry != null && !wave) onRetry() else start() }, enabled = !starting,
+                        modifier = Modifier.testTag("home:my_wave:refresh")) {
+                        Icon(PrismIcons.Refresh, l("Встряхнуть", "Refresh Stream"))
+                    }
+                }
+            }
+            @Composable fun Transport() {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
                     IconButton(onClick = { c.player.previous() }, enabled = wave && hasPrevious) {
-                        Icon(PrismIcons.Previous, l("Предыдущий трек", "Previous track"))
+                        Icon(PrismIcons.Previous, l("Предыдущий трек", "Previous track"), Modifier.size(28.dp))
                     }
                     FilledIconButton(onClick = { if (wave) c.player.togglePlay() else start() },
-                        enabled = wave || !starting, modifier = Modifier.size(if (compact) 58.dp else 76.dp).testTag("home:my_wave:play"),
+                        enabled = wave || !starting, modifier = Modifier.size(if (short) 52.dp else 64.dp).testTag("home:my_wave:play"),
                         colors = IconButtonDefaults.filledIconButtonColors(containerColor = accent, contentColor = scheme.onPrimary)) {
                         if (pending && !wave) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp, color = scheme.onPrimary)
                         else Icon(if (wave && playing) PrismIcons.Pause else PrismIcons.Play,
-                            if (wave && playing) l("Пауза", "Pause") else l("Слушать", "Play"), Modifier.size(32.dp))
+                            if (wave && playing) l("Пауза", "Pause") else l("Слушать", "Play"), Modifier.size(30.dp))
                     }
                     IconButton(onClick = { c.player.next() }, enabled = wave && hasNext) {
-                        Icon(PrismIcons.Next, l("Следующий трек", "Next track"))
+                        Icon(PrismIcons.Next, l("Следующий трек", "Next track"), Modifier.size(28.dp))
                     }
                 }
             }
-        }
-    }
-    @Composable fun Track() {
-        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (current != null) {
-                Artwork(c.covers.art(SongItem(current)), Modifier.size(44.dp).clickable(onClick = onOpenPlayer), ui.shape(10.dp), size = 160)
-                Column(Modifier.weight(1f).clickable(onClick = onOpenPlayer)) {
-                    Text(current.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(current.primaryArtist, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+            @Composable fun Progress() {
+                // Isolate playhead updates here. A drag is committed only for the same song.
+                val id = current?.id
+                val timing by produceState(0L to 0L, id, playing) {
+                    while (true) {
+                        value = if (id != null && c.player.currentSong.value?.id == id)
+                            c.player.position to c.player.duration.coerceAtLeast(0L) else 0L to 0L
+                        kotlinx.coroutines.delay(if (playing) 250L else 500L)
+                    }
                 }
-                IconButton(onClick = { c.library.toggleLike(current) }) {
-                    val on = current.id in liked
-                    Icon(if (on) PrismIcons.HeartFilled else PrismIcons.Heart, l("Нравится", "Like"), tint = if (on) accent else scheme.onSurface)
+                var scrub by remember(id) { mutableStateOf<Float?>(null) }
+                val duration = timing.second
+                val seekable = id != null && duration > 0 && current?.isLive != true
+                val fraction = scrub ?: if (seekable) (timing.first.toFloat() / duration).coerceIn(0f, 1f) else 0f
+                Column(Modifier.fillMaxWidth()) {
+                    com.prism.music.ui.player.ThinSlider(value = fraction,
+                        onValueChange = { if (seekable) scrub = it },
+                        onValueChangeFinished = {
+                            if (seekable && c.player.currentSong.value?.id == id && c.queue.source.value.isMyWave)
+                                scrub?.let { c.player.seekTo((it * duration).toLong()) }
+                            scrub = null
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("stream:seek"),
+                        idleHeight = 5.dp, activeHeight = 9.dp, thumb = true,
+                        fill = androidx.compose.ui.graphics.SolidColor(accent))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(com.prism.music.ui.player.formatTime(if (seekable) (fraction * duration).toLong() else 0L),
+                            style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                        Text(com.prism.music.ui.player.formatTime(duration), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                    }
                 }
-                IconButton(onClick = {
-                    val on = current.id in disliked
-                    c.library.setDisliked(current, !on)
-                    if (!on && c.player.hasNext.value) c.player.next()
-                }) { Icon(if (current.id in disliked) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown, l("Не моё", "Not for me")) }
-            } else {
-                Text(l("Персональные рекомендации", "Personal recommendations"), style = MaterialTheme.typography.bodyMedium,
-                    color = scheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            IconButton(onClick = { if (onRetry != null && !wave) onRetry() else start() },
-                enabled = !starting, modifier = Modifier.testTag("home:my_wave:refresh")) {
-                Icon(PrismIcons.Refresh, l("Обновить поток", "Refresh Stream"))
+            val tagline = activeScenario?.let { if (ru) it.ru else it.en } ?: l("Музыка в твоём ритме", "Music in your rhythm")
+            if (maxHeight < 270.dp && maxWidth >= 320.dp) {
+                // Very short window: keep a square cover beside the controls.
+                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Cover(Modifier.size(minOf(maxHeight, maxWidth * 0.33f)))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                        Text(tagline, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1)
+                        Metadata()
+                        Progress()
+                        Transport()
+                        Feedback()
+                    }
+                }
+            } else if (short) {
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+                    Text(tagline, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1)
+                    Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        BoxWithConstraints(Modifier.weight(0.9f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                            Cover(Modifier.size(minOf(maxWidth, maxHeight)))
+                        }
+                        Box(Modifier.weight(1.1f)) { Metadata() }
+                    }
+                    Progress()
+                    Transport()
+                    Feedback()
+                }
+            } else {
+                Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(tagline, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1)
+                    BoxWithConstraints(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Cover(Modifier.size(minOf(maxWidth, maxHeight)))
+                    }
+                    Metadata()
+                    Progress()
+                    Transport()
+                    Feedback()
+                }
             }
         }
     }
@@ -363,14 +418,13 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
     // The route already reserves system bars, bottom tabs and the mini player. No scroll container.
     BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 6.dp)) {
-        val compact = maxHeight < 520.dp
+        val compact = maxHeight < 650.dp
         val wide = maxWidth >= 600.dp || maxWidth > maxHeight * 1.25f
         if (wide) {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Header()
                     Hero(Modifier.weight(1f).fillMaxWidth(), true)
-                    Track()
                 }
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
                     Controls(true)
@@ -380,7 +434,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Header()
                 Hero(Modifier.weight(1f).fillMaxWidth(), compact)
-                Track()
                 Controls(compact)
             }
         }
