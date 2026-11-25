@@ -83,7 +83,13 @@ internal data class SavedQueue(
     val songs: List<Song>, val index: Int, val positionMs: Long, val title: String,
     // Shuffle (with its order) and repeat, so a restart keeps them (#101: shuffle was off again after Prism restarted).
     val shuffle: Boolean = false, val shuffleOrder: List<Int> = emptyList(), val repeat: Int = Player.REPEAT_MODE_OFF,
-)
+    val sourceKind: String? = null, val seedId: String? = null, val originId: String? = null,
+    val manualIds: Set<String> = emptySet(), val autoplayStart: Int = -1,
+) {
+    fun source(): QueueSource = QueueSource(
+        QueueKind.entries.firstOrNull { it.name == sourceKind } ?: QueueKind.OTHER, title, seedId, originId,
+    )
+}
 
 /**
  * queue.json's text from what the player holds: each lined-up item's stored song ([songJson], as [toMediaItem] put it in
@@ -93,14 +99,21 @@ internal data class SavedQueue(
  */
 internal fun savedQueueText(
     songJson: List<String?>, index: Int, positionMs: Long, title: String, shuffle: Boolean, order: List<Int>, repeat: Int,
+    source: QueueSource? = null, manualIds: Set<String> = emptySet(), autoplayStart: Int = -1,
 ): String {
-    val songs = songJson.mapNotNull { s -> s?.let { runCatching { InnerTube.json.decodeFromString(Song.serializer(), it) }.getOrNull() } }
-    val q = SavedQueue(songs, index, positionMs, title, shuffle = shuffle, shuffleOrder = if (shuffle && songs.size == songJson.size) order else emptyList(), repeat = repeat)
+    val decoded = songJson.map { s -> s?.let { runCatching { InnerTube.json.decodeFromString(Song.serializer(), it) }.getOrNull() } }
+    val songs = decoded.filterNotNull()
+    val adjustedAuto = if (autoplayStart in decoded.indices && decoded.drop(autoplayStart).any { it != null })
+        decoded.take(autoplayStart).count { it != null } else -1
+    val q = SavedQueue(songs, index, positionMs, title, shuffle = shuffle, shuffleOrder = if (shuffle && songs.size == songJson.size) order else emptyList(), repeat = repeat,
+        sourceKind = source?.kind?.name, seedId = source?.seedId, originId = source?.originId,
+        manualIds = manualIds.intersect(songs.mapTo(hashSetOf()) { it.id }), autoplayStart = adjustedAuto)
     return InnerTube.json.encodeToString(SavedQueue.serializer(), q)
 }
 
 /** What a resumed Prism plays ([resumptionOf]): the saved queue's songs, from [index] at [positionMs]. */
-internal data class Resumption(val songs: List<Song>, val index: Int, val positionMs: Long, val title: String)
+internal data class Resumption(val songs: List<Song>, val index: Int, val positionMs: Long, val title: String,
+    val source: QueueSource = QueueSource(QueueKind.OTHER, title), val manualIds: Set<String> = emptySet(), val autoplayStart: Int = -1)
 
 /**
  * What a headset button or the system's resume card starts after Prism was closed or killed (#388): the saved queue
@@ -111,7 +124,9 @@ internal fun resumptionOf(queueText: String?, place: QueuePlace?): Resumption? {
     val q = queueText?.let { runCatching { InnerTube.json.decodeFromString(SavedQueue.serializer(), it) }.getOrNull() } ?: return null
     if (q.songs.isEmpty()) return null
     val (index, position) = PlaceKeeper.start(q.songs.map { it.id }, q.index, q.positionMs, place, placeIsNewer = true)
-    return Resumption(q.songs, index.coerceIn(0, q.songs.lastIndex), position.coerceAtLeast(0), q.title)
+    return Resumption(q.songs, index.coerceIn(0, q.songs.lastIndex), position.coerceAtLeast(0), q.title,
+        q.source(), q.manualIds.intersect(q.songs.drop(index.coerceIn(0, q.songs.lastIndex) + 1).mapTo(hashSetOf()) { it.id }),
+        q.autoplayStart.takeIf { it in q.songs.indices } ?: -1)
 }
 
 @OptIn(UnstableApi::class)
@@ -2947,8 +2962,10 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 .take(count).toList()
         } else emptyList()
         val index = player.currentMediaItemIndex; val position = player.currentPosition
-        val title = c.queue.source.value.title; val repeat = player.repeatMode
-        val text = { savedQueueText(songJson, index, position, title, shuffle, order, repeat) }
+        val source = c.queue.source.value; val repeat = player.repeatMode
+        val manual = c.queue.userQueued.value
+        val auto = c.queue.autoplayStart.value
+        val text = { savedQueueText(songJson, index, position, source.title, shuffle, order, repeat, source, manual, auto) }
         placeKeeper.saved(currentPlace())
         if (now) writeQueue(text()) else scope.launch(queueWriter) { writeQueue(text()) }
     }
@@ -2968,17 +2985,21 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             if (q.shuffle) player.shuffleModeEnabled = true
             return
         }
-        c.queue.source.value = QueueSource(QueueKind.OTHER, q.title)
+        val source = q.source()
         val (index, position) = PlaceKeeper.start(q.songs.map { it.id }, q.index, q.positionMs, keptPlace(), placeIsNewer = true)
-        player.setMediaItems(q.songs.map { it.toMediaItem() }, index.coerceIn(0, q.songs.lastIndex), position)
-        // Shuffle and repeat as they were, in the same order.
-        if (q.shuffle) {
+        val at = index.coerceIn(0, q.songs.lastIndex)
+        c.queue.source.value = source
+        c.queue.userQueued.value = q.manualIds.intersect(q.songs.drop(at + 1).mapTo(hashSetOf()) { it.id })
+        c.queue.autoplayStart.value = q.autoplayStart.takeIf { it in q.songs.indices } ?: -1
+        player.setMediaItems(q.songs.map { it.toMediaItem() }, at, position)
+        // Shuffle and repeat as they were, except for a continuous recommendation session.
+        if (q.shuffle && source.allowsOrderModes) {
             if (q.shuffleOrder.size == q.songs.size && q.shuffleOrder.sorted() == q.songs.indices.toList()) {
                 player.setShuffleOrder(HistoryShuffleOrder(q.shuffleOrder.toIntArray()) { player.currentMediaItemIndex })
             } else reshuffle()
             player.shuffleModeEnabled = true
         }
-        if (q.repeat != Player.REPEAT_MODE_OFF) player.repeatMode = q.repeat
+        if (source.allowsOrderModes && q.repeat != Player.REPEAT_MODE_OFF) player.repeatMode = q.repeat
         // The mini player shows this song: get it ready, so Play starts it straight away.
         player.currentMediaItem?.mediaId?.takeIf { it.isNotBlank() }?.let { id -> scope.launch(Dispatchers.IO) { c.warmUp(id) } }
         // And the one after it (otherwise only a song coming up warms its successor).
@@ -3289,7 +3310,14 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             if (r == null) {
                 MediaSession.MediaItemsWithStartPosition(emptyList(), 0, C.TIME_UNSET)
             } else {
-                c.queue.source.value = QueueSource(QueueKind.OTHER, r.title)
+                c.queue.source.value = r.source
+                c.queue.userQueued.value = r.manualIds
+                c.queue.autoplayStart.value = r.autoplayStart
+                c.queue.autoplayContinuation = null
+                if (r.source.continuousRecommendations) {
+                    player.shuffleModeEnabled = false
+                    player.repeatMode = Player.REPEAT_MODE_OFF
+                }
                 MediaSession.MediaItemsWithStartPosition(r.songs.map { it.toMediaItem() }, r.index, r.positionMs)
             }
         }

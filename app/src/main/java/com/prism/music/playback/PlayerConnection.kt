@@ -715,6 +715,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         val source = QueueSource(QueueKind.RADIO, tr(R.string.radio, contextTitle), seedId = song.id)
         val p = player
         if (p?.currentMediaItem?.mediaId == song.id && c.queue.source.value.matchesTrackStream(song.id, source.title)) {
+            ++playToken
             if (!p.isPlaying) { ensureStarted(); if (p.playbackState == Player.STATE_IDLE) p.prepare(); p.play() }
             service?.maybeAutoplay()
             return

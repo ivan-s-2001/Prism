@@ -203,7 +203,9 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
 
     fun start(selected: MyWave.Style = style, scenarioId: String? = chosenPresetId) {
+        if (c.queue.followingHost) return
         selectionJob?.cancel()
+        val token = c.player.queueStarting()
         val version = ++requestVersion
         starting = true
         val previous = c.queue.source.value
@@ -215,7 +217,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 val songs = c.yourMusic.startWave(recommendations, selected, current, existing = occupied)
                 android.util.Log.i("PrismWave", "first selection: ${android.os.SystemClock.elapsedRealtime() - began}ms; tracks=${songs.size}")
                 // Latest selection wins; a slow response cannot restore an older set of filters.
-                if (!isActive || version != requestVersion || c.queue.source.value !== previous) return@launch
+                if (!isActive || version != requestVersion || !c.player.stillStarting(token) || c.queue.followingHost || c.queue.source.value !== previous) return@launch
                 val now = c.player.currentSong.value.takeIf { previous.isMyWave }
                 val nextSongs = MyWave.initialPicks(songs, now, offline = !c.network.isOnline())
                 if (nextSongs.isEmpty()) {

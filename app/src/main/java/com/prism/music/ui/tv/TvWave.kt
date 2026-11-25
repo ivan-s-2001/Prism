@@ -98,7 +98,9 @@ internal fun TvWavePlace(nav: TvNav) {
         catch (_: Exception) { }
     }
     fun start(selected: MyWave.Style = style, scenarioId: String? = chosenPresetId) {
+        if (c.queue.followingHost) return
         job?.cancel()
+        val token = c.player.queueStarting()
         val version = ++request
         val old = c.queue.source.value
         val previous = c.player.currentSong.value.takeIf { old.isMyWave }
@@ -110,7 +112,7 @@ internal fun TvWavePlace(nav: TvNav) {
                     if (base.isEmpty()) base = loadBase()
                     base
                 }
-                if (version != request || c.queue.source.value !== old) return@launch
+                if (version != request || !c.player.stillStarting(token) || c.queue.followingHost || c.queue.source.value !== old) return@launch
                 val current = c.player.currentSong.value.takeIf { old.isMyWave }
                 val picks = MyWave.initialPicks(candidates, current, offline = !c.network.isOnline())
                 if (picks.isEmpty()) c.player.reportError(if (!c.network.isOnline()) tr(R.string.prism_stream_no_matching_downloaded_tracks) else tr(R.string.prism_stream_not_enough_matching_tracks))

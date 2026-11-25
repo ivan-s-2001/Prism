@@ -78,4 +78,22 @@ class QueueResumeTest {
         writeAtomically(fresh, "first")
         assertEquals("first", fresh.readText())
     }
+
+    @Test fun streamResumesItsContextAndManualQueue() {
+        val style = com.prism.music.data.foryou.MyWave.Style(discoveryPercent = 35)
+        val q = SavedQueue(songs, 0, 5000, "Stream", sourceKind = "RADIO", seedId = "a", originId = style.origin,
+            manualIds = setOf("b", "gone"), autoplayStart = 2)
+        val r = resumptionOf(InnerTube.json.encodeToString(SavedQueue.serializer(), q), null)!!
+        assertTrue(r.source.isMyWave)
+        assertEquals(style.origin, r.source.originId)
+        assertEquals(setOf("b"), r.manualIds)
+        assertEquals(2, r.autoplayStart)
+    }
+
+    @Test fun oldQueueFileRemainsReadableWithoutInventingContext() {
+        val r = resumptionOf(saved(), null)!!
+        assertFalse(r.source.continuousRecommendations)
+        assertEquals(-1, r.autoplayStart)
+        assertTrue(r.manualIds.isEmpty())
+    }
 }
