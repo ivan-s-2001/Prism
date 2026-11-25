@@ -1592,7 +1592,11 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         val why = (com.prism.music.data.podcast.episodeFailureText(song, error) ?: cause.friendlyMessage(tr(R.string.playback_failed))).trimEnd('.', ' ')
         AudioDiagnostics.log("error", "$id won't play (${error.errorCodeName}: ${cause.message?.take(120)})")
         AudioDiagnostics.session.skippedByError()
-        id?.let { failedHere.failed(it) }
+        id?.let {
+            failedHere.failed(it)
+            com.prism.music.data.foryou.RecommendationQuality.failed(it)
+            android.util.Log.w("PrismStream", "$it exhausted playback retries: ${error.errorCodeName}; ${cause.message?.take(160)}")
+        }
         fun stillThere() = player.playbackState == Player.STATE_IDLE && player.currentMediaItemIndex == index && player.currentMediaItem?.mediaId == id
         skipJob?.cancel()
         if (player.hasNextMediaItem()) c.player.reportError(tr(R.string.moving_on_after_refusal, title, why))
