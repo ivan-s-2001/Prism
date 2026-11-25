@@ -13,13 +13,26 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.RectangleShape
+import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
+import coil3.request.ImageRequest
+import com.prism.music.data.model.hiRes
+import com.prism.music.ui.player.playerCoverRequest
+import com.prism.music.ui.player.pausedCoverScale
+import com.prism.music.ui.player.ThemeBackdrop
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
-import com.prism.music.ui.components.rememberArtPalette
 import com.prism.music.ui.player.rememberFullArtworkBlur
 import com.prism.music.ui.player.FullArtworkBlurBackdrop
 import com.prism.music.ui.player.TransportRow
@@ -202,12 +215,31 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val hasPrevious by c.player.hasPrevious.collectAsState()
     val current = song.takeIf { wave }
     val cover = current?.let { c.covers.art(SongItem(it)) }
-    val palette = rememberArtPalette(cover.takeUnless { settings.streamThemeColors })
-    val rawAccent = if (settings.streamThemeColors) scheme.primary else palette?.vibrant ?: scheme.primary
-    // Lift very dark cover colors so controls remain visible over the dark player backdrop.
-    val visibleAccent = if (rawAccent.luminance() < 0.28f) lerp(rawAccent, Color.White, 0.48f) else rawAccent
-    val accent by animateColorAsState(visibleAccent, tween(if (settings.reduceMotion) 0 else 320), label = "streamAccent")
-    val selectionColor = lerp(scheme.surfaceContainerHigh, accent, 0.24f)
+    // The artwork mode is a real player backdrop, not an extracted palette.
+    // The player's own white ink stays stable as covers change.
+    val accent = if (settings.streamThemeColors) lerp(scheme.primary, Color.White, if (scheme.primary.luminance() < 0.28f) 0.48f else 0f) else Color.White
+    val selectionColor = Color.White.copy(alpha = 0.18f)
+    val blurred = rememberFullArtworkBlur(cover.takeUnless { settings.streamThemeColors }, settings.player.blur)
+    var lastBlur by remember { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(cover, blurred, settings.streamThemeColors) {
+        if (cover == null || settings.streamThemeColors) lastBlur = null
+        else if (blurred != null) lastBlur = blurred
+    }
+    val context = LocalContext.current
+    val artUrl = hiRes(cover, 1200)
+    var artTry by remember(artUrl) { mutableIntStateOf(0) }
+    var artFailed by remember(artUrl) { mutableStateOf(false) }
+    val artRequest = remember(artUrl, artTry) { playerCoverRequest(context, artUrl, false) }
+    var shownCover by remember { mutableStateOf<ImageRequest?>(null) }
+    LaunchedEffect(artUrl, artFailed, artTry) {
+        if (artUrl == null) shownCover = null
+        else if (artFailed && artTry < com.prism.music.ui.player.COVER_RETRIES) {
+            kotlinx.coroutines.delay(com.prism.music.ui.player.COVER_RETRY_MS)
+            artFailed = false
+            artTry++
+        } else if (artFailed) shownCover = null
+    }
+    val fadeMs = if (settings.reduceMotion) 0 else 320
     fun depthName(v: MyWave.Depth) = when (v) {
         MyWave.Depth.ANY -> l("Всё", "All")
         MyWave.Depth.HITS -> l("Хиты", "Hits")
@@ -239,24 +271,41 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     @Composable fun Header() {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.headlineMedium, maxLines = 1)
-                Text(status, color = scheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                Text(title, style = MaterialTheme.typography.headlineMedium, color = Color.White, maxLines = 1)
+                Text(status, color = Color.White.copy(alpha = 0.72f), style = MaterialTheme.typography.labelMedium, maxLines = 1)
             }
             IconButton(onClick = { settingsOpen = true }, modifier = Modifier.testTag("home:my_wave:settings")) {
-                Icon(PrismIcons.Equalizer, l("Настроить поток", "Tune Stream"))
+                Icon(PrismIcons.Equalizer, l("Настроить поток", "Tune Stream"), tint = Color.White)
             }
         }
     }
     // One player card, not a decorative hero followed by a second mini player.
     @Composable fun Hero(modifier: Modifier, compact: Boolean) {
-        val blurred = rememberFullArtworkBlur(cover, strength = 0.65f)
-        BoxWithConstraints(modifier.clip(ui.shape(24.dp)).background(scheme.surfaceContainerHigh)
-            .testTag("home:my_wave")) {
-            FullArtworkBlurBackdrop(blurred, Modifier.matchParentSize(), scrim = 1.15f)
-            Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(
-                (if (settings.streamThemeColors) scheme.primary else accent).copy(alpha = if (settings.streamThemeColors) 0.30f else 0.12f),
-                Color.Black.copy(alpha = 0.12f), Color.Black.copy(alpha = 0.45f)))))
-            val short = maxHeight < 350.dp
+        BoxWithConstraints(modifier.clip(ui.shape(24.dp))
+            .background(Color.White.copy(alpha = 0.06f)).testTag("home:my_wave")) {
+            @Composable fun CoverArt(modifier: Modifier) {
+                val scale by animateFloatAsState(
+                    pausedCoverScale(playing, settings.artShrinkOnPause, settings.reduceMotion),
+                    tween(fadeMs), label = "streamCoverScale")
+                val shape = ui.shape(16.dp)
+                Box(modifier.graphicsLayer { scaleX = scale; scaleY = scale }
+                    .shadow(10.dp, shape).clip(shape).background(Color.Black.copy(alpha = 0.25f))
+                    .clickable(enabled = current != null, onClick = onOpenPlayer), contentAlignment = Alignment.Center) {
+                    if (shownCover == null) Icon(PrismIcons.Song, null, Modifier.fillMaxSize(0.32f), tint = Color.White.copy(alpha = 0.35f))
+                    Crossfade(targetState = shownCover, animationSpec = tween(fadeMs), label = "streamArtwork",
+                        modifier = Modifier.matchParentSize()) { image ->
+                        if (image != null) AsyncImage(image, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        else Box(Modifier.fillMaxSize())
+                    }
+                    if (artUrl != null && shownCover != artRequest) AsyncImage(
+                        artRequest, null, contentScale = ContentScale.Crop,
+                        modifier = Modifier.matchParentSize().graphicsLayer { alpha = 0f },
+                        onState = { state ->
+                            if (state is AsyncImagePainter.State.Success) shownCover = artRequest
+                            else if (state is AsyncImagePainter.State.Error) artFailed = true
+                        })
+                }
+            }
             @Composable fun Metadata() {
                 Column(Modifier.fillMaxWidth().then(if (current != null) Modifier.clickable(onClick = onOpenPlayer) else Modifier)) {
                     Text(current?.title ?: l("Музыка в твоём ритме", "Music in your rhythm"),
@@ -293,7 +342,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 TransportRow(isPlaying = wave && playing, isLoading = pending && !wave,
                     previousEnabled = wave && hasPrevious, nextEnabled = wave && hasNext,
                     compact = true, showModes = false, playAction = { if (wave) c.player.togglePlay() else if (!starting) start() },
-                    playAccent = accent, playTag = "home:my_wave:play")
+                    playAccent = accent.takeIf { settings.streamThemeColors }, playTag = "home:my_wave:play")
             }
             @Composable fun Progress() {
                 // Isolate playhead updates here. A drag is committed only for the same song.
@@ -328,29 +377,33 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 }
             }
             val tagline = activeScenario?.let { if (ru) it.ru else it.en } ?: l("Музыка в твоём ритме", "Music in your rhythm")
-            if (maxHeight < 260.dp && maxWidth >= 300.dp) {
-                Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(tagline, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.8f), maxLines = 1)
-                        Metadata()
-                        Feedback()
+            if (maxHeight < 355.dp) {
+                // Compact phone or landscape: square cover and title occupy one row, transport stays below.
+                Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(tagline, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.8f),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        BoxWithConstraints(Modifier.weight(0.85f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                            CoverArt(Modifier.size(minOf(maxWidth, maxHeight)))
+                        }
+                        Box(Modifier.weight(1.15f)) { Metadata() }
                     }
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-                        Transport()
-                        Progress()
-                    }
+                    Progress()
+                    Transport()
+                    Feedback()
                 }
             } else {
                 Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(tagline, style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.85f),
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        Transport()
+                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        CoverArt(Modifier.size(minOf(maxWidth, maxHeight)))
                     }
                     Metadata()
                     Progress()
+                    Transport()
                     Feedback()
                 }
             }
@@ -360,8 +413,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     @Composable fun Controls(compact: Boolean) {
         Column(verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(l("Сценарии", "Scenarios"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                TextButton(onClick = { scenariosOpen = true }) { Text(l("Все", "All")) }
+                Text(l("Сценарии", "Scenarios"), style = MaterialTheme.typography.titleMedium, color = Color.White, modifier = Modifier.weight(1f))
+                TextButton(onClick = { scenariosOpen = true }) { Text(l("Все", "All"), color = accent) }
             }
             if (!compact) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf(WaveScenarios.Group.DAY to l("День", "Day"), WaveScenarios.Group.ACTIVITY to l("Дела", "Activity"),
@@ -374,7 +427,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 quickScenarios.take(3).forEach { scenario ->
                     Surface(onClick = { start(scenario.style) }, modifier = Modifier.weight(1f).height(if (compact) 60.dp else 82.dp)
                         .testTag("wave:scenario:${scenario.id}"), shape = ui.shape(16.dp),
-                        color = if (style == scenario.style) selectionColor else scheme.surfaceContainerHigh) {
+                        color = if (style == scenario.style) selectionColor else Color.White.copy(alpha = 0.09f), contentColor = Color.White) {
                         Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.Center) {
                             if (!compact) {
                                 val glyph = when (scenario.glyph) {
@@ -400,17 +453,23 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(ui.shape(14.dp)).clickable { settingsOpen = true }
                 .padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(l("Характер потока", "Discovery mix"), style = MaterialTheme.typography.labelLarge)
+                    Text(l("Характер потока", "Discovery mix"), style = MaterialTheme.typography.labelLarge, color = Color.White)
                     Text(l("${100 - style.discoveryPercent}% лайки · ${style.discoveryPercent}% новое",
                         "${100 - style.discoveryPercent}% liked · ${style.discoveryPercent}% new"),
-                        style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1)
+                        style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.72f), maxLines = 1)
                 }
-                Icon(PrismIcons.Equalizer, l("Настройки", "Settings"))
+                Icon(PrismIcons.Equalizer, l("Настройки", "Settings"), tint = Color.White)
             }
         }
     }
     // The route already reserves system bars, bottom tabs and the mini player. No scroll container.
-    BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 6.dp)) {
+    Box(Modifier.fillMaxSize()) {
+        if (settings.streamThemeColors) ThemeBackdrop()
+        else Crossfade(targetState = lastBlur, animationSpec = tween(fadeMs), label = "streamBackdrop",
+            modifier = Modifier.matchParentSize()) { image ->
+            FullArtworkBlurBackdrop(image, scrim = 1.3f - 0.95f * settings.player.backdropShow.coerceAtLeast(0f))
+        }
+        BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 6.dp)) {
         val compact = maxHeight < 650.dp
         val wide = maxWidth >= 600.dp || maxWidth > maxHeight * 1.25f
         if (wide) {
@@ -430,6 +489,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 Controls(compact)
             }
         }
+    }
     }
     if (scenariosOpen) {
         ModalBottomSheet(onDismissRequest = { scenariosOpen = false },
@@ -470,12 +530,12 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 }
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(l("Цвет потока", "Stream colors"), style = MaterialTheme.typography.titleSmall)
+                    Text(l("Фон потока", "Stream backdrop"), style = MaterialTheme.typography.titleSmall)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(selected = !settings.streamThemeColors,
                             onClick = { c.settings.setStreamThemeColors(false) },
                             modifier = Modifier.weight(1f).testTag("stream:color:artwork"),
-                            label = { Text(l("Из обложки", "Artwork")) })
+                            label = { Text(l("Как в плеере", "Player artwork")) })
                         FilterChip(selected = settings.streamThemeColors,
                             onClick = { c.settings.setStreamThemeColors(true) },
                             modifier = Modifier.weight(1f).testTag("stream:color:theme"),
