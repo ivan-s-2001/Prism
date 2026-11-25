@@ -1813,7 +1813,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         val continuation = c.queue.autoplayContinuation.takeIf { previousSeed == seed }
         val behavior = c.settings.current.behavior
         val noRepeats = wave || behavior.autoplayNoRepeats
-        val tune = behavior.radioTune
+        val waveStyle = com.prism.music.data.foryou.MyWave.style(src.originId)
+        val tune = if (wave) waveStyle.tune else behavior.radioTune
         // Where the songs come from (Settings → Playback & sound → Autoplay from): your own music (Prism's radio, made on
         // the phone from your plays, likes, downloads and files), YouTube Music's radio, or both. A song's radio (Quick
         // picks, "Radio") is YouTube's; with no connection, or after a file on the phone, only your own music can follow.
@@ -1854,7 +1855,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             val fb = c.recFeedback
             val explicit = behavior.explicitContent
             val rules = com.prism.music.data.foryou.RadioTopUp.Rules(
-                existing, heardLately, turnedDown = { fb.turnedDown(it.id, known = false) },
+                existing, heardLately, turnedDown = { fb.turnedDown(it.id, known = wave && it.id in c.library.likedIds.value) },
                 allowed = {
                     !c.library.isDisliked(it.id) && !c.exclusions.blocks(it) && com.prism.music.data.ExplicitFilter.plays(explicit, it) &&
                         (!wave || (!c.exclusions.isSongExcluded(it.id) && !fb.turnedDown(it.id, known = it.id in c.library.likedIds.value) && !it.isEpisode && !it.isLive)) &&
@@ -1863,8 +1864,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 },
             )
             val first = r?.let { com.prism.music.data.foryou.RadioTopUp.Page(it.songs, it.continuation) }
-            val signals = if (tune.neutral) com.prism.music.data.foryou.RadioSignals()
-                else withContext(Dispatchers.IO) { c.discover.radioSignals(mine + r?.songs.orEmpty(), tune) }
+            val signals = if (tune.neutral && !wave) com.prism.music.data.foryou.RadioSignals()
+                else withContext(Dispatchers.IO) { c.discover.radioSignals(mine + r?.songs.orEmpty(), if (wave) tune.copy(newness = 0.5f) else tune) }
             val askPage: suspend (String, String?) -> com.prism.music.data.foryou.RadioTopUp.Page? = { from, token ->
                 askRadio(from, token)?.let { com.prism.music.data.foryou.RadioTopUp.Page(it.songs, it.continuation) }
             }
@@ -1889,13 +1890,22 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             c.queue.autoplayContinuation = answer.continuation
             if (answer.seed != previousSeed) c.queue.reseed(src, answer.seed)
             android.util.Log.i("PrismRadio", "autoplay after ${answer.seed}: ${mine.size} of yours, ${r?.songs?.size ?: 0} from YouTube, adding ${answer.add.size} ($mode${if (offline) ", offline" else ""}${if (noRepeats) ", no repeats" else ""}${if (answer.cameRound) ", coming round" else ""})")
-            if (answer.add.isNotEmpty()) {
+            val additions = if (!wave || answer.cameRound) answer.add else {
+                val known = c.library.likedIds.value
+                val familiar = answer.add.filter { it.id in known || signals.heard(it) == true }
+                val fresh = answer.add.filter { it !in familiar }
+                com.prism.music.data.foryou.MyWave.start(fresh, familiar, emptyList(), session::has, rules.allowed,
+                    seed = System.nanoTime(), count = answer.add.size, style = waveStyle, signals = signals,
+                    artistDoubt = fb::artistDoubt,
+                    servedRecently = { fb.servedDaysAgo(it.id)?.let { days -> days <= 1 } == true })
+            }
+            if (additions.isNotEmpty()) {
                 if (c.queue.autoplayStart.value < 0) c.queue.autoplayStart.value = player.mediaItemCount
-                player.addMediaItems(answer.add.map { it.toMediaItem() })
-                fb.served(answer.add.map { it.id })
+                player.addMediaItems(additions.map { it.toMediaItem() })
+                fb.served(additions.map { it.id })
                 if (answer.cameRound) c.player.reportError(tr(R.string.no_repeats_ran_out))
                 // A Radio button's notice (1.8.8): the radio has really started.
-                else if (c.player.radioNotice.take(src, answer.add.size)) c.player.reportError(tr(R.string.radio_started))
+                else if (c.player.radioNotice.take(src, additions.size)) c.player.reportError(tr(R.string.radio_started))
             }
         }
         autoplayJob = job
