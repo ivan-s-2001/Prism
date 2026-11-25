@@ -212,8 +212,7 @@ class YourMusic(private val c: AppContainer) {
 
     /** Shared scoring, used by thematic recipes as well as the continuous stream. */
     internal fun recommendationScore(profile: MyWave.Profile, song: Song): Double =
-        (0.65 + 0.7 * (profile.taste(song) ?: 0.5)) *
-            (1.0 + 1.35 * profile.likedAffinity(song).coerceIn(0.0, 1.0))
+        MyWave.affinity(profile, song)
 
     /** Prepare local taste/history and related candidates while the Wave screen is visible. */
     internal suspend fun warmWave() {
