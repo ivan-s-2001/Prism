@@ -57,14 +57,17 @@ jobs:
             "$TEST/StationWavSliceTest.kt" "$TEST/StationMediaSessionTest.kt" "$TEST/StationLinkHealthTest.kt" \
             "$TEST/LivePacerTest.kt" "$TEST/LivePcmReplayTest.kt" \
             app/src/main/java/com/prism/music/data/foryou/VibeLearning.kt \
-            app/src/test/java/com/prism/music/data/foryou/VibeLearningTest.kt
+            app/src/main/java/com/prism/music/data/foryou/VibeGraph.kt \
+            app/src/test/java/com/prism/music/data/foryou/VibeLearningTest.kt \
+            app/src/test/java/com/prism/music/data/foryou/VibeGraphTest.kt
           java -cp "$WORK/tests.jar:$CP" org.junit.runner.JUnitCore \
             com.prism.music.connect.yandex.StationWavSliceTest \
             com.prism.music.connect.yandex.StationMediaSessionTest \
             com.prism.music.connect.yandex.StationLinkHealthTest \
             com.prism.music.connect.yandex.LivePacerTest \
             com.prism.music.connect.yandex.LivePcmReplayTest \
-            com.prism.music.data.foryou.VibeLearningTest
+            com.prism.music.data.foryou.VibeLearningTest \
+            com.prism.music.data.foryou.VibeGraphTest
   diagnostics:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -84,7 +87,7 @@ jobs:
       - name: Run protocol tests and assemble side-by-side APK
         run: |
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest --tests 'com.prism.music.connect.yandex.*' --tests 'com.prism.music.MyWaveTest' --tests 'com.prism.music.RecFeedbackTest' --tests 'com.prism.music.PlaybackSourceUxTest' --tests 'com.prism.music.QueueResumeTest' --tests 'com.prism.music.playback.SavedQueueTextTest' --tests 'com.prism.music.data.foryou.VibeLearningTest' :app:assembleDebug -PsideBySide=station -PsideByLabel="Prism Station Lab" --stacktrace
+          ./gradlew :app:testDebugUnitTest --tests 'com.prism.music.connect.yandex.*' --tests 'com.prism.music.MyWaveTest' --tests 'com.prism.music.RecFeedbackTest' --tests 'com.prism.music.PlaybackSourceUxTest' --tests 'com.prism.music.QueueResumeTest' --tests 'com.prism.music.playback.SavedQueueTextTest' --tests 'com.prism.music.data.foryou.VibeLearningTest' --tests 'com.prism.music.data.foryou.VibeGraphTest' :app:assembleDebug -PsideBySide=station -PsideByLabel="Prism Station Lab" --stacktrace
       - uses: actions/upload-artifact@v4
         if: success()
         with:

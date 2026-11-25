@@ -70,6 +70,8 @@ object LocalRadio {
         val keyFit: (String, String) -> Double = { _, _ -> 0.0 },
         /** A song's measured tempo (DJ mode's scan), null when it hasn't been measured. */
         val bpmOf: (String) -> Double? = { null },
+        /** Optional normalized local graph; null callback retains the original co-listen model for legacy callers. */
+        val graphAffinity: ((Song, Song) -> Double?)? = null,
     )
 
     /**
@@ -129,19 +131,21 @@ object LocalRadio {
                 val xGenre = pool.genreOf(x.id)
                 for ((seed, w) in weights) {
                     val co = pool.coListen[seed.id]?.get(x.id) ?: 0.0
+                    val graph = pool.graphAffinity
+                    val strength = if (graph == null) min(1.0, co / 2.0) else (graph(seed, x) ?: 0.0).coerceIn(0.0, 1.0)
                     val sameArtist = seed.primaryArtist.isNotBlank() && seed.primaryArtist.equals(x.primaryArtist, ignoreCase = true)
                     val g = seedGenres[seed.id]
                     val sameGenre = g != null && g == xGenre
                     val fit = pool.keyFit(seed.id, x.id)
-                    if (co > 0 || sameArtist || sameGenre) related = true
-                    rel += w * (3.0 * min(1.0, co / 2.0) + 1.2 * (if (sameArtist) 1.0 else 0.0) + 0.8 * (if (sameGenre) 1.0 else 0.0) + 0.5 * fit)
+                    if (strength > 0 || sameArtist || sameGenre) related = true
+                    rel += w * (3.0 * strength + 1.2 * (if (sameArtist) 1.0 else 0.0) + 0.8 * (if (sameGenre) 1.0 else 0.0) + 0.5 * fit)
                     // Closeness, for beside YouTube's radio: the genre decides when both are known (a sitting's
                     // neighbours don't make R&B belong with amapiano); without one, only a lasting habit does.
                     when {
                         sameArtist -> close = true
                         g != null && xGenre != null ->
                             if (sameGenre && !tempoApart(seedBpm.getOrPut(seed.id) { pool.bpmOf(seed.id) }, pool.bpmOf(x.id))) close = true else apart = true
-                        co >= CO_CLOSE -> close = true
+                        (if (graph == null) co >= CO_CLOSE else strength >= 0.35) -> close = true
                     }
                 }
                 val like = pool.affinity(x).coerceIn(0.0, 1.0)

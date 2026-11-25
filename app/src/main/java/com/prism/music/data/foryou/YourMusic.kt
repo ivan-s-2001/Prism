@@ -29,6 +29,7 @@ class YourMusic(private val c: AppContainer) {
     /** The phone's music, read once every few minutes (or after new plays). */
     private class Snapshot(
         val at: Long,
+        val account: String,
         val events: List<PlayEventEntity>,
         val songs: Map<String, Song>,
         val liked: List<Song>,
@@ -36,6 +37,7 @@ class YourMusic(private val c: AppContainer) {
         val genres: Map<String, String>,
         val model: PlayLikelihood,
         val coListen: Map<String, Map<String, Double>>,
+        val vibeGraph: VibeGraph.Model,
     ) {
         /** Plays in the last [Variety.LATELY_DAYS] days, and each song's last play. */
         val lately: Map<String, Int> = events.filter { at - it.timestamp < Variety.LATELY_DAYS * DAY }.groupingBy { it.songId }.eachCount()
@@ -43,15 +45,19 @@ class YourMusic(private val c: AppContainer) {
     }
 
     /** How much of its weight [id] keeps today ([Variety.rest]): heard lately, on repeat, served in a recent mix. */
+    private fun graphAffinity(s: Snapshot, a: Song, b: Song): Double? = s.vibeGraph.affinity(
+        LocalRadio.sameSong(a), LocalRadio.sameSong(b), a.primaryArtist.lowercase().trim(), b.primaryArtist.lowercase().trim())
+
     private fun rest(s: Snapshot, id: String, served: Boolean = true) = Variety.rest(
         s.lately[id] ?: 0, s.last[id]?.let { (System.currentTimeMillis() - it) / 3_600_000.0 }, if (served) c.recFeedback.servedDaysAgo(id) else null,
     )
 
     private suspend fun snapshot(): Snapshot = lock.withLock {
         val now = System.currentTimeMillis()
+        val account = waveAccount()
         val count = runCatching { c.imports.taste.changeCount(now) }.getOrDefault(0)
         // Kept for a few minutes, and only while no new play has come in.
-        snap?.takeIf { now - it.at < 5 * 60_000 && count == total }?.let { return@withLock it }
+        snap?.takeIf { it.account == account && now - it.at in 0L..5 * 60_000L && count == total }?.let { return@withLock it }
         withContext(Dispatchers.IO) {
             val events = c.imports.taste.tasteEventsSince(now - YEAR)
             val liked = c.db.songs().liked().map { it.toSong() }
@@ -64,7 +70,16 @@ class YourMusic(private val c: AppContainer) {
             val genres = runCatching { c.meta.cachedGenres(usable) }.getOrDefault(emptyMap())
             val model = PlayLikelihood(events, songs, liked.map { it.id }.toSet(), now)
             val co = LocalRadio.coListen(events.map { LocalRadio.Play(it.songId, it.timestamp) })
-            Snapshot(now, events, songs, liked, (downloaded + local).distinctBy { it.id }, genres, model, co).also { snap = it; total = count }
+            val recordingKeys = songs.mapValues { LocalRadio.sameSong(it.value) }
+            val graph = VibeGraph.build(events.asSequence().filter { it.timestamp <= now && !it.excluded }.mapNotNull { event ->
+                val song = songs[event.songId] ?: return@mapNotNull null
+                if (!ok(song)) return@mapNotNull null
+                val weight = VibeGraph.listeningWeight(event.playedMs, song.durationSec * 1000L)
+                if (weight <= 0) return@mapNotNull null
+                VibeGraph.Event(recordingKeys.getValue(song.id), song.primaryArtist.lowercase().trim(), event.timestamp, weight)
+            }.toList())
+            Snapshot(now, account, events, songs, liked, (downloaded + local).distinctBy { it.id }, genres, model, co, graph)
+                .also { if (account == waveAccount()) { snap = it; total = count } }
         }
     }
 
@@ -155,11 +170,12 @@ class YourMusic(private val c: AppContainer) {
                 moment[song.primaryArtist.lowercase()]?.let { 0.5 + confidence * (it / maxMoment - 0.5) }
             },
             transition = { from, to ->
-                val co = s.coListen[from.id]?.get(to.id)
+                val co = graphAffinity(s, from, to)
                 val g1 = s.genres[from.id]
                 val g2 = s.genres[to.id]
                 when {
-                    co != null -> (0.5 + co / 8.0).coerceAtMost(1.0)
+                    co != null && g1 != null && g2 != null && g1 != g2 -> 0.3 + 0.3 * co
+                    co != null -> 0.5 + 0.5 * co
                     g1 != null && g2 != null -> if (g1 == g2) 0.8 else 0.3
                     else -> null
                 }
@@ -515,6 +531,7 @@ class YourMusic(private val c: AppContainer) {
             genreOf = { s.genres[it] ?: seedGenres[it] },
             keyFit = { a, b -> keyFit(a, b) },
             bpmOf = { c.mixTempo.djBpm(it) },
+            graphAffinity = { a, b -> graphAffinity(s, a, b) },
         )
         val day = LocalDate.now().toString()
         return LocalRadio.pick(seeds, pool, inQueue + recent, count) { id -> 0.9 + 0.2 * (((id + day + seedIds.last()).hashCode().toLong() and 0xffff) / 65535.0) }
@@ -602,7 +619,8 @@ class YourMusic(private val c: AppContainer) {
             if (theirs.size < 3) return@forEach
             // Their songs you know, with the ones you play around them.
             val around = LocalRadio.pick(
-                theirs.take(3), LocalRadio.Pool(known, s.coListen, { s.model.score(it) * MyWave.affinity(profile, it) }, { s.genres[it] }),
+                theirs.take(3), LocalRadio.Pool(known, s.coListen, { s.model.score(it) * MyWave.affinity(profile, it) }, { s.genres[it] },
+                    graphAffinity = { a, b -> graphAffinity(s, a, b) }),
                 theirs.map { it.id }.toSet(), 20,
             ).filter { it.related }.map { it.song }
             val list = MyWave.start(around, theirs.take(20), emptyList(), { false }, play,
