@@ -8,9 +8,9 @@ internal object StationNames {
         "yandexmidi" -> "Яндекс Станция 2"
         "orion" -> "Яндекс Станция 3"
         "cucumber" -> "Яндекс Станция Миди"
-        "yandexmicro" -> "Яндекс Станция Lite"
-        "yandexplum", "plum" -> "Яндекс Станция Lite 2"
-        "yandexmini" -> "Яндекс Станция Мини"
+        "yandexmicro" -> "Яндекс Станция Лайт"
+        "yandexplum", "plum" -> "Яндекс Станция Лайт 2"
+        "yandexmini" -> "Яндекс Станция Мини 1"
         "yandexmini_2" -> "Яндекс Станция Мини 2"
         "bergamot" -> "Яндекс Станция Мини 3"
         "pickle" -> "Яндекс Станция Мини 3 Про"
@@ -19,14 +19,6 @@ internal object StationNames {
         else -> "Яндекс Станция"
     }
 
-    fun display(platform: String, accountName: String?): String {
-        val name = accountName?.trim()?.takeIf {
-            it.isNotBlank() && it.length <= 100 &&
-                !it.contains("receiver", ignoreCase = true) &&
-                !it.startsWith("yandexio", ignoreCase = true)
-        }
-        val model = model(platform)
-        return if (name == null || name.equals(model, ignoreCase = true)) model
-        else "$model · $name"
-    }
+    // Account labels and mDNS names must never produce a second model name.
+    fun display(platform: String, accountName: String?): String = model(platform)
 }
