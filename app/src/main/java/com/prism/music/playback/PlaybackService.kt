@@ -357,10 +357,11 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                             c.queue.autoplayStart.value = -1
                             c.queue.autoplayContinuation = null
                             c.queue.source.value = if (pick.radio) {
-                                QueueSource(QueueKind.SINGLE, pick.title, seedId = pick.songs.first().id)
+                                QueueSource(QueueKind.RADIO, tr(R.string.radio, pick.songs.first().title), seedId = pick.songs.first().id)
                             } else QueueSource(QueueKind.PLAYLIST, pick.title)
                             val list = if (pick.radio) pick.songs.take(1) else pick.songs
                             player.shuffleModeEnabled = false
+                            if (pick.radio) player.repeatMode = Player.REPEAT_MODE_OFF
                             player.setMediaItems(list.map { it.toMediaItem() }, pick.start.coerceIn(0, list.lastIndex), 0L)
                             player.prepare()
                             player.play()
@@ -2819,26 +2820,11 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         player.setShuffleOrder(HistoryShuffleOrder.shuffled(n, cur) { player.currentMediaItemIndex })
     }
 
-    /** Swaps everything after the current song for a radio station seeded by it. */
+    /** System, car and wearable controls use exactly the same entry point as the player UI. */
     private fun startRadio() {
         val song = player.currentMediaItem?.toSong() ?: return
-        scope.launch {
-            val r = runCatching { withContext(Dispatchers.IO) { c.radio(song.id, "RDAMVM${song.id}") } }.getOrNull() ?: return@launch
-            if (player.currentMediaItem?.mediaId != song.id) return@launch
-            val explicit = c.settings.current.behavior.explicitContent
-            val all = r.songs.filter { it.id != song.id && !c.library.isDisliked(it.id) && !c.exclusions.blocks(it) && com.prism.music.data.ExplicitFilter.plays(explicit, it) }
-            // No repeats this session; with nothing else in this answer, the radio still starts.
-            val add = if (c.settings.current.behavior.autoplayNoRepeats) all.filter { !c.sessionHeard.has(it) }.ifEmpty { all } else all
-            if (add.isEmpty()) return@launch
-            val idx = player.currentMediaItemIndex
-            if (idx + 1 < player.mediaItemCount) player.removeMediaItems(idx + 1, player.mediaItemCount)
-            if (idx > 0) player.removeMediaItems(0, idx)
-            player.shuffleModeEnabled = false
-            player.addMediaItems(add.map { it.toMediaItem() })
-            c.queue.source.value = QueueSource(QueueKind.RADIO, tr(R.string.radio_3, song.title), seedId = song.id)
-            c.queue.autoplayStart.value = -1
-            c.queue.autoplayContinuation = r.continuation
-        }
+        if (song.isLive || song.isEpisode) return
+        c.player.playRadio(song, announce = true)
     }
 
     private fun isCar(session: MediaSession, controller: MediaSession.ControllerInfo) =
@@ -3276,8 +3262,9 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             c.queue.autoplayContinuation = null
             if (pick.radio) {
                 val song = pick.songs.first()
-                c.queue.source.value = QueueSource(QueueKind.SINGLE, pick.title, seedId = song.id)
+                c.queue.source.value = QueueSource(QueueKind.RADIO, tr(R.string.radio, song.title), seedId = song.id)
                 player.shuffleModeEnabled = false
+                player.repeatMode = Player.REPEAT_MODE_OFF
                 return MediaSession.MediaItemsWithStartPosition(listOf(song.toMediaItem()), 0, C.TIME_UNSET)
             }
             c.queue.source.value = QueueSource(QueueKind.PLAYLIST, pick.title)

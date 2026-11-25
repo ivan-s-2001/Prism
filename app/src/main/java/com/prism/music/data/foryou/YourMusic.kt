@@ -414,6 +414,28 @@ class YourMusic(private val c: AppContainer) {
             quotaOffset = offset)
     }
 
+    /** Provider mixes are candidate lists, never a second recommendation engine.
+     * Explicit live/episode entries retain their original order and semantics.
+     */
+    internal suspend fun providedStream(songs: List<Song>, count: Int = 24): List<Song> = withContext(Dispatchers.Default) {
+        if (songs.isEmpty() || songs.first().isLive || songs.first().isEpisode) return@withContext songs
+        val settings = c.settings.current
+        val style = MyWave.restore(null, settings.streamStyleOrigin, settings.streamRussianPercent)
+        val taste = waveTaste()
+        val history = c.discover.heard()
+        val liked = c.library.likedIds.value
+        val feedback = c.recFeedback
+        val offline = !c.network.isOnline()
+        val pool = songs.filter { recommendationAllowed(it, it.id in liked || history.has(it), offlineOnly = offline) }
+        val signals = c.discover.radioSignals(pool, style.tune.copy(newness = 0f), fetchTops = !offline && !c.castingNow)
+        MyWave.start(pool, pool.filter { it.id in liked || history.has(it) }, emptyList(),
+            c.sessionHeard::has, { recommendationAllowed(it, it.id in liked || history.has(it), offlineOnly = offline) },
+            System.nanoTime(), count, style,
+            signals = RadioSignals(heard = { it.id in liked || history.has(it) }, onTopList = signals.onTopList, energy = signals.energy),
+            artistDoubt = feedback::artistDoubt, servedRecently = { (feedback.servedDaysAgo(it.id) ?: 99) <= 1 },
+            profile = taste.profile, artistEvidence = feedback.waveEvidence(), quotaOffset = 0)
+    }
+
     /**
      * Prism's radio: up to [count] songs from your own music to follow [seedIds] (the newest last), none of [inQueue],
      * nothing played in the last two hours. [offlineOnly]: only songs that play without a connection.

@@ -190,7 +190,7 @@ class MediaTree(private val c: AppContainer) {
             val parts = parentId.removePrefix("mix:").split('|')
             c.radio(parts.getOrNull(1)?.ifBlank { null }, parts[0], parts.getOrNull(2)?.ifBlank { null }, keepFirst = true)
         }.getOrNull()
-            ?.let { r -> songList(parentId, tr(R.string.mix_2), r.songs) } ?: emptyList()
+            ?.let { r -> songList(parentId, tr(R.string.stream), c.yourMusic.providedStream(r.songs)) } ?: emptyList()
         // Without a network, the songs of the artist's kept page and on the phone, those that play (1.8.2).
         parentId.startsWith("ar:") -> runCatching { c.openArtist(parentId.removePrefix("ar:")) }.getOrNull()
             ?.let { o ->

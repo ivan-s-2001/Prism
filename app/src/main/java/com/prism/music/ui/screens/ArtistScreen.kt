@@ -233,7 +233,7 @@ private fun ArtistContent(opened: ArtistOpened, bottomPadding: Dp) {
         if (playlistId == null) return
         scope.launch {
             runCatching { c.radio(videoId, playlistId, params) }.onSuccess { r ->
-                c.player.playQueue(r.songs, 0, QueueSource(QueueKind.RADIO, title))
+                c.player.playQueue(r.songs, 0, QueueSource(QueueKind.LIBRARY, title))
             }
         }
     }

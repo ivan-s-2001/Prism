@@ -43,7 +43,10 @@ object TvPlay {
         }
         val songs = if (live && !first.isLive) listOf(first.copy(isLive = true)) + r.songs.drop(1) else r.songs
         c.queue.counterparts.putAll(r.counterparts)
-        c.player.playQueue(songs, 0, QueueSource(QueueKind.RADIO, mix.title))
+        val selected = c.yourMusic.providedStream(songs)
+        if (selected.isEmpty()) return false
+        val seed = selected.first().takeUnless { it.isLive || it.isEpisode }
+        c.player.playQueue(selected, 0, QueueSource(if (seed == null) QueueKind.OTHER else QueueKind.RADIO, mix.title, seedId = seed?.id))
         return true
     }
 
@@ -84,7 +87,10 @@ object TvPlay {
             else c.radio(a.shuffleVideoId ?: a.radioVideoId, list, a.shuffleParams ?: a.radioParams)
         }
         if (r.songs.isEmpty()) return@tried false
-        c.player.playQueue(r.songs, 0, QueueSource(QueueKind.RADIO, if (radio) tr(R.string.mix, a.name) else a.name, originId = id))
+        if (radio) {
+            val seed = r.songs.firstOrNull { !it.isVideo && !it.isEpisode && !it.isLive } ?: return@tried false
+            c.player.playRadio(seed, announce = true, contextTitle = a.name)
+        } else c.player.playQueue(r.songs, 0, QueueSource(QueueKind.LIBRARY, a.name, originId = id))
         true
     }
 

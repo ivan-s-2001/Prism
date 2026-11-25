@@ -647,7 +647,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
                 prefs.shuffleButton, c.queue.smartAllowed(),
             )
             val shuffled = !source.isMyWave && mode != ShuffleMode.OFF
-            if (source.isMyWave) p.repeatMode = Player.REPEAT_MODE_OFF
+            if (source.continuousRecommendations) p.repeatMode = Player.REPEAT_MODE_OFF
             p.shuffleModeEnabled = shuffled
             p.setMediaItems(songs.mapIndexed { i, s -> s.toMediaItem(if (i == start) startVideo else null) }, start, startMs.coerceAtLeast(0))
             // The song it starts on first, the rest in a new order.
@@ -726,6 +726,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         c.queue.autoplayStart.value = -1
         c.queue.userQueued.value = emptySet()
         p.shuffleModeEnabled = false
+        p.repeatMode = Player.REPEAT_MODE_OFF
         val at = p.currentMediaItemIndex
         if (at + 1 < p.mediaItemCount) p.removeMediaItems(at + 1, p.mediaItemCount)
         if (at > 0) p.removeMediaItems(0, at)

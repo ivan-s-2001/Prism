@@ -175,7 +175,7 @@ fun PlayActionsSheet(target: Playable, extra: List<SheetItem> = emptyList(), ext
     val quick = if (item is ArtistItem) listOfNotNull(
         ActionItem(PrismIcons.Shuffle, tr(R.string.shuffle)) { play(shuffle = true) },
         // YouTube makes no mix of what's only yours.
-        ActionItem(PrismIcons.Radio, tr(R.string.mix_2)) { play(shuffle = false, mix = true) }.takeUnless { com.prism.music.data.innertube.Parser.isUploadArtist(item.id) },
+        ActionItem(PrismIcons.Stream, tr(R.string.stream)) { play(shuffle = false, mix = true) }.takeUnless { com.prism.music.data.innertube.Parser.isUploadArtist(item.id) },
     ) else listOf(
         ActionItem(PrismIcons.Play, tr(R.string.widget_play)) { play(shuffle = false) },
         ActionItem(PrismIcons.Shuffle, tr(R.string.shuffle)) { play(shuffle = true) },
@@ -419,8 +419,10 @@ private suspend fun songsFor(c: AppContainer, target: Playable, shuffle: Boolean
             // Your own upload has no list of YouTube's to shuffle: their songs, here (playPlayable leaves an artist's order as it comes).
             if (com.prism.music.data.innertube.Parser.isUploadArtist(item.id)) a.shelves.flatMap { it.items }.filterIsInstance<SongItem>().map { it.song }
                 .let { songs -> (if (shuffle) songs.shuffled() else songs) to QueueSource(QueueKind.LIBRARY, a.name) }
-            else if (shuffle && !mix && a.shufflePlaylistId != null) radio(c, a.shuffleVideoId, a.shufflePlaylistId, a.shuffleParams, a.name)
-            else radio(c, a.radioVideoId, a.radioPlaylistId ?: throw java.io.IOException(tr(R.string.no_mix)), a.radioParams, tr(R.string.mix, a.name))
+            else if (shuffle && !mix && a.shufflePlaylistId != null) {
+                val songs = c.radio(a.shuffleVideoId, a.shufflePlaylistId, a.shuffleParams).songs
+                songs to QueueSource(QueueKind.LIBRARY, a.name, originId = item.id)
+            } else radio(c, a.radioVideoId, a.radioPlaylistId ?: throw java.io.IOException(tr(R.string.no_mix)), a.radioParams, tr(R.string.radio, a.name))
         }
         else -> emptyList<Song>() to QueueSource(QueueKind.OTHER, item.title)
     }
@@ -431,6 +433,8 @@ private suspend fun orKept(c: AppContainer, id: String, load: suspend () -> com.
     try { load() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { c.offline.page(id) ?: c.offline.page("VL$id") ?: throw e }
 
 private suspend fun radio(c: AppContainer, videoId: String?, playlistId: String, params: String?, title: String): Pair<List<Song>, QueueSource> {
-    val r = c.radio(videoId, playlistId, params)
-    return r.songs to QueueSource(QueueKind.RADIO, title)
+    val r = c.radio(videoId, playlistId, params, keepFirst = true)
+    val songs = c.yourMusic.providedStream(r.songs)
+    val seed = songs.firstOrNull()?.takeUnless { it.isLive || it.isEpisode }
+    return songs to QueueSource(if (seed == null) QueueKind.OTHER else QueueKind.RADIO, title, seedId = seed?.id)
 }
