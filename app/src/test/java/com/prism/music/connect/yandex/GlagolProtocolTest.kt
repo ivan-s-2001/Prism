@@ -32,6 +32,7 @@ class GlagolProtocolTest {
         val stream = params["stream"]!!.jsonObject
         val metadata = params["metadata"]!!.jsonObject
         assertEquals(url, stream["url"]!!.jsonPrimitive.content)
+        assertEquals(url, stream["id"]!!.jsonPrimitive.content)
         assertEquals("MP3", stream["format"]!!.jsonPrimitive.content)
         assertEquals("Track", stream["type"]!!.jsonPrimitive.content)
         assertEquals(title, metadata["title"]!!.jsonPrimitive.content)
