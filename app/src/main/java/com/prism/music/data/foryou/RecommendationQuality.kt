@@ -19,6 +19,8 @@ internal object RecommendationQuality {
         failures[id] = now
     }
 
+    fun networkChanged() { failures.clear() }
+
     fun recentlyFailed(id: String): Boolean {
         val at = failures[id] ?: return false
         if (System.currentTimeMillis() - at in 0 until RETRY_AFTER_MS) return true

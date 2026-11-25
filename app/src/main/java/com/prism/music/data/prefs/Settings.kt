@@ -1916,6 +1916,7 @@ data class AppSettings(
     val streamThemeColors: Boolean = false,
     val streamRussianPercent: Int = -1,
     val streamPresets: List<SavedWavePreset> = emptyList(),
+    val streamStyleOrigin: String? = null,
     /**
      * Performance mode (1.7.6): Prism drawn as lightly as 1.6 was, for slower phones ([effective]). Every feature stays;
      * only the effects that cost the phone the most each frame are paused, and the listener's own choices come back
@@ -2322,6 +2323,7 @@ class SettingsRepository(
         val streamThemeColors = booleanPreferencesKey("stream_theme_colors")
         val streamRussianPercent = intPreferencesKey("stream_russian_percent")
         val streamPresets = stringPreferencesKey("stream_presets")
+        val streamStyleOrigin = stringPreferencesKey("stream_style_origin")
         // 1.7.8: the player's look ([ViewLook]) and Prism's behaviour ([BehaviorPrefs]).
         val panelPlayer = stringPreferencesKey("panel_player")
         val queueHeadings = booleanPreferencesKey("queue_headings")
@@ -2525,7 +2527,7 @@ class SettingsRepository(
         /** Settings that aren't part of a Look: what you listen to and how, your account, Home's contents. */
         val notLook: Set<String> by lazy {
             setOf(
-                "stream_presets", "performance_mode", "performance_offered", "share_youtube_links", "mix_keep_albums",
+                "stream_presets", "stream_style_origin", "performance_mode", "performance_offered", "share_youtube_links", "mix_keep_albums",
                 "player_menu_hidden", "player_menu_tiles",
                 "lyrics_file_words", "lyrics_file_translation",
                 "merge_liked_videos", "volume_control", "app_volume", "speed_dial_youtube_only", "swipe_tabs",
@@ -3105,6 +3107,7 @@ class SettingsRepository(
             streamThemeColors = p[K.streamThemeColors] ?: d.streamThemeColors,
             streamRussianPercent = (p[K.streamRussianPercent] ?: d.streamRussianPercent).coerceIn(-1, 100),
             streamPresets = readStreamPresets(p[K.streamPresets]),
+            streamStyleOrigin = p[K.streamStyleOrigin]?.takeIf(com.prism.music.data.foryou.MyWave::isOrigin),
             performanceMode = p[K.performanceMode] ?: d.performanceMode,
             performanceOffered = p[K.performanceOffered] ?: d.performanceOffered,
         )
@@ -3947,6 +3950,10 @@ class SettingsRepository(
     fun setReplayThemeColors(v: Boolean) = edit { it[K.replayThemeColors] = v }
     fun setStreamThemeColors(v: Boolean) = edit { it[K.streamThemeColors] = v }
     fun setStreamRussianPercent(v: Int) = edit { it[K.streamRussianPercent] = v.coerceIn(-1, 100) }
+    internal fun setStreamStyle(style: com.prism.music.data.foryou.MyWave.Style) = edit {
+        it[K.streamStyleOrigin] = style.origin
+        it[K.streamRussianPercent] = style.russianPercent.coerceIn(-1, 100)
+    }
 
     private fun readStreamPresets(raw: String?): List<SavedWavePreset> =
         raw?.let { runCatching { json.decodeFromString<List<SavedWavePreset>>(it) }.getOrNull() }

@@ -2,6 +2,7 @@ package com.prism.music.ui.components
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -27,7 +28,8 @@ internal fun WavePresetNameDialog(ru: Boolean, names: List<String>, onDismiss: (
                 label = { Text(l("Название", "Name")) }, singleLine = true,
                 isError = duplicate, supportingText = { if (duplicate) Text(l("Название уже занято", "Name already used")) },
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done))
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { if (cleaned.isNotEmpty() && !duplicate) onSave(cleaned) }))
             LaunchedEffect(Unit) { focus.requestFocus() }
         },
         confirmButton = { TextButton(enabled = cleaned.isNotEmpty() && !duplicate, onClick = { onSave(cleaned) }) { Text(l("Сохранить", "Save")) } },

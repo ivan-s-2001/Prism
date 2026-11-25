@@ -146,8 +146,10 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     var starting by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
     val settings = LocalAppSettings.current
-    fun restoredStyle(origin: String?) = MyWave.style(origin).let {
-        if (MyWave.isOrigin(origin)) it else it.copy(russianPercent = settings.streamRussianPercent)
+    fun restoredStyle(origin: String?): MyWave.Style = when {
+        MyWave.isOrigin(origin) -> MyWave.style(origin)
+        MyWave.isOrigin(settings.streamStyleOrigin) -> MyWave.style(settings.streamStyleOrigin)
+        else -> MyWave.Style(russianPercent = settings.streamRussianPercent)
     }
     var style by remember(source.originId) { mutableStateOf(restoredStyle(source.originId)) }
     val scenarioOrder = remember {
@@ -237,7 +239,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     val next = QueueSource(QueueKind.RADIO, title, seedId = nextSongs.first().id, originId = selected.origin)
                     c.recFeedback.served(nextSongs.map { it.id })
                     c.player.playQueue(nextSongs, 0, next)
-                    c.settings.setStreamRussianPercent(selected.russianPercent)
+                    c.settings.setStreamStyle(selected)
                 }
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) {
@@ -506,7 +508,10 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             if (final.presetId != null && initial.presets.none { it.id == final.presetId } && final.presets.any { it.id == final.presetId })
                 revealPresetId = final.presetId
             closeSettings()
-            if (final.style != style) start(final.style)
+            if (final.style != style) {
+                if (c.queue.source.value.isMyWave) start(final.style)
+                else { style = final.style; c.settings.setStreamStyle(final.style) }
+            }
         }
         ModalBottomSheet(onDismissRequest = { closeSettings() },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -647,8 +652,6 @@ private fun WaveScale(
         }
         Slider(value = value, onValueChange = { next ->
             onValueChange((kotlin.math.round(next / step).toInt() * step).coerceIn(0, 100).toFloat())
-        }, onValueChangeFinished = {
-            onCommit((kotlin.math.round(value / step).toInt() * step).coerceIn(0, 100))
         }, valueRange = 0f..100f, steps = 100 / step - 1,
             colors = if (ratio) SliderDefaults.colors(
                 activeTrackColor = scheme.onSurfaceVariant.copy(alpha = 0.28f),

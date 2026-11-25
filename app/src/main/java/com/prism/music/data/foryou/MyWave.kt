@@ -128,8 +128,7 @@ internal object MyWave {
         val queued = upcoming.mapTo(hashSetOf(), LocalRadio::sameSong)
         val available = pool.distinctBy(LocalRadio::sameSong).filter { LocalRadio.sameSong(it) !in queued }
         val previousKey = previous?.let(LocalRadio::sameSong)
-        val fresh = available.filter { !heard(it) && LocalRadio.sameSong(it) != previousKey }
-        val cycle = fresh.ifEmpty { available.filter { LocalRadio.sameSong(it) != previousKey } }.ifEmpty { available }
+        val cycle = available.filter { LocalRadio.sameSong(it) != previousKey }.ifEmpty { available }
         val preferred = cycle.filter {
             when (style.russianPercent) {
                 0 -> russianTitle(it) == false
@@ -137,19 +136,29 @@ internal object MyWave {
                 else -> true
             }
         }.ifEmpty { cycle }
-        val localLikes = likes.filter { liked -> preferred.any { it.id == liked.id } }
+        val availableIds = preferred.mapTo(hashSetOf()) { it.id }
+        val localLikes = likes.filter { it.id in availableIds }
         val likedIds = localLikes.mapTo(hashSetOf()) { it.id }
-        val strict = mix(preferred, localLikes, isKnown = { heard(it) || it.id in likedIds },
+        val fresh = preferred.filterNot(heard)
+        val strict = mix(fresh, localLikes.filterNot(heard), isKnown = { heard(it) || it.id in likedIds },
             heard = { false }, allowed = { true }, seed = seed, style = style, signals = signals,
             profile = profile, count = count, offset = offset, previousSong = previous,
             artistDoubt = artistDoubt, artistEvidence = artistEvidence)
+        val result = strict.toMutableList()
         val used = strict.mapTo(hashSetOf(), LocalRadio::sameSong)
-        val rest = start(preferred, localLikes, emptyList(), heard,
-            allowed = { LocalRadio.sameSong(it) !in used }, seed = seed,
-            count = count - strict.size, style = style, signals = signals, profile = profile,
-            previousSong = strict.lastOrNull() ?: previous, artistDoubt = artistDoubt,
-            artistEvidence = artistEvidence)
-        return (strict + rest).distinctBy(LocalRadio::sameSong)
+        // Relax only the unavailable offline quota, not exclusions or queue deduplication.
+        for (tier in listOf(fresh, preferred)) {
+            if (result.size >= count) break
+            val ids = tier.mapTo(hashSetOf()) { it.id }
+            val rest = start(tier, localLikes.filter { it.id in ids }, emptyList(), heard,
+                allowed = { LocalRadio.sameSong(it) !in used }, seed = seed,
+                count = count - result.size, style = style, signals = signals, profile = profile,
+                previousSong = result.lastOrNull() ?: previous, artistDoubt = artistDoubt,
+                artistEvidence = artistEvidence)
+            result += rest
+            used += rest.map(LocalRadio::sameSong)
+        }
+        return result
     }
 
     fun mix(
@@ -187,7 +196,7 @@ internal object MyWave {
             } else available
             val index = possible.firstOrNull {
                 val artist = pool[it].primaryArtist.lowercase()
-                artist != last && (artistCounts[artist] ?: 0) < if (style.diversity >= 75) 2 else 3
+                artist != last && (artistCounts[artist] ?: 0) < when { style.diversity >= 75 -> 2; style.diversity <= 25 -> 4; else -> 3 }
             } ?: possible.firstOrNull { pool[it].primaryArtist.lowercase() != last }
                 ?: possible.firstOrNull() ?: return result
             val song = pool.removeAt(index)
@@ -233,7 +242,7 @@ internal object MyWave {
         val random = Random(seed)
         val diversity = style.diversity.coerceIn(0, 100) / 100.0
         val artistLimit = if (diversity >= 0.75) 2 else if (diversity <= 0.25) 4 else 3
-        val explore = when (style.character) { Character.FAMILIAR -> 0.1; Character.BALANCED -> 0.45; Character.DISCOVERY -> 1.0 }
+        val explore = 0.1 + 0.9 * style.discoveryPercent.coerceIn(0, 100) / 100.0
         val energyBias = style.tune.energy
         val favoriteKeys = favorites.mapTo(hashSetOf(), LocalRadio::sameSong)
         fun familiar(s: Song): Boolean? = if (LocalRadio.sameSong(s) in favoriteKeys || LocalRadio.sameSong(s) in recentKeys || heard(s)) true else signals.heard(s)

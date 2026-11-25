@@ -54,8 +54,10 @@ internal fun TvWavePlace(nav: TvNav) {
     val ru = java.util.Locale.getDefault().language == "ru"
     fun l(a: String, b: String) = if (ru) a else b
     val title = l("Поток", "Stream")
-    fun restored() = MyWave.style(source.originId).let {
-        if (source.isMyWave) it else it.copy(russianPercent = c.settings.current.streamRussianPercent)
+    fun restored(): MyWave.Style = when {
+        source.isMyWave -> MyWave.style(source.originId)
+        MyWave.isOrigin(appSettings.streamStyleOrigin) -> MyWave.style(appSettings.streamStyleOrigin)
+        else -> MyWave.Style(russianPercent = appSettings.streamRussianPercent)
     }
     var style by remember(source.originId) { mutableStateOf(restored()) }
     var editor by remember { mutableStateOf(WaveSettingsDraft(style, appSettings.streamThemeColors, savedPresets, chosenPresetId)) }
@@ -113,7 +115,7 @@ internal fun TvWavePlace(nav: TvNav) {
                     style = selected
                     c.recFeedback.served(picks.map { it.id })
                     c.player.playQueue(picks, 0, QueueSource(QueueKind.RADIO, title, seedId = picks.first().id, originId = selected.origin))
-                    c.settings.setStreamRussianPercent(selected.russianPercent)
+                    c.settings.setStreamStyle(selected)
                 }
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { c.player.reportError(l("Не удалось обновить поток", "Could not update Stream")) }
@@ -127,8 +129,9 @@ internal fun TvWavePlace(nav: TvNav) {
         if (tuning) {
             CompositionLocalProvider(LocalTvScreen provides "$screen/tune") {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(l("Настроить поток", "Tune Stream"), style = MaterialTheme.typography.headlineMedium)
+                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     TvWaveScale(l("Характер потока", "Discovery mix"), draft.discoveryPercent,
                         l("Лайки", "Liked songs"), l("Открытия", "Discoveries"), "discovery",
                         { editor = editor.discovery(it) })
@@ -142,6 +145,34 @@ internal fun TvWavePlace(nav: TvNav) {
                     TvWaveScale(l("Разнообразие", "Variety"), draft.diversity,
                         l("Меньше", "Less"), l("Больше", "More"), "diversity",
                         { editor = editor.tune(draft.copy(diversity = it)) }, step = 10, ratio = false)
+                    TvWaveChoices(l("Настроение", "Mood"), MyWave.Mood.entries, draft.mood, "mood",
+                        { when (it) {
+                            MyWave.Mood.ANY -> l("Любое", "Any")
+                            MyWave.Mood.CALM -> l("Спокойное", "Calm")
+                            MyWave.Mood.ENERGETIC -> l("Бодрое", "Energetic")
+                        } }, { editor = editor.tune(draft.copy(mood = it)) })
+                    TvWaveChoices(l("Занятие", "Activity"), MyWave.Activity.entries, draft.activity, "activity",
+                        { when (it) {
+                            MyWave.Activity.ANY -> l("Любое", "Any")
+                            MyWave.Activity.WAKE -> l("Просыпаюсь", "Waking up")
+                            MyWave.Activity.ROAD -> l("В дороге", "On the road")
+                            MyWave.Activity.WORK -> l("Работаю", "Focus")
+                            MyWave.Activity.TRAIN -> l("Тренируюсь", "Workout")
+                            MyWave.Activity.SLEEP -> l("Засыпаю", "Sleep")
+                        } }, { editor = editor.tune(draft.copy(activity = it)) })
+                    TvWaveChoices(l("Популярность", "Popularity"), MyWave.Depth.entries, draft.depth, "depth",
+                        { when (it) {
+                            MyWave.Depth.ANY -> l("Любая", "Any")
+                            MyWave.Depth.HITS -> l("Хиты", "Hits")
+                            MyWave.Depth.DEEP -> l("Редкое", "Deep cuts")
+                        } }, { editor = editor.tune(draft.copy(depth = it)) })
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        TvButton(l("Сохранить пресет", "Save preset"), { namingPreset = true },
+                            Modifier.weight(1f).tvItem("tv_wave/save"), icon = PrismIcons.Add)
+                        TvButton(l("Сбросить", "Reset"), { editor = editor.reset() },
+                            Modifier.tvItem("tv_wave/reset"), icon = PrismIcons.Refresh)
+                    }
+                    }
                     Text(l("Изменения вступят в силу после подтверждения", "Changes apply after confirmation"),
                         style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -151,14 +182,11 @@ internal fun TvWavePlace(nav: TvNav) {
                             c.settings.applyStreamTuning(final.themeColors.takeIf { it != baseline.themeColors }, baseline.presets, final.presets)
                             chosenPresetId = final.presetId
                             toggleTuning(false)
-                            if (final.style != style) start(final.style)
+                            if (final.style != style) {
+                                if (c.queue.source.value.isMyWave) start(final.style)
+                                else { style = final.style; c.settings.setStreamStyle(final.style) }
+                            }
                         }, Modifier.weight(1f).tvItem("tv_wave/apply"), primary = true, icon = PrismIcons.Check)
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TvButton(l("Сохранить пресет", "Save preset"), { namingPreset = true },
-                            Modifier.weight(1f).tvItem("tv_wave/save"), icon = PrismIcons.Add)
-                        TvButton(l("Сбросить", "Reset"), { editor = editor.reset() },
-                            Modifier.tvItem("tv_wave/reset"), icon = PrismIcons.Refresh)
                     }
                 }
                 var groupIndex by remember { mutableIntStateOf(0) }
@@ -184,7 +212,7 @@ internal fun TvWavePlace(nav: TvNav) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                     TvButton(preset.name, { editor = editor.choose(preset) },
                                         Modifier.weight(1f).tvItem("tv_wave/custom/${preset.id}"), icon = PrismIcons.Bookmark,
-                                        primary = draft.origin == preset.origin)
+                                        primary = editor.presetId == preset.id && draft.origin == preset.origin)
                                     TvIconButton(PrismIcons.Delete, l("Удалить ", "Delete ") + preset.name,
                                         { editor = editor.delete(preset.id) }, Modifier.tvItem("tv_wave/delete/${preset.id}"))
                                 }
@@ -308,6 +336,23 @@ private fun TvWaveScale(title: String, value: Int, left: String, right: String,
                 drawCircle(if (automaticLabel != null) scheme.onSurfaceVariant else scheme.primary, radius = 5.dp.toPx(), center = androidx.compose.ui.geometry.Offset(size.width * value / 100f, y))
             }
             TvButton("+$step", { change((value + step).coerceIn(0, 100)) }, Modifier.tvItem("tv_wave/$tag/up"))
+        }
+    }
+}
+
+@Composable
+private fun <T> TvWaveChoices(title: String, values: List<T>, selected: T, tag: String,
+    name: (T) -> String, choose: (T) -> Unit) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, style = MaterialTheme.typography.titleSmall)
+        values.chunked(2).forEachIndexed { row, items ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                items.forEachIndexed { index, value ->
+                    TvButton(name(value), { choose(value) }, Modifier.weight(1f).tvItem("tv_wave/$tag/$row/$index"),
+                        primary = selected == value)
+                }
+                if (items.size == 1) Spacer(Modifier.weight(1f))
+            }
         }
     }
 }

@@ -290,4 +290,23 @@ class MyWaveTest {
         assertEquals("test", edited.presetId)
         assertTrue(edited.delete("test").presets.isEmpty())
     }
+
+    @Test fun offlineRefillUsesFreshFirstThenRecyclesToFillBatch() {
+        val fresh = song("fresh", "A")
+        val older = song("older", "B")
+        val previous = song("previous", "C")
+        val result = MyWave.offlineMix(listOf(fresh, older, previous), emptyList(), emptyList(), previous,
+            { it != fresh }, MyWave.Style(discoveryPercent = 100),
+            com.prism.music.data.foryou.RadioSignals(), MyWave.Profile(), 8, 0, 42L)
+        assertEquals(listOf(fresh, older), result)
+    }
+
+    @Test fun offlineDownloadsRespectUpcomingAndPreferredLanguage() {
+        val russian = song("ru", "A", "Мелодия")
+        val foreign = song("en", "B", "Song")
+        val result = MyWave.offlineMix(listOf(russian, foreign), emptyList(), emptyList(), null,
+            { false }, MyWave.Style(russianPercent = 100), com.prism.music.data.foryou.RadioSignals(),
+            MyWave.Profile(), 8, 0, 42L)
+        assertEquals(listOf(russian), result)
+    }
 }

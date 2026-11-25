@@ -285,7 +285,8 @@ class YourMusic(private val c: AppContainer) {
             val downloaded = withContext(Dispatchers.IO) { c.downloads.completedSongs() }
             val feedback = c.recFeedback
             val pool = downloaded.filter { song ->
-                c.availableOffline(song.id) && ok(song) && !song.isVideo && !song.isEpisode && !song.isLive &&
+                c.availableOffline(song.id) && !c.library.isDisliked(song.id) && !c.exclusions.blocks(song) &&
+                    !c.exclusions.isSongExcluded(song.id) && !song.isVideo && !song.isEpisode && !song.isLive &&
                     !feedback.turnedDown(song.id, known = song.id in c.library.likedIds.value) &&
                     com.prism.music.data.ExplicitFilter.plays(c.settings.current.behavior.explicitContent, song)
             }.distinctBy(LocalRadio::sameSong)
@@ -312,7 +313,7 @@ class YourMusic(private val c: AppContainer) {
             return MyWave.mix(candidates, taste.likes, isKnown = known,
             heard = c.sessionHeard::has,
             allowed = { song ->
-                song.id !in ids && ok(song) && !song.isVideo && (!offline || c.availableOffline(song.id)) &&
+                song.id !in ids && ok(song) && (song.durationSec == 0 || song.durationSec >= 60) &&
                     !feedback.turnedDown(song.id, known = song.id in knownIds) &&
                     com.prism.music.data.ExplicitFilter.plays(c.settings.current.behavior.explicitContent, song)
             },

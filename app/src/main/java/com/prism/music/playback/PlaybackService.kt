@@ -534,6 +534,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 val ids = failedHere.take(listOf(next)).filterNot { it.startsWith(Song.LOCAL_PREFIX) || it.startsWith(Song.RSS_PREFIX) }
                 ids.forEach { c.streams.invalidate(it) }
                 c.streams.anotherNetwork()
+                com.prism.music.data.foryou.RecommendationQuality.networkChanged()
+                if (c.queue.source.value.isMyWave) refreshWaveForNetwork()
                 AudioDiagnostics.log("network", "another network: ${ids.size} songs' streams asked for afresh (${ids.take(5).joinToString()})")
             }
         }
@@ -1594,7 +1596,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         AudioDiagnostics.session.skippedByError()
         id?.let {
             failedHere.failed(it)
-            com.prism.music.data.foryou.RecommendationQuality.failed(it)
+            if (c.network.isOnline()) com.prism.music.data.foryou.RecommendationQuality.failed(it)
             android.util.Log.w("PrismStream", "$it exhausted playback retries: ${error.errorCodeName}; ${cause.message?.take(160)}")
         }
         fun stillThere() = player.playbackState == Player.STATE_IDLE && player.currentMediaItemIndex == index && player.currentMediaItem?.mediaId == id
@@ -1796,6 +1798,25 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
      * suggestions as it nears its end: seeded by the song for a single-song
      * play, or by the last track of an album / playlist.
      */
+    /** Keep the current song/position; only Wave's future queue changes when connectivity changes. */
+    private suspend fun refreshWaveForNetwork() {
+        val src = c.queue.source.value
+        if (!src.isMyWave || player.mediaItemCount == 0 || c.queue.followingHost) return
+        val offline = !c.network.isOnline()
+        val downloads = if (offline) withContext(Dispatchers.IO) {
+            c.downloads.completedSongs().mapTo(hashSetOf()) { it.id }
+        } else emptySet()
+        if (c.queue.source.value !== src || offline == c.network.isOnline()) return
+        dropAutoplay()
+        if (offline) {
+            for (i in player.mediaItemCount - 1 downTo player.currentMediaItemIndex + 1) {
+                val id = player.getMediaItemAt(i).mediaId
+                if (id !in downloads || !c.availableOffline(id)) player.removeMediaItem(i)
+            }
+        }
+        maybeAutoplay()
+    }
+
     fun maybeAutoplay() {
         val src = c.queue.source.value
         // Still looking for a queue that's been replaced, whoever replaced it (a car, a watch, a spoken request).
