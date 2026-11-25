@@ -338,7 +338,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                         "search_play" -> {
                             val query = command.query?.takeIf { it.isNotBlank() && it.length <= 200 }
                             if (query != null) {
-                                val request = VoiceSearch.parse(query, null)
+                                val request = VoiceSearch.parse(query, extras = null)
                                 val pick = tree.voice(request)
                                 if (active() && pick != null && pick.songs.isNotEmpty()) {
                                     c.queue.autoplayStart.value = -1
