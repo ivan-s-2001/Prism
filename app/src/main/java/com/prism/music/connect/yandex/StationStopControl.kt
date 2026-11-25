@@ -21,13 +21,16 @@ internal class StationStopControl {
     suspend fun stop(socket: GlagolSocket, token: String, allowTextFallback: Boolean = true) {
         suspend fun attempt(payload: JsonObject): Boolean {
             val before = state.get()
-            socket.request(token, payload)
+            val result = socket.request(token, payload, timeoutMs = 600L)
+            if (result != null && !result.equals("SUCCESS", ignoreCase = true)) return false
             socket.send(token, GlagolProtocol.ping())
             return withTimeoutOrNull(2500) {
+                var attempts = 0
                 while (true) {
                     val current = state.get()
                     if (current !== before && current?.playing == false) break
                     delay(100)
+                    if (++attempts % 5 == 0) socket.send(token, GlagolProtocol.ping())
                 }
                 true
             } == true
