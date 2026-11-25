@@ -20,3 +20,5 @@ The native queue file now persists source kind, seed, origin, manual additions a
 
 ### Vibe naming and context preservation
 English/Russian user-facing recommendation terminology is Vibe/Вайб; legacy resource identifiers, serialized origins and actual broadcast terminology stay compatible. Artist/collection starts retain a bounded representative sample of the original collection in the queue and saved session. Provider results are candidates; local relevance scores remain signals in the shared selector. Ordinary play and shuffle are unchanged. Remaining work: translations outside en/ru, all collection card and TV collection action surfaces, exhaustive depletion fallback, full build and device validation.
+
+Vibe actions are available from collection cards and pages, TV collections and TV song actions. Collection page extras suppress duplicate card actions. Ordinary TV single-track taps no longer implicitly start a Vibe; explicit quick-pick behavior remains configurable. A genuine broadcast keeps its radio/live identity.

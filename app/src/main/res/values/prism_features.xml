@@ -172,4 +172,7 @@
     <string name="prism_stream_save_scenario">Save scenario</string>
     <string name="prism_tabler_icon_description">Tabler line icons, with Prism weight and fill settings</string>
     <string name="vibe_from_collection">Vibe from this collection</string>
+    <string name="vibe_from_album">Vibe from this album</string>
+    <string name="vibe_from_playlist">Vibe from this playlist</string>
+    <string name="vibe_from_artist">Vibe from this artist</string>
 </resources>

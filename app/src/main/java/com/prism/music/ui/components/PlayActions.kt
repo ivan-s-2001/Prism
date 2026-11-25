@@ -175,7 +175,7 @@ fun PlayActionsSheet(target: Playable, extra: List<SheetItem> = emptyList(), ext
     val quick = if (item is ArtistItem) listOfNotNull(
         ActionItem(PrismIcons.Shuffle, tr(R.string.shuffle)) { play(shuffle = true) },
         // YouTube makes no mix of what's only yours.
-        ActionItem(PrismIcons.Stream, tr(R.string.stream)) { play(shuffle = false, mix = true) }.takeUnless { com.prism.music.data.innertube.Parser.isUploadArtist(item.id) },
+        ActionItem(PrismIcons.Stream, tr(R.string.vibe_from_artist)) { play(shuffle = false, mix = true) }.takeUnless { com.prism.music.data.innertube.Parser.isUploadArtist(item.id) },
     ) else listOf(
         ActionItem(PrismIcons.Play, tr(R.string.widget_play)) { play(shuffle = false) },
         ActionItem(PrismIcons.Shuffle, tr(R.string.shuffle)) { play(shuffle = true) },
@@ -274,13 +274,34 @@ fun PlayActionsSheet(target: Playable, extra: List<SheetItem> = emptyList(), ext
                 }) else emptyList()
             )
         }.orEmpty()
+        // The collection page already supplies the same action in its own extras.
+        val vibe = if (target is Playable.Page || item is ArtistItem || (item is PlaylistItem && item.isMix)) emptyList()
+        else listOf(ActionItem(PrismIcons.Stream, tr(when (item) {
+            is AlbumItem -> R.string.vibe_from_album
+            is PlaylistItem -> R.string.vibe_from_playlist
+            else -> R.string.vibe_from_collection
+        })) {
+            c.scope.launch(Dispatchers.Main) {
+                val token = c.player.queueStarting()
+                val loaded = runCatching { whileLoading(context, title) { songsFor(c, target, shuffle = false, mix = false) } }.getOrNull()
+                if (!c.player.stillStarting(token)) return@launch
+                if (loaded == null || !c.player.playContextVibe(title, loaded.first) {
+                        if (!c.network.isOnline()) emptyList() else when (item) {
+                            is AlbumItem -> item.playlistId?.let { c.radio(null, "RDAMPL$it").songs }.orEmpty()
+                            is PlaylistItem -> if (com.prism.music.data.PrismLibrary.isPrismList(item.id)) emptyList()
+                                else c.radio(null, "RDAMPL${item.id.removePrefix("VL")}").songs
+                            else -> emptyList()
+                        }
+                    }) Toast.makeText(context, tr(R.string.couldn_t_start_the_radio), Toast.LENGTH_SHORT).show()
+            }
+        })
         val cover = if (item is AlbumItem) listOf(ActionItem(PrismIcons.Photo, tr(R.string.change_cover), active = c.covers.custom(c.covers.albumKey(item.id)) != null, keepOpen = true) {
             coverFor = CoverFor.OfAlbum(item.id, item.title, item.thumbnail, c.covers.albumKey(item.id))
         }) else emptyList()
         if (extraTitle != null) {
-            ActionGroup(null, addTo + djSet + copy + pin + cover + remove) { runAction(it, close) }
+            ActionGroup(null, vibe + addTo + djSet + copy + pin + cover + remove) { runAction(it, close) }
             ActionGroup(extraTitle, extra.map { it.toAction() }) { runAction(it, close) }
-        } else ActionGroup(null, addTo + djSet + copy + pin + cover + extra.map { it.toAction() } + remove) { runAction(it, close) }
+        } else ActionGroup(null, vibe + addTo + djSet + copy + pin + cover + extra.map { it.toAction() } + remove) { runAction(it, close) }
     }
 }
 

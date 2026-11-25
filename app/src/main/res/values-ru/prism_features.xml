@@ -172,4 +172,7 @@
     <string name="prism_stream_save_scenario">Сохранить сценарий</string>
     <string name="prism_tabler_icon_description">Иконки Tabler с настройками толщины и заливки Prism</string>
     <string name="vibe_from_collection">Вайб по подборке</string>
+    <string name="vibe_from_album">Вайб по альбому</string>
+    <string name="vibe_from_playlist">Вайб по плейлисту</string>
+    <string name="vibe_from_artist">Вайб по исполнителю</string>
 </resources>

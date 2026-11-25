@@ -565,7 +565,7 @@ private fun TopBar(
             )
             com.prism.music.ui.components.RoundAction(PrismIcons.ArrowBack, tr(R.string.back), Modifier.align(Alignment.CenterStart).padding(start = 12.dp), glass = true) { nav.back() }
             Row(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (hasMix) com.prism.music.ui.components.RoundAction(PrismIcons.Stream, tr(R.string.radio, page.name), glass = true, onClick = onMix)
+                if (hasMix) com.prism.music.ui.components.RoundAction(PrismIcons.Stream, tr(R.string.vibe_from_artist), glass = true, onClick = onMix)
                 Box {
                     com.prism.music.ui.components.RoundAction(PrismIcons.More, tr(R.string.more), glass = true) { menu = true }
                     DropdownMenu(menu, { menu = false }) {

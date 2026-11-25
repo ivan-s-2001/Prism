@@ -1027,7 +1027,11 @@ internal fun CollectionContent(type: CollectionType, live: LiveCollection, initi
             val items = buildList {
                 // D54: always here while the playing song is one of the songs shown.
                 locate.go?.let { go -> add(SheetItem(PrismIcons.Song, tr(R.string.go_to_the_playing_song)) { go() }) }
-                if (canVibe) add(SheetItem(PrismIcons.Stream, tr(R.string.vibe_from_collection)) { startRadio() })
+                if (canVibe) add(SheetItem(PrismIcons.Stream, tr(when (type) {
+                    CollectionType.ALBUM -> R.string.vibe_from_album
+                    CollectionType.PLAYLIST, CollectionType.PRISM -> R.string.vibe_from_playlist
+                    else -> R.string.vibe_from_collection
+                })) { startRadio() })
                 if (savableId != null && saved != null) add(
                     SheetItem(if (saved == true) PrismIcons.LibraryAdded else PrismIcons.LibraryAdd, if (saved == true) tr(R.string.remove_from_library) else tr(R.string.add_to_library)) { toggleSaved() },
                 )
