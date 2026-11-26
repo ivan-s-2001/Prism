@@ -23,8 +23,20 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.combine
 
 enum class SyncState { IDLE, SYNCING, DONE, ERROR }
+
+internal enum class SongReaction { NONE, LIKE, DISLIKE }
+
+internal fun reactionAfterLike(current: SongReaction): SongReaction =
+    if (current == SongReaction.LIKE) SongReaction.NONE else SongReaction.LIKE
+
+internal fun reactionAfterDislike(current: SongReaction): SongReaction =
+    if (current == SongReaction.DISLIKE) SongReaction.NONE else SongReaction.DISLIKE
 
 /**
  * A list read from the database that can't take Prism down (#103): on a phone short of memory, reading ~1,250 liked
@@ -52,11 +64,16 @@ private const val MAX_READ_TRIES = 20L
 class LibraryRepository(private val c: AppContainer) {
     private val songs = c.db.songs()
 
-    val likedIds: StateFlow<Set<String>> = songs.likedIdsFlow().resilient("liked ids").map { it.toSet() }
-        .stateIn(c.scope, SharingStarted.Eagerly, emptySet())
+    private val dislikePrefs = c.app.getSharedPreferences("dislikes", android.content.Context.MODE_PRIVATE)
+    /** Songs to keep out of autoplay, radio and smart downloads. */
+    val dislikedIds = MutableStateFlow(dislikePrefs.getStringSet("ids", emptySet())!!.toSet())
+    val likedIds: StateFlow<Set<String>> = combine(songs.likedIdsFlow().resilient("liked ids"), dislikedIds) { ids, disliked ->
+        ids.toSet() - disliked
+    }.stateIn(c.scope, SharingStarted.Eagerly, emptySet())
 
-    val liked = songs.likedFlow().resilient("liked songs").map { list -> list.map { it.toSong() } }
-        .stateIn(c.scope, SharingStarted.Eagerly, emptyList())
+    val liked = combine(songs.likedFlow().resilient("liked songs"), dislikedIds) { list, disliked ->
+        list.filterNot { it.id in disliked }.map { it.toSong() }
+    }.stateIn(c.scope, SharingStarted.Eagerly, emptyList())
 
     /**
      * The liked songs as the lists show them (#111): a liked music video whose song is liked too shows once, as the song,
@@ -166,56 +183,112 @@ class LibraryRepository(private val c: AppContainer) {
         }
     }
 
-    private val dislikePrefs = c.app.getSharedPreferences("dislikes", android.content.Context.MODE_PRIVATE)
-    /** Songs to keep out of autoplay, radio and smart downloads. */
-    val dislikedIds = MutableStateFlow(dislikePrefs.getStringSet("ids", emptySet())!!.toSet())
+    private data class ReactionRequest(val song: Song, val target: SongReaction)
+    private val reactionLock = Mutex()
+    private val reactionRequests = Channel<ReactionRequest>(Channel.UNLIMITED)
+    private val pendingReactions = mutableMapOf<String, ReactionRequest>()
 
-    fun isDisliked(id: String) = id in dislikedIds.value
-
-    fun setDisliked(song: Song, disliked: Boolean) {
-        val next = if (disliked) dislikedIds.value + song.id else dislikedIds.value - song.id
-        dislikedIds.value = next
-        dislikePrefs.edit().putStringSet("ids", next).apply()
-        if (disliked && isLiked(song.id)) setLiked(song, false)
+    // One ordered writer for DB, local exclusions and YouTube's single reaction state.
+    // Like and dislike removal use the same YouTube endpoint, so never race separate requests.
+    private val reactionWriter by lazy {
         c.scope.launch(Dispatchers.IO) {
-            if (disliked && c.downloads.downloads.value.containsKey(song.id) && songs.get(song.id)?.smartDownload == true) {
-                c.downloads.remove(song.id, byListener = false)
+            for (request in reactionRequests) {
+                try {
+                    reactionLock.withLock { applyReaction(request.song, request.target) }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    lastError.value = e.friendlyMessage()
+                } finally {
+                    synchronized(pendingReactions) {
+                        if (pendingReactions[request.song.id] === request) pendingReactions.remove(request.song.id)
+                    }
+                }
             }
-            // Tells YouTube Music too, so its recommendations learn from it.
-            if (c.settings.current.isLoggedIn) runCatching { c.ytm.dislike(song.id, disliked) }
         }
     }
 
-    fun isLiked(id: String) = id in likedIds.value
+    private fun storedReaction(id: String): SongReaction = when {
+        id in dislikedIds.value -> SongReaction.DISLIKE
+        id in likedIds.value -> SongReaction.LIKE
+        else -> SongReaction.NONE
+    }
 
-    fun toggleLike(song: Song) = setLiked(song, !isLiked(song.id))
+    private fun desiredReaction(id: String): SongReaction = synchronized(pendingReactions) {
+        pendingReactions[id]?.target ?: storedReaction(id)
+    }
+
+    fun isDisliked(id: String) = desiredReaction(id) == SongReaction.DISLIKE
+    fun isLiked(id: String) = desiredReaction(id) == SongReaction.LIKE
+
+    private fun requestReaction(song: Song, choose: (SongReaction) -> SongReaction): SongReaction =
+        synchronized(pendingReactions) {
+            val current = pendingReactions[song.id]?.target ?: storedReaction(song.id)
+            if (song.isRss) return@synchronized current
+            val target = choose(current)
+            val request = ReactionRequest(song, target)
+            pendingReactions[song.id] = request
+            reactionWriter
+            reactionRequests.trySend(request)
+            target
+        }
+
+    fun toggleDislike(song: Song): Boolean =
+        requestReaction(song, ::reactionAfterDislike) == SongReaction.DISLIKE
+
+    fun setDisliked(song: Song, disliked: Boolean) {
+        requestReaction(song) { previous ->
+            if (disliked) SongReaction.DISLIKE else if (previous == SongReaction.DISLIKE) SongReaction.NONE else previous
+        }
+    }
+
+    fun toggleLike(song: Song) { requestReaction(song, ::reactionAfterLike) }
 
     fun setLiked(song: Song, liked: Boolean) {
-        // An episode from a feed: nothing Liked songs, the account or a Replay list could do anything with.
-        if (song.isRss) return
-        c.scope.launch(Dispatchers.IO) { likeNow(song, liked) }
+        requestReaction(song) { previous ->
+            if (liked) SongReaction.LIKE else if (previous == SongReaction.LIKE) SongReaction.NONE else previous
+        }
     }
 
-    /**
-     * Select many (1.8.3): several songs liked or unliked, one after another rather than all at once (a whole playlist
-     * picked was hundreds of calls to YouTube Music side by side).
-     */
+    /** Bulk selection uses the same writer, preserving order and mutual exclusion. */
     fun setLiked(many: List<Song>, liked: Boolean) {
-        val likable = many.filter { !it.isRss }
-        if (likable.isEmpty()) return
-        c.scope.launch(Dispatchers.IO) { likable.forEach { runCatching { likeNow(it, liked) } } }
+        many.forEach { setLiked(it, liked) }
     }
 
-    private suspend fun likeNow(song: Song, liked: Boolean) {
+    private suspend fun applyReaction(song: Song, target: SongReaction) {
         val existing = songs.get(song.id)
-        songs.upsert(song.toEntity(existing).copy(liked = liked, likedAt = if (liked) System.currentTimeMillis() else 0))
-        // "Love on Last.fm when I like a song" (#133), local files included.
-        c.lastFm.liked(song, liked)
-        // A file on the phone is liked in Prism only: there's nothing to download or tell YouTube.
+        val liked = target == SongReaction.LIKE
+        val disliked = target == SongReaction.DISLIKE
+        val oldDisliked = song.id in dislikedIds.value
+        val wasLiked = existing?.liked == true
+        if (disliked) {
+            val next = dislikedIds.value + song.id
+            dislikedIds.value = next
+            dislikePrefs.edit().putStringSet("ids", next).apply()
+        }
+        // Do not replace metadata or reset likedAt for a no-op.
+        if (wasLiked != liked) {
+            songs.upsert(song.toEntity(existing).copy(liked = liked, likedAt = if (liked) System.currentTimeMillis() else 0))
+            c.lastFm.liked(song, liked)
+        }
+        if (!disliked && oldDisliked) {
+            val next = dislikedIds.value - song.id
+            dislikedIds.value = next
+            dislikePrefs.edit().putStringSet("ids", next).apply()
+        }
+        if (disliked && c.downloads.downloads.value.containsKey(song.id) && existing?.smartDownload == true) {
+            c.downloads.remove(song.id, byListener = false)
+        }
         if (song.isLocal) return
-        if (liked && c.settings.current.downloadLikes) c.downloads.download(song)
+        if (liked && !wasLiked && c.settings.current.downloadLikes) c.downloads.download(song)
         if (c.settings.current.isLoggedIn) {
-            runCatching { c.ytm.like(song.id, liked) }.onFailure { lastError.value = tr(R.string.couldn_t_sync_like, it.friendlyMessage()) }
+            runCatching {
+                when (target) {
+                    SongReaction.LIKE -> c.ytm.like(song.id, true)
+                    SongReaction.DISLIKE -> c.ytm.dislike(song.id, true)
+                    SongReaction.NONE -> c.ytm.like(song.id, false)
+                }
+            }.onFailure { lastError.value = tr(R.string.couldn_t_sync_like, it.friendlyMessage()) }
         }
     }
 
@@ -231,7 +304,8 @@ class LibraryRepository(private val c: AppContainer) {
         if (!c.settings.current.isLoggedIn || syncState.value == SyncState.SYNCING) return@withContext
         syncState.value = SyncState.SYNCING
         try {
-            val remote = c.ytm.likedSongs()
+            reactionLock.withLock {
+            val remote = c.ytm.likedSongs().filterNot { it.id in dislikedIds.value }
             val before = likedIds.value
             val now = System.currentTimeMillis()
             // Chunked: SQLite caps bound parameters at 999 on older Android versions.
@@ -249,6 +323,7 @@ class LibraryRepository(private val c: AppContainer) {
             }
             if (c.settings.current.downloadLikes && before.isNotEmpty()) {
                 remote.filter { it.id !in before }.forEach { c.downloads.download(it) }
+            }
             }
             reloadPlaylists()
             runCatching { albums.value = c.ytm.libraryAlbums() }
