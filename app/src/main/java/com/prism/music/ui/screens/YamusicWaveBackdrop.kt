@@ -125,7 +125,7 @@ internal fun YamusicWaveBackdrop(
             WaveInput(if (moving) signal.value else VibeWaveSignal(7f, 0f, EMPTY_BANDS),
                 scene?.anchor, targetColors.value)
         }.conflate().collect { (sample, anchor, colors) ->
-                val blended = transition.update(colors, SystemClock.elapsedRealtime(), moving, duration.value)
+                val blended = transition.update(colors, SystemClock.elapsedRealtime(), moving && duration.value > 0, duration.value)
                 val framePalette = if (moving) flowingWavePalette(blended.palette, sample.phase) else blended.palette
                 val drift = waveDrift(sample.phase, minOf(view.width, view.height).toFloat(), moving)
                 val at = if (anchor == null) Offset(view.width * 0.5f, view.height * 0.38f) else anchor - viewport.origin
