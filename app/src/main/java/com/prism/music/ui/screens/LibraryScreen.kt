@@ -601,43 +601,14 @@ fun LibraryScreen(bottomPadding: Dp) {
                 }
                 when (tab) {
                     LibTab.OVERVIEW -> {
-                        item(key = "overview-access", span = { GridItemSpan(maxLineSpan) }) {
-                            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    CollectionQuickLink(tr(R.string.liked_songs), com.prism.music.data.model.songCount(liked.size),
-                                        PrismIcons.HeartFilled, Modifier.weight(1f), primary = true) { nav.go(Routes.liked()) }
-                                    CollectionQuickLink(tr(R.string.downloads), com.prism.music.data.model.songCount(dls.values.count { it.state == androidx.media3.exoplayer.offline.Download.STATE_COMPLETED }),
-                                        PrismIcons.DownloadDone, Modifier.weight(1f)) { nav.go(Routes.DOWNLOADS) }
-                                }
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    CollectionQuickLink(tr(R.string.history), "", PrismIcons.History, Modifier.weight(1f)) {
-                                        scope.launch { pager.scrollToPage(LibTab.HISTORY.ordinal) }
-                                    }
-                                    CollectionQuickLink(tr(R.string.local_files), "", PrismIcons.Phone, Modifier.weight(1f)) { nav.go(Routes.LOCAL) }
-                                }
-                            }
-                        }
-                        item(key = "overview-playlists", span = { GridItemSpan(maxLineSpan) }) {
-                            com.prism.music.ui.components.SectionHeader(tr(R.string.your_playlists),
-                                onMore = { scope.launch { pager.scrollToPage(LibTab.PLAYLISTS.ordinal) } })
-                        }
-                        item(key = "overview-playlists-row", span = { GridItemSpan(maxLineSpan) }) {
-                            LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                item(key = "create") {
-                                    Box(Modifier.width(136.dp)) { ShortcutTile(tr(R.string.new_playlist), "", PrismIcons.Add, false) { creating = true } }
-                                }
-                                val previews = sortedPlaylists.distinctBy { it.id }.take(12)
-                                items(previews.size, key = { "playlist:" + previews[it].id }) { i ->
-                                    val playlist = previews[i]
-                                    ItemCard(shown(playlist), width = 136.dp, onLongClick = { menuFor = playlist }) { nav.open(playlist, onSong) }
-                                }
+                        item(key = "overview-likes", span = { GridItemSpan(maxLineSpan) }) {
+                            CollectionQuickLink(tr(R.string.liked_songs), com.prism.music.data.model.songCount(liked.size),
+                                PrismIcons.HeartFilled, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), primary = true) {
+                                nav.go(Routes.liked())
                             }
                         }
                         if (liked.isNotEmpty()) {
-                            item(key = "overview-likes", span = { GridItemSpan(maxLineSpan) }) {
-                                com.prism.music.ui.components.SectionHeader(tr(R.string.liked_songs), onMore = { nav.go(Routes.liked()) })
-                            }
-                            items(liked.distinctBy { it.id }.take(3), key = { "overview-song:" + it.id }, span = { GridItemSpan(maxLineSpan) }) { song ->
+                            items(liked.distinctBy { it.id }.take(4), key = { "overview-song:" + it.id }, span = { GridItemSpan(maxLineSpan) }) { song ->
                                 SongRow(song, showAlbum = false) {
                                     c.player.playQueue(liked, liked.indexOf(song),
                                         com.prism.music.playback.QueueSource(com.prism.music.playback.QueueKind.LIBRARY, tr(R.string.liked_songs)))
@@ -662,6 +633,22 @@ fun LibraryScreen(bottomPadding: Dp) {
                                 }
                             }
                         }
+                        item(key = "overview-playlists", span = { GridItemSpan(maxLineSpan) }) {
+                            com.prism.music.ui.components.SectionHeader(tr(R.string.your_playlists),
+                                onMore = { scope.launch { pager.scrollToPage(LibTab.PLAYLISTS.ordinal) } })
+                        }
+                        item(key = "overview-playlists-row", span = { GridItemSpan(maxLineSpan) }) {
+                            LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                item(key = "create") {
+                                    Box(Modifier.width(136.dp)) { ShortcutTile(tr(R.string.new_playlist), "", PrismIcons.Add, false) { creating = true } }
+                                }
+                                val previews = sortedPlaylists.distinctBy { it.id }.take(12)
+                                items(previews.size, key = { "playlist:" + previews[it].id }) { i ->
+                                    val playlist = previews[i]
+                                    ItemCard(shown(playlist), width = 136.dp, onLongClick = { menuFor = playlist }) { nav.open(playlist, onSong) }
+                                }
+                            }
+                        }
                         if (albums.isNotEmpty()) {
                             item(key = "overview-albums", span = { GridItemSpan(maxLineSpan) }) {
                                 com.prism.music.ui.components.SectionHeader(tr(R.string.albums),
@@ -682,6 +669,18 @@ fun LibraryScreen(bottomPadding: Dp) {
                             ShortcutTile(tr(R.string.prism_vibe_dislikes_count, disliked.size),
                                 tr(R.string.prism_vibe_blocked_artists_count, blockedArtists.size),
                                 PrismIcons.ThumbDown, true) { editingReactions = true }
+                        }
+                        item(key = "overview-access", span = { GridItemSpan(maxLineSpan) }) {
+                            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                CollectionQuickLink(tr(R.string.downloads), com.prism.music.data.model.songCount(dls.values.count { it.state == androidx.media3.exoplayer.offline.Download.STATE_COMPLETED }),
+                                    PrismIcons.DownloadDone, Modifier.fillMaxWidth()) { nav.go(Routes.DOWNLOADS) }
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    CollectionQuickLink(tr(R.string.history), "", PrismIcons.History, Modifier.weight(1f)) {
+                                        scope.launch { pager.scrollToPage(LibTab.HISTORY.ordinal) }
+                                    }
+                                    CollectionQuickLink(tr(R.string.local_files), "", PrismIcons.Phone, Modifier.weight(1f)) { nav.go(Routes.LOCAL) }
+                                }
+                            }
                         }
                         item(key = "overview-replay", span = { GridItemSpan(maxLineSpan) }) {
                             ShortcutTile(tr(R.string.replay_2), tr(R.string.your_listening_recap), PrismIcons.Replay, true) { nav.go(Routes.REPLAY) }
