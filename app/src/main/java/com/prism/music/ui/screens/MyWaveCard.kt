@@ -10,6 +10,8 @@ import androidx.compose.foundation.background
 import com.prism.music.ui.components.PrismChip
 import com.prism.music.ui.components.scenarioEdgeFade
 import com.prism.music.ui.components.WavePresetNameDialog
+import com.prism.music.ui.theme.VibePresetIcons
+import androidx.compose.ui.platform.LocalContext
 import com.prism.music.ui.components.WaveTuningScale
 import com.prism.music.ui.components.WaveScaleLabels
 import com.prism.music.ui.components.PrismBalanceSlider
@@ -138,7 +140,9 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val scenarioOrder = remember(automaticScenarioOrder, settings.streamScenarioOrder) { WaveScenarios.visibleOrder(automaticScenarioOrder, settings.streamScenarioOrder) }
     val scenarioScroll = androidx.compose.foundation.lazy.rememberLazyListState()
     val savedPresets = settings.streamPresets
+    val iconContext = LocalContext.current
     var namingPreset by rememberSaveable { mutableStateOf(false) }
+    var editingPresetId by rememberSaveable { mutableStateOf<String?>(null) }
     var chosenPresetId by rememberSaveable { mutableStateOf(settings.streamScenarioId) }
     var revealPresetId by rememberSaveable { mutableStateOf<String?>(null) }
     var baseline by remember { mutableStateOf<WaveSettingsDraft?>(null) }
@@ -160,7 +164,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         ?: savedPresets.firstOrNull { chosenPresetId == null && it.origin == style.origin }
     val activeScenario = if (activeSaved == null) WaveScenarios.active(style, chosenPresetId, settings.streamScenarioStyles) else null
     val shortcuts = remember(style, savedPresets, scenarioOrder, settings.streamScenarioStyles, activeSaved?.id, activeScenario?.id) {
-        vibeShortcuts(style, savedPresets, scenarioOrder, settings.streamScenarioStyles, activeSaved?.id, activeScenario?.id)
+        vibeShortcuts(style, savedPresets, scenarioOrder, settings.streamScenarioStyles, activeSaved?.id, activeScenario?.id) { VibePresetIcons.vector(iconContext, it.iconId) }
     }
     LaunchedEffect(Unit) {
         val selected = shortcuts.indexOfFirst { it.selected }
@@ -391,7 +395,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                                 Icon(if (showPresets) PrismIcons.ChevronUp else PrismIcons.ChevronDown, null, Modifier.size(20.dp))
                             }
                         }
-                        PrismChip(fitLabel = true, selected = false, onClick = { showPresets = true; namingPreset = true }, icon = PrismIcons.Add,
+                        PrismChip(fitLabel = true, selected = false, onClick = { showPresets = true; editingPresetId = null; namingPreset = true }, icon = PrismIcons.Add,
                             label = tr(R.string.prism_stream_save_scenario),
                             modifier = (if (editing.presets.isEmpty()) Modifier.fillMaxWidth() else Modifier)
                                 .heightIn(min = 48.dp).testTag("wave:preset:save"))
@@ -399,9 +403,10 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     if (showPresets) editing.presets.forEach { preset ->
                         key(preset.id) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
-                                PrismChip(fitLabel = true, selected = editing.presetId == preset.id && preset.origin == draftStyle.origin, label = preset.name, icon = PrismIcons.Bookmark,
+                                PrismChip(fitLabel = true, selected = editing.presetId == preset.id && preset.origin == draftStyle.origin, label = preset.name, icon = VibePresetIcons.vector(iconContext, preset.iconId),
                                     modifier = Modifier.weight(1f).heightIn(min = ui.gap(44.dp).coerceAtLeast(36.dp)),
                                     onClick = { change { it.choose(preset) } })
+                                RoundAction(PrismIcons.Edit, tr(R.string.prism_vibe_edit_preset), glass = true) { editingPresetId = preset.id; namingPreset = true }
                                 RoundAction(PrismIcons.Delete, tr(R.string.prism_stream_delete, preset.name), glass = true) { change { it.delete(preset.id) } }
                             }
                         }
@@ -426,9 +431,14 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 }
             }
         }
-        if (namingPreset) WavePresetNameDialog(editing.presets.map { it.name }, { namingPreset = false }) { name ->
-            change { it.save(name) }
-            namingPreset = false
+        if (namingPreset) {
+            val preset = editing.presets.firstOrNull { it.id == editingPresetId }
+            WavePresetNameDialog(editing.presets.filter { it.id != preset?.id }.map { it.name }, { namingPreset = false },
+                initialName = preset?.name.orEmpty(), initialIcon = preset?.iconId ?: "bookmark", editing = preset != null) { name, icon ->
+                change { if (preset == null) it.save(name, iconId = icon) else it.editPreset(preset.id, name, icon) }
+                namingPreset = false
+                editingPresetId = null
+            }
         }
     }
 }

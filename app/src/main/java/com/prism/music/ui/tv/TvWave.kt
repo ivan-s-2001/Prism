@@ -36,6 +36,8 @@ import com.prism.music.ui.screens.vibeActionDiameter
 import com.prism.music.data.prefs.TransportStyle
 import com.prism.music.ui.components.scenarioEdgeFade
 import com.prism.music.ui.components.WavePresetNameDialog
+import com.prism.music.ui.theme.VibePresetIcons
+import androidx.compose.ui.platform.LocalContext
 import com.prism.music.ui.components.WaveTuningScale
 import com.prism.music.ui.components.WaveScaleLabels
 import com.prism.music.ui.components.WaveScaleRail
@@ -56,7 +58,9 @@ internal fun TvWavePlace(nav: TvNav) {
     val scenarioScroll = rememberScrollState()
     val appSettings by c.settings.flow.collectAsState()
     val savedPresets = appSettings.streamPresets
+    val iconContext = LocalContext.current
     var namingPreset by rememberSaveable { mutableStateOf(false) }
+    var editingPresetId by rememberSaveable { mutableStateOf<String?>(null) }
     var chosenPresetId by rememberSaveable { mutableStateOf(appSettings.streamScenarioId) }
     val automaticScenarioOrder = remember {
         val clock = java.util.Calendar.getInstance()
@@ -265,7 +269,7 @@ internal fun TvWavePlace(nav: TvNav) {
                         } }, { editor = editor.tune(draft.copy(depth = it)) })
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(com.prism.music.ui.theme.LocalUi.current.gap(12.dp))) {
-                        WaveTvButton(tr(R.string.prism_stream_save_scenario), { namingPreset = true },
+                        WaveTvButton(tr(R.string.prism_stream_save_scenario), { editingPresetId = null; namingPreset = true },
                             Modifier.weight(1f).tvItem("tv_wave/save"), icon = PrismIcons.Add)
                         WaveTvButton(tr(R.string.prism_stream_reset), { editor = editor.reset() },
                             Modifier.tvItem("tv_wave/reset"), icon = PrismIcons.Refresh)
@@ -308,8 +312,10 @@ internal fun TvWavePlace(nav: TvNav) {
                             key(preset.id) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(com.prism.music.ui.theme.LocalUi.current.gap(12.dp)), verticalAlignment = Alignment.CenterVertically) {
                                     WaveTvButton(preset.name, { editor = editor.choose(preset) },
-                                        Modifier.weight(1f).tvItem("tv_wave/custom/${preset.id}"), icon = PrismIcons.Bookmark,
+                                        Modifier.weight(1f).tvItem("tv_wave/custom/${preset.id}"), icon = VibePresetIcons.vector(iconContext, preset.iconId),
                                         primary = editor.presetId == preset.id && draft.origin == preset.origin)
+                                    TvIconButton(PrismIcons.Edit, tr(R.string.prism_vibe_edit_preset),
+                                        { editingPresetId = preset.id; namingPreset = true }, Modifier.tvItem("tv_wave/edit/${preset.id}"))
                                     TvIconButton(PrismIcons.Delete, tr(R.string.prism_stream_delete, preset.name),
                                         { editor = editor.delete(preset.id) }, Modifier.tvItem("tv_wave/delete/${preset.id}"))
                                 }
@@ -388,7 +394,7 @@ internal fun TvWavePlace(nav: TvNav) {
                         .horizontalScroll(scenarioScroll).padding(vertical = if (compactScenarios) 4.dp else 18.dp, horizontal = padding)
                         .rememberedFocus().focusGroup(),
                         horizontalArrangement = Arrangement.spacedBy(ui.gap(16.dp)), verticalAlignment = Alignment.CenterVertically) {
-                        vibeShortcuts(style, savedPresets, scenarioOrder, appSettings.streamScenarioStyles, activeSaved?.id, activeScenario?.id)
+                        vibeShortcuts(style, savedPresets, scenarioOrder, appSettings.streamScenarioStyles, activeSaved?.id, activeScenario?.id) { VibePresetIcons.vector(iconContext, it.iconId) }
                             .forEachIndexed { index, shortcut ->
                                 key(shortcut.key) {
                                     val orbit = if (compactScenarios) Modifier else Modifier.vibeOrbit { index - scenarioScroll.value / stride }
@@ -412,9 +418,14 @@ internal fun TvWavePlace(nav: TvNav) {
             }
         }
     }
-    if (tuning && namingPreset) WavePresetNameDialog(editor.presets.map { it.name }, { namingPreset = false }) { name ->
-        editor = editor.save(name)
-        namingPreset = false
+    if (tuning && namingPreset) {
+        val preset = editor.presets.firstOrNull { it.id == editingPresetId }
+        WavePresetNameDialog(editor.presets.filter { it.id != preset?.id }.map { it.name }, { namingPreset = false },
+            initialName = preset?.name.orEmpty(), initialIcon = preset?.iconId ?: "bookmark", editing = preset != null) { name, icon ->
+            editor = if (preset == null) editor.save(name, iconId = icon) else editor.editPreset(preset.id, name, icon)
+            namingPreset = false
+            editingPresetId = null
+        }
     }
 }
 

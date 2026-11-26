@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="prism_vibe_edit_preset">Edit preset</string>
+    <string name="prism_vibe_icon_search">Search icons (English)</string>
+    <string name="prism_vibe_icon_catalog">Tabler · %1$d icons</string>
+</resources>

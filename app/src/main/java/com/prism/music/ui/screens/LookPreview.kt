@@ -143,6 +143,7 @@ internal fun VibeLookPreview(s: AppSettings, live: Boolean = false) {
 
 @Composable
 private fun MiniVibe(c: ThemeColors, song: Song?, live: Boolean) {
+    val iconContext = androidx.compose.ui.platform.LocalContext.current
     val s = LocalAppSettings.current
     val ui = LocalUi.current
     val scheme = c.scheme
@@ -166,7 +167,7 @@ private fun MiniVibe(c: ThemeColors, song: Song?, live: Boolean) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = ui.gap(12.dp), vertical = ui.gap(2.dp)),
                     horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp)), verticalAlignment = Alignment.CenterVertically) {
                     val style = com.prism.music.data.foryou.MyWave.restore(null, s.streamStyleOrigin, s.streamRussianPercent)
-                    vibeShortcuts(style, s.streamPresets, scenarios, s.streamScenarioStyles, null, null).take(3).forEachIndexed { i, tile ->
+                    vibeShortcuts(style, s.streamPresets, scenarios, s.streamScenarioStyles, null, null) { com.prism.music.ui.theme.VibePresetIcons.vector(iconContext, it.iconId) }.take(3).forEachIndexed { i, tile ->
                         val orbit = if (s.streamCompactScenarios) Modifier else Modifier.vibeOrbit { (i - 1).toFloat() }
                         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                             VibeScenarioTile(s.streamCompactScenarios, tile.label, tile.icon, tile.selected, {}, orbit)
