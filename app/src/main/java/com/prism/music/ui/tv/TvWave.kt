@@ -71,7 +71,6 @@ internal fun TvWavePlace(nav: TvNav) {
         ?: savedPresets.firstOrNull { chosenPresetId == null && it.origin == style.origin }
     val activeScenario = if (activeSaved == null) WaveScenarios.active(style, chosenPresetId, appSettings.streamScenarioStyles) else null
     val mixName = activeSaved?.name ?: activeScenario?.label
-    val stationIcon = activeScenario?.let { PrismIcons.waveScenario(it.glyph) } ?: PrismIcons.Stream
     var tuning by remember { mutableStateOf(false) }
     var starting by remember { mutableStateOf(false) }
     var job by remember { mutableStateOf<Job?>(null) }
@@ -274,20 +273,15 @@ internal fun TvWavePlace(nav: TvNav) {
                 Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(28.dp)),
                     verticalAlignment = Alignment.CenterVertically) {
                     @Composable fun Station(modifier: Modifier) {
-                        com.prism.music.ui.screens.VibeFlowField(modifier, animated = now?.playing == true, energy = style.diversity / 100f) {
-                            Column(Modifier.align(Alignment.Center).widthIn(max = 240.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
-                                androidx.tv.material3.Icon(stationIcon, null, Modifier.size(38.dp), tint = scheme.primary)
-                                Text(mixName ?: tr(R.string.prism_stream_station_default), style = MaterialTheme.typography.headlineMedium,
-                                    maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                WaveTvButton(tr(when {
-                                    starting && current == null -> R.string.prism_stream_finding_music
-                                    now?.playing == true -> R.string.widget_pause
-                                    current != null -> R.string.widget_play
-                                    else -> R.string.prism_stream_start_listening
-                                }), { if (current != null) c.player.togglePlay() else if (!starting) start() },
-                                    Modifier.tvItem("tv_wave/play", entry = true), icon = if (now?.playing == true) PrismIcons.Pause else PrismIcons.Play, primary = true)
-                            }
+                        com.prism.music.ui.screens.VibeFlowField(modifier, animated = now?.playing == true,
+                            energy = style.diversity / 100f, title = mixName ?: tr(R.string.prism_stream_station_default)) {
+                            TvIconButton(if (now?.playing == true) PrismIcons.Pause else PrismIcons.Play, tr(when {
+                                starting && current == null -> R.string.prism_stream_finding_music
+                                now?.playing == true -> R.string.widget_pause
+                                current != null -> R.string.widget_play
+                                else -> R.string.prism_stream_start_listening
+                            }), { if (current != null) c.player.togglePlay() else if (!starting) start() },
+                                Modifier.align(Alignment.Center).tvItem("tv_wave/play", entry = true), big = true)
                         }
                     }
                     @Composable fun Track(modifier: Modifier) {
@@ -323,9 +317,9 @@ internal fun TvWavePlace(nav: TvNav) {
                                 Modifier.tvItem("tv_wave/player"))
                         }
                     }
-                    if (appSettings.streamReverseLayout && current != null) Track(Modifier.weight(0.85f).fillMaxHeight())
-                    Station(Modifier.weight(1.15f).fillMaxHeight())
-                    if (!appSettings.streamReverseLayout && current != null) Track(Modifier.weight(0.85f).fillMaxHeight())
+                    if (appSettings.streamReverseLayout && current != null) Track(Modifier.weight(0.75f).fillMaxHeight())
+                    Station(Modifier.weight(1.25f).fillMaxHeight())
+                    if (!appSettings.streamReverseLayout && current != null) Track(Modifier.weight(0.75f).fillMaxHeight())
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(16.dp)), verticalAlignment = Alignment.CenterVertically) {
                     Row(Modifier.weight(1f).scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward })

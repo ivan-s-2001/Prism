@@ -69,12 +69,12 @@ half4 main(float2 fc) {
 
     float cloud = fbm(p * 2.0 + float2(time * 0.045, -time * 0.035));
     float detail = fbm(p * 3.8 + float2(cloud * 1.7, -cloud * 1.4) + float2(-time * 0.025, time * 0.04));
-    float radius = 0.30 * (1.0 + 0.12 * bass);
+    float radius = 0.32 * (1.0 + 0.10 * bass);
     float edge = r + (cloud - 0.5) * (0.14 + 0.12 * energy) + (detail - 0.5) * 0.065;
-    float outer = 1.0 - smoothstep(radius * 0.85, radius * 1.8, edge);
-    float inner = smoothstep(radius * 0.30, radius * 0.90, edge);
+    float outer = 1.0 - smoothstep(radius * 0.78, radius * 1.52, edge);
+    float inner = smoothstep(radius * 0.36, radius * 0.86, edge);
     float silk = smoothstep(0.18, 0.82, detail) * 0.72 + cloud * cloud * 0.28;
-    float light = outer * inner * (0.22 + silk * 0.95) * (0.82 + 0.48 * bass);
+    float light = outer * inner * (0.32 + silk * 1.18) * (0.90 + 0.42 * bass);
     float3 col = mix(colA, colB, smoothstep(0.18, 0.82, cloud));
     float3 c = col * light * 1.35;
     float al = clamp(max(c.r, max(c.g, c.b)), 0.0, 1.0);

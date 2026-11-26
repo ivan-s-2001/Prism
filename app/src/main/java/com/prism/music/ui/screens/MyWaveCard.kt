@@ -39,7 +39,6 @@ import com.prism.music.data.model.hiRes
 import com.prism.music.ui.player.playerCoverRequest
 import androidx.compose.animation.core.tween
 import com.prism.music.ui.player.PlayerScrubber
-import com.prism.music.ui.player.CircleGlyph
 import com.prism.music.data.model.SongItem
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
@@ -168,7 +167,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         ?: savedPresets.firstOrNull { chosenPresetId == null && it.origin == style.origin }
     val activeScenario = if (activeSaved == null) WaveScenarios.active(style, chosenPresetId, settings.streamScenarioStyles) else null
     val mixName = activeSaved?.name ?: activeScenario?.label
-    val stationIcon = activeScenario?.let { PrismIcons.waveScenario(it.glyph) } ?: PrismIcons.Stream
     LaunchedEffect(savedPresets, revealPresetId) {
         val index = savedPresets.indexOfFirst { it.id == revealPresetId }
         if (index >= 0) {
@@ -320,13 +318,13 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             val glyph = if (like) {
                 if (on) PrismIcons.HeartFilled else PrismIcons.Heart
             } else if (on) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown
-            CircleGlyph(glyph, if (like) tr(R.string.prism_stream_like) else tr(R.string.prism_stream_not_for_me), active = on) {
+            VibeTrackAction(glyph, if (like) tr(R.string.prism_stream_like) else tr(R.string.prism_stream_not_for_me), selected = on, onClick = {
                 if (like) c.library.toggleLike(item)
                 else {
                     c.library.setDisliked(item, !on)
                     if (!on && c.player.hasNext.value) c.player.next()
                 }
-            }
+            })
         }
         @Composable fun Track() {
             val item = current ?: return
@@ -335,7 +333,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 VibeTrackStrip(settings, item.title, item.primaryArtist, artwork = { TrackArtwork(it) },
                     onOpen = onOpenPlayer, actions = {
                         if (settings.streamShowReactions) { Reaction(true); Reaction(false) }
-                        RoundAction(PrismIcons.Next, tr(R.string.prism_stream_next), enabled = hasNext) { c.player.next() }
+                        VibeTrackAction(PrismIcons.Next, tr(R.string.prism_stream_next), { c.player.next() }, enabled = hasNext)
                     }, progress = {
                         if (settings.streamShowProgress) {
                             val timing by produceState(0L to 0L, item.id, playing) {
@@ -354,9 +352,9 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         }
         VibeStationPanel(settings, modifier.testTag("home:my_wave"), hasTrack = current != null,
             station = { slot ->
-                VibeFlowField(slot, animated = wave && playing && !buffering, energy = style.diversity / 100f) {
-                    VibeStationCenter(
-                        icon = stationIcon, title = mixName ?: tr(R.string.prism_stream_station_default),
+                VibeFlowField(slot, animated = wave && playing && !buffering, energy = style.diversity / 100f,
+                    title = mixName ?: tr(R.string.prism_stream_station_default)) {
+                    VibeStationAction(
                         playing = wave && playing, starting = starting && !wave, active = wave,
                         onPlay = { if (wave) c.player.togglePlay() else if (!starting) start() },
                         modifier = Modifier.align(Alignment.Center))
@@ -372,8 +370,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         LazyRow(Modifier.fillMaxWidth().scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward }),
             state = scenarioScroll,
             flingBehavior = rememberSnapFlingBehavior(lazyListState = scenarioScroll, snapPosition = SnapPosition.Start),
-            horizontalArrangement = Arrangement.spacedBy(ui.gap(12.dp)),
-            contentPadding = PaddingValues(horizontal = ui.gap(16.dp), vertical = ui.gap(6.dp))) {
+            horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp)),
+            contentPadding = PaddingValues(horizontal = ui.gap(16.dp), vertical = ui.gap(4.dp))) {
             item(key = "wave:tune") {
                 ScenarioTile(tr(R.string.prism_stream_tune), PrismIcons.Customize, selected = false,
                     onClick = { openSettings() }, modifier = Modifier.testTag("home:my_wave:settings"))
