@@ -24,5 +24,5 @@ internal object BandcampVersion {
 }
 
 internal object PublicRecording {
-    fun url(id: String): String? = SoundCloudVersion.url(id) ?: BandcampVersion.url(id)
+    fun url(id: String): String? = SoundCloudVersion.url(id) ?: BandcampVersion.url(id) ?: AudiusVersions.url(id)
 }

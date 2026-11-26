@@ -481,6 +481,9 @@ class StreamResolver(
      * ([NetFamily.Tag]) for the diagnostics, and the same over IPv4 only, for the step after a refused link.
      */
     private val apiHttp: OkHttpClient = http.newBuilder().addNetworkInterceptor(NetFamily.Tag).build()
+    private val audius = AudiusVersions()
+    fun audiusVersions(song: com.prism.music.data.model.Song) = audius.search(song)
+
     private val apiHttp4: OkHttpClient = apiHttp.newBuilder().dns(ipv4Dns).build()
     private fun api(ipv4: Boolean) = if (ipv4) apiHttp4 else apiHttp
 
@@ -760,7 +763,11 @@ class StreamResolver(
             val publicUrl = PublicRecording.url(videoId)
             val f = (if (publicUrl != null) {
                 if (forVideo) throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
-                publicAudioFormats(publicUrl, BandcampVersion.url(videoId) != null)
+                if (AudiusVersions.url(videoId) != null) {
+                    val track = audius.track(videoId) ?: throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
+                    Formats(listOf(Fmt(-300, "audio/mpeg", null, 0, 0, 2, -1) { publicUrl }),
+                        emptyList(), emptyList(), track.durationSec.toLong(), System.currentTimeMillis() + 5 * 60_000, via = "Audius")
+                } else publicAudioFormats(publicUrl, BandcampVersion.url(videoId) != null)
             } else load(videoId, forVideo)).let { it.copy(asked = NetFamily.last()) }
             NetFamily.clearLast()
             refusedNow -= videoId

@@ -144,6 +144,14 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
             catch (e: Exception) { Result.failure(e) }
         }
     }
+    val audius by produceState<Result<List<Song>>?>(null, song.id, preferExplicit) {
+        value = null
+        if (preferExplicit) value = withContext(Dispatchers.IO) {
+            try { Result.success(c.streams.audiusVersions(song)) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { Result.failure(e) }
+        }
+    }
     fun choose(pick: SongVersions.Pick?) {
         c.pickVersion(song, pick)
         android.widget.Toast.makeText(
@@ -234,6 +242,26 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                     else -> candidates.forEach { v ->
                         VersionRow(v, "Bandcamp", picked == v.id, Modifier.testTag("version:${v.id}")) {
                             choose(SongVersions.Pick(v.id, "Bandcamp · " + versionLabel(v), v))
+                        }
+                    }
+                }
+            }
+            if (preferExplicit && !song.isLocal && !song.isEpisode && !song.isLive && !song.isUpload) {
+                Text("Audius", Modifier.padding(horizontal = 22.dp, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
+                Quiet(tr(R.string.prism_audius_note))
+                val au = audius
+                val candidates = au?.getOrNull().orEmpty()
+                val saved = picks[song.id]?.song?.takeIf { com.prism.music.data.stream.AudiusVersions.url(it.id) != null }
+                if (saved != null && candidates.none { it.id == saved.id }) {
+                    VersionRow(saved, "Audius", true, Modifier.testTag("version:${saved.id}")) {}
+                }
+                when {
+                    au == null -> PrismSpinner(Modifier.padding(22.dp).size(22.dp), stroke = 2.dp)
+                    au.isFailure -> Quiet(tr(R.string.couldn_t_look_for_other_versions))
+                    candidates.isEmpty() -> Quiet(tr(R.string.prism_sc_no_versions))
+                    else -> candidates.forEach { v ->
+                        VersionRow(v, "Audius", picked == v.id, Modifier.testTag("version:${v.id}")) {
+                            choose(SongVersions.Pick(v.id, "Audius · " + versionLabel(v), v))
                         }
                     }
                 }

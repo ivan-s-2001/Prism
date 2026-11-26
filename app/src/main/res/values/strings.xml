@@ -5804,4 +5804,5 @@
     <string name="prism_censorship_audit_retry">Check again</string>
     <string name="prism_version_catalog">Catalog search: %1$s</string>
     <string name="prism_bandcamp_note">Public artist releases. Matching metadata does not verify the absence of edits.</string>
+    <string name="prism_audius_note">Public tracks from Audius. Audio is not verified for censorship.</string>
 </resources>
