@@ -377,7 +377,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                             c.queue.autoplayStart.value = -1
                             c.queue.autoplayContinuation = null
                             c.queue.source.value = if (pick.radio) {
-                                QueueSource(QueueKind.RADIO, tr(R.string.radio, pick.songs.first().title), seedId = pick.songs.first().id, vibeOrigin = VibeOrigin(VibeOriginKind.TRACK, pick.songs.first().title, pick.songs.first().thumbnail))
+                                QueueSource(QueueKind.RADIO, tr(R.string.radio, pick.songs.first().title), seedId = pick.songs.first().id, vibeOrigin = VibeOrigin(VibeOriginKind.TRACK, pick.songs.first().title, pick.songs.first().thumbnail, pick.songs.first().artists.joinToString(", ") { it.name }.ifBlank { null }))
                             } else QueueSource(QueueKind.PLAYLIST, pick.title)
                             val list = if (pick.radio) pick.songs.take(1) else pick.songs
                             player.shuffleModeEnabled = false
@@ -3333,7 +3333,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             c.queue.autoplayContinuation = null
             if (pick.radio) {
                 val song = pick.songs.first()
-                c.queue.source.value = QueueSource(QueueKind.RADIO, tr(R.string.radio, song.title), seedId = song.id, vibeOrigin = VibeOrigin(VibeOriginKind.TRACK, song.title, song.thumbnail))
+                c.queue.source.value = QueueSource(QueueKind.RADIO, tr(R.string.radio, song.title), seedId = song.id, vibeOrigin = VibeOrigin(VibeOriginKind.TRACK, song.title, song.thumbnail, song.artists.joinToString(", ") { it.name }.ifBlank { null }))
                 player.shuffleModeEnabled = false
                 player.repeatMode = Player.REPEAT_MODE_OFF
                 return MediaSession.MediaItemsWithStartPosition(listOf(song.toMediaItem()), 0, C.TIME_UNSET)
