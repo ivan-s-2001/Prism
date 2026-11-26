@@ -754,7 +754,11 @@ class StreamResolver(
             val started = System.nanoTime()
             NetFamily.clearLast()
             // The family the (last) player request went out by, for the diagnostics (#408).
-            val f = load(videoId, forVideo).let { it.copy(asked = NetFamily.last()) }
+            val publicUrl = SoundCloudVersion.url(videoId)
+            val f = (if (publicUrl != null) {
+                if (forVideo) throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
+                publicSoundCloudFormats(publicUrl)
+            } else load(videoId, forVideo)).let { it.copy(asked = NetFamily.last()) }
             NetFamily.clearLast()
             refusedNow -= videoId
             val took = (System.nanoTime() - started) / 1_000_000
@@ -1059,6 +1063,48 @@ class StreamResolver(
         val f = parsePlayer(res, null)
         if (f.live) return f.takeIf { it.hlsUrl != null }
         return f.takeIf { it.audio.isNotEmpty() }?.also { Log.i("PrismStream", "$videoId resolved directly (visionOS)") }
+    }
+
+    /** Public, non-DRM progressive SoundCloud audio only. Never resolve a preview or paid track. */
+    private fun publicSoundCloudFormats(url: String): Formats {
+        val info = StreamInfo.getInfo(ServiceList.SoundCloud, url)
+        val audio = info.audioStreams.filter {
+            it.isUrl && it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP &&
+                it.content.startsWith("https://")
+        }.mapIndexed { index, a ->
+            Fmt(
+                itag = -100 - index, mime = a.format?.mimeType ?: "audio/mpeg", codec = a.codec,
+                kbps = a.averageBitrate.takeIf { it > 0 } ?: 128,
+                sampleRate = 0, channels = 2, contentLength = -1,
+            ) { a.content }
+        }
+        if (audio.isEmpty() || info.duration <= 0) throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
+        return Formats(audio, emptyList(), emptyList(), info.duration, System.currentTimeMillis() + 5 * 60_000, via = "SoundCloud")
+    }
+
+    /** Candidates only: the listener must select a recording. No automatic replacement or claim of uncensored audio. */
+    fun soundCloudVersions(song: com.prism.music.data.model.Song): List<com.prism.music.data.model.Song> {
+        if (song.isLocal || song.isEpisode || song.isLive || song.isUpload || song.durationSec <= 0) return emptyList()
+        val query = "${song.primaryArtist} ${song.title}".trim()
+        val service = ServiceList.SoundCloud
+        val results = org.schabi.newpipe.extractor.search.SearchInfo.getInfo(service.getSearchExtractor(query))
+        return results.relatedItems.filterIsInstance<org.schabi.newpipe.extractor.stream.StreamInfoItem>()
+            .filter { it.contentAvailability == org.schabi.newpipe.extractor.stream.ContentAvailability.AVAILABLE }
+            .mapNotNull { item ->
+                val id = SoundCloudVersion.id(item.url) ?: return@mapNotNull null
+                if (!SoundCloudVersion.matches(song, item.name, item.uploaderName.orEmpty(), item.duration)) return@mapNotNull null
+                com.prism.music.data.model.Song(
+                    id, item.name, listOf(com.prism.music.data.model.ArtistRef(item.uploaderName.orEmpty())),
+                    durationSec = item.duration.toInt(), thumbnail = item.thumbnails.firstOrNull()?.url,
+                )
+            }.distinctBy { it.id }.take(6)
+            .filter { candidate ->
+                // Check that the full recording actually has a playable progressive stream before offering it.
+                runCatching {
+                    val f = formats(candidate.id)
+                    f.audio.isNotEmpty() && kotlin.math.abs(f.durationSec - song.durationSec) <= 5
+                }.getOrDefault(false)
+            }
     }
 
     private fun anonymousFormats(videoId: String, ipv4: Boolean = false): Formats {

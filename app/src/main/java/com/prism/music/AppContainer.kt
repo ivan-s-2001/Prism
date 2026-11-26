@@ -890,7 +890,10 @@ class AppContainer(val app: Application) {
                     mixTempo.forget(song.id)
                     waves.forget(song.id)
                     // A file on the phone (1.8.3) is there already: a download stays the song's own.
-                    if (pick?.id?.startsWith(com.prism.music.data.model.Song.LOCAL_PREFIX) != true) downloads.redownload(song.id, unfinished = true)
+                    if (pick?.id?.startsWith(com.prism.music.data.model.Song.LOCAL_PREFIX) != true &&
+                        pick?.id?.let(com.prism.music.data.stream.SoundCloudVersion::url) == null) {
+                        downloads.redownload(song.id, unfinished = true)
+                    }
                 }
             }
         }
@@ -904,13 +907,16 @@ class AppContainer(val app: Application) {
         // the song's own key, so they aren't swapped.
         // A download refused every way comes down as its music video's sound (1.8.7, [downloadSoundOf]), under the song's
         // own key still.
-        val sound = if (useCaches) soundFrom[song] else downloadSoundOf(song)
+        val external = versions.streamedOf(song)?.let(com.prism.music.data.stream.SoundCloudVersion::url) != null
+        // Public alternate sources are streaming-only. Never read or overwrite the original download as that version.
+        if (external && !useCaches) throw com.prism.music.data.stream.SongStreamException(song, tr(R.string.prism_sc_stream_only), java.io.IOException())
+        val sound = if (external) null else if (useCaches) soundFrom[song] else downloadSoundOf(song)
         // A picked version is cached under its own id too ([songCacheKey]); its download is the song's (fetched again
         // as the version when it was picked).
         val id = if (useCaches) sound ?: songCacheKey(song) else song
         if (useCaches) {
             val saved = sound ?: song
-            if (downloadCache.fullyCached(saved, spec.position, spec.length)) {
+            if (!external && downloadCache.fullyCached(saved, spec.position, spec.length)) {
                 savedCopyPlays(song, "Downloaded", readFormat(downloadFormats, saved))
                 return spec.buildUpon().setKey(saved).build()
             }

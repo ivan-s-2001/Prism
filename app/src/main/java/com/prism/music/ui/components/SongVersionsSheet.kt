@@ -79,6 +79,14 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
             }
         }
     }
+    val soundCloud by produceState<Result<List<Song>>?>(null, song.id, preferExplicit) {
+        value = null
+        if (preferExplicit) value = withContext(Dispatchers.IO) {
+            try { Result.success(c.streams.soundCloudVersions(song)) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { Result.failure(e) }
+        }
+    }
     fun choose(pick: SongVersions.Pick?) {
         c.pickVersion(song, pick)
         android.widget.Toast.makeText(
@@ -124,6 +132,27 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                     Icon(PrismIcons.Folder, null, Modifier.size(22.dp))
                     Spacer(Modifier.width(14.dp))
                     Text(tr(R.string.choose_a_file_on_this_phone), style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+            if (preferExplicit && !song.isLocal && !song.isEpisode && !song.isLive && !song.isUpload) {
+                Text(tr(R.string.prism_sc_versions), Modifier.padding(horizontal = 22.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.titleMedium)
+                Quiet(tr(R.string.prism_sc_versions_note))
+                val sc = soundCloud
+                val saved = picks[song.id]?.song?.takeIf { com.prism.music.data.stream.SoundCloudVersion.url(it.id) != null }
+                val candidates = sc?.getOrNull().orEmpty()
+                if (saved != null && candidates.none { it.id == saved.id }) {
+                    VersionRow(saved, "SoundCloud", true, Modifier.testTag("version:${saved.id}")) {}
+                }
+                when {
+                    sc == null -> PrismSpinner(Modifier.padding(22.dp).size(22.dp), stroke = 2.dp)
+                    sc.isFailure -> Quiet(tr(R.string.couldn_t_look_for_other_versions))
+                    candidates.isEmpty() -> Quiet(tr(R.string.prism_sc_no_versions))
+                    else -> candidates.forEach { v ->
+                        VersionRow(v, "SoundCloud", picked == v.id, Modifier.testTag("version:${v.id}")) {
+                            choose(SongVersions.Pick(v.id, "SoundCloud · " + versionLabel(v), v))
+                        }
+                    }
                 }
             }
             val r = found
