@@ -58,6 +58,8 @@ jobs:
             "$TEST/LivePacerTest.kt" "$TEST/LivePcmReplayTest.kt" \
             app/src/main/java/com/prism/music/data/foryou/VibeLearning.kt \
             app/src/main/java/com/prism/music/data/foryou/VibeGraph.kt \
+            app/src/main/java/com/prism/music/playback/VibeQueuePolicy.kt \
+            app/src/test/java/com/prism/music/VibeQueuePolicyTest.kt \
             app/src/test/java/com/prism/music/data/foryou/VibeLearningTest.kt \
             app/src/test/java/com/prism/music/data/foryou/VibeGraphTest.kt
           java -cp "$WORK/tests.jar:$CP" org.junit.runner.JUnitCore \
@@ -67,7 +69,8 @@ jobs:
             com.prism.music.connect.yandex.LivePacerTest \
             com.prism.music.connect.yandex.LivePcmReplayTest \
             com.prism.music.data.foryou.VibeLearningTest \
-            com.prism.music.data.foryou.VibeGraphTest
+            com.prism.music.data.foryou.VibeGraphTest \
+            com.prism.music.VibeQueuePolicyTest
   diagnostics:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -80,18 +83,30 @@ jobs:
       - name: Install required Android platform using runner SDK
         shell: bash
         run: |
+          set -euo pipefail
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           test -x "$SDKMANAGER"
           if [ ! -f "$ANDROID_HOME/platforms/android-37/android.jar" ]; then
-            "$SDKMANAGER" --channel=3 --list || true
-            "$SDKMANAGER" --channel=3 --install "platforms;android-37"
+            # Runner images can ship an older repository parser. Refresh the official tools first.
+            "$SDKMANAGER" --channel=3 --install "cmdline-tools;latest" || true
+            "$SDKMANAGER" --channel=3 --list > "$RUNNER_TEMP/prism-sdk-packages.txt" || true
+            grep -E 'platforms;android-(37|Cinnamon)' "$RUNNER_TEMP/prism-sdk-packages.txt" || true
+            for package in platforms\;android-37 platforms\;android-37.0; do
+              "$SDKMANAGER" --channel=3 --install "$package" || continue
+              if [ -f "$ANDROID_HOME/platforms/android-37/android.jar" ] || [ -f "$ANDROID_HOME/platforms/android-37.0/android.jar" ]; then
+                break
+              fi
+            done
           fi
-          test -f "$ANDROID_HOME/platforms/android-37/android.jar"
+          if [ ! -f "$ANDROID_HOME/platforms/android-37/android.jar" ] && [ ! -f "$ANDROID_HOME/platforms/android-37.0/android.jar" ]; then
+            echo "::error::Android SDK 37 is unavailable on this runner. Install the official Android 17 platform; do not silently downgrade compileSdk."
+            exit 1
+          fi
       - uses: gradle/actions/setup-gradle@v4
       - name: Run protocol tests and assemble side-by-side APK
         run: |
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest --tests 'com.prism.music.connect.yandex.*' --tests 'com.prism.music.MyWaveTest' --tests 'com.prism.music.RecFeedbackTest' --tests 'com.prism.music.PlaybackSourceUxTest' --tests 'com.prism.music.QueueResumeTest' --tests 'com.prism.music.PlayerReactionsTest' --tests 'com.prism.music.Vibe*Test' --tests 'com.prism.music.playback.SavedQueueTextTest' --tests 'com.prism.music.data.foryou.VibeLearningTest' --tests 'com.prism.music.data.foryou.VibeGraphTest' :app:assembleDebug -PsideBySide=station -PsideByLabel="Prism Station Lab" --stacktrace
+          ./gradlew :app:testDebugUnitTest --tests 'com.prism.music.connect.yandex.*' --tests 'com.prism.music.MyWaveTest' --tests 'com.prism.music.RecFeedbackTest' --tests 'com.prism.music.PlaybackSourceUxTest' --tests 'com.prism.music.QueueResumeTest' --tests 'com.prism.music.PlayerConnectionQueueHoldTest' --tests 'com.prism.music.PlayerReactionsTest' --tests 'com.prism.music.Vibe*Test' --tests 'com.prism.music.playback.SavedQueueTextTest' --tests 'com.prism.music.data.foryou.VibeLearningTest' --tests 'com.prism.music.data.foryou.VibeGraphTest' :app:assembleDebug -PsideBySide=station -PsideByLabel="Prism Station Lab" --stacktrace
       - uses: actions/upload-artifact@v4
         if: success()
         with:
