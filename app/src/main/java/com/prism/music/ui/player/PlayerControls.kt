@@ -1115,8 +1115,7 @@ private fun PlayerButtonGlyph(
             val disliked by c.library.dislikedIds.collectAsState()
             val on = s.id in disliked
             BottomGlyph(if (on) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown, tr(R.string.not_for_me), on, {
-                c.library.setDisliked(s, !on)
-                if (!on && pc.hasNext.value) pc.next()
+                if (c.library.toggleDislike(s) && pc.currentSong.value?.id == s.id && pc.hasNext.value) pc.next()
             }, width)
         }
         PlayerButton.DOWNLOAD -> {
