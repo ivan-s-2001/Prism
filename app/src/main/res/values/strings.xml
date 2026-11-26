@@ -5802,4 +5802,5 @@
     <string name="prism_censorship_audit_empty">No community reports found for linked recordings.</string>
     <string name="prism_censorship_audit_picked">Alternative version selected · audio not verified</string>
     <string name="prism_censorship_audit_retry">Check again</string>
+    <string name="prism_version_catalog">Catalog search: %1$s</string>
 </resources>

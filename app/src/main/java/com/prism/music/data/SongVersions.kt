@@ -154,6 +154,11 @@ class SongVersions(private val prefs: SharedPreferences) {
             return true
         }
 
+        /** Independent public catalog preferences, never a statement about the actual audio's origin. */
+        fun alternativeCatalogs(current: String): List<String> =
+            (listOf(current.uppercase(java.util.Locale.ROOT)).filter { it in setOf("KZ", "US", "DE", "GB", "NL") } +
+                listOf("KZ", "US", "DE")).distinct().take(3)
+
         /** Expand discovery, not acceptance. Keep raw punctuation and primary artist in every query. */
         fun searchQueries(song: Song, preferExplicit: Boolean): List<String> {
             val core = song.title.replace(VERSION_SUFFIX, "").trim().ifBlank { song.title }

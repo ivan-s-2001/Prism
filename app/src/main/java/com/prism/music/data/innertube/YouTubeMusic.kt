@@ -507,6 +507,18 @@ class YouTubeMusic(
         return again
     }
 
+    /** Public search with a separate non-Russian catalog preference. The response may still be IP-dependent. */
+    suspend fun catalogSongs(query: String, country: String, filter: SearchFilter = SearchFilter.SONGS): List<Song> {
+        require(filter == SearchFilter.SONGS || filter == SearchFilter.VIDEOS)
+        val body = buildJsonObject {
+            put("query", query)
+            filter.params?.let { put("params", it.replace("%3D", "=")) }
+        }
+        val result = api.postCatalogSearch(body, country)
+        return result.findAll("musicResponsiveListItemRenderer").mapNotNull { Parser.responsive(it) }
+            .filterIsInstance<SongItem>().map { it.song }
+    }
+
     suspend fun search(query: String, filter: SearchFilter, continuation: String? = null): SearchResult {
         if (filter == SearchFilter.LIVE) return searchLive(query, continuation)
         val body = if (continuation != null) buildJsonObject { put("continuation", continuation) } else buildJsonObject {

@@ -5901,4 +5901,5 @@
     <string name="prism_censorship_audit_empty">В базах нет отметок о связанных записях.</string>
     <string name="prism_censorship_audit_picked">Выбрана другая версия · звук не проверен</string>
     <string name="prism_censorship_audit_retry">Проверить снова</string>
+    <string name="prism_version_catalog">Поиск в каталогах: %1$s</string>
 </resources>

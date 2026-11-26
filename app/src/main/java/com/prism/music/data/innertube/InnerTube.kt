@@ -118,23 +118,23 @@ class InnerTube(
         return "SAPISIDHASH ${ts}_${sha1("$ts $sapisid $origin")}"
     }
 
-    private fun context(anonymous: Boolean = false): JsonObject = buildJsonObject {
+    private fun context(anonymous: Boolean = false, catalogCountry: String? = null): JsonObject = buildJsonObject {
         val s = current
         putJsonObject("client") {
             put("clientName", "WEB_REMIX")
             put("clientVersion", clientVersion)
             put("hl", hl)
-            put("gl", gl)
+            put("gl", catalogCountry ?: gl)
             put("platform", "DESKTOP")
             put("userAgent", USER_AGENT)
-            if (visitorData.isNotBlank() && !plainContext) put("visitorData", visitorData)
+            if (catalogCountry == null && visitorData.isNotBlank() && !plainContext) put("visitorData", visitorData)
         }
         putJsonObject("user") {
             if (s.isLoggedIn && !anonymous) onBehalfOfUser()?.let { put("onBehalfOfUser", it) }
         }
     }
 
-    private fun Request.Builder.applyHeaders(anonymous: Boolean = false): Request.Builder {
+    private fun Request.Builder.applyHeaders(anonymous: Boolean = false, isolatedCatalog: Boolean = false): Request.Builder {
         val s = current
         header("User-Agent", USER_AGENT)
         header("Origin", ORIGIN)
@@ -142,7 +142,7 @@ class InnerTube(
         header("X-Origin", ORIGIN)
         header("X-YouTube-Client-Name", "67")
         header("X-YouTube-Client-Version", clientVersion)
-        if (visitorData.isNotBlank() && !plainContext) header("X-Goog-Visitor-Id", visitorData)
+        if (!isolatedCatalog && visitorData.isNotBlank() && !plainContext) header("X-Goog-Visitor-Id", visitorData)
         if (s.isLoggedIn && !anonymous) {
             header("Cookie", s.cookie)
             authorization()?.let { header("Authorization", it) }
@@ -288,15 +288,22 @@ class InnerTube(
         }
     }
 
-    private fun postOnce(endpoint: String, body: JsonObject, query: String, anonymous: Boolean = false): JsonObject {
+    /** A public catalog search with a country preference, not a change to the listener's account or network location. */
+    suspend fun postCatalogSearch(body: JsonObject, country: String): JsonObject = withContext(Dispatchers.IO) {
+        require(country.matches(Regex("[A-Z]{2}")) && country != "RU")
+        ensureClientVersion()
+        postOnce("search", body, "", anonymous = true, catalogCountry = country)
+    }
+
+    private fun postOnce(endpoint: String, body: JsonObject, query: String, anonymous: Boolean = false, catalogCountry: String? = null): JsonObject {
         val payload = buildJsonObject {
-            put("context", context(anonymous))
+            put("context", context(anonymous, catalogCountry))
             body.forEach { (k, v) -> put(k, v) }
         }
         val req = Request.Builder()
             .url("$BASE$endpoint?prettyPrint=false$query")
             .post(payload.toString().toRequestBody(JSON_TYPE))
-            .applyHeaders(anonymous)
+            .applyHeaders(anonymous, isolatedCatalog = catalogCountry != null)
             .build()
         return http.newCall(req).execute().use { resp ->
             val text = resp.body.string()

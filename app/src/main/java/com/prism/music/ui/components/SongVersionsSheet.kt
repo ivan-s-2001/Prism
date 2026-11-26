@@ -65,7 +65,8 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
             c.censorshipReports.reports(c.db.imports().yandexSourceIds(song.id))
         }
     }
-    val found by produceState<Result<List<Song>>?>(null, song.id, country, explicitMode, report != null) {
+    data class RegionalResults(val songs: List<Song>, val catalogs: Map<String, Set<String>>)
+    val found by produceState<Result<RegionalResults>?>(null, song.id, country, explicitMode) {
         value = null
         value = withContext(Dispatchers.IO) {
             runCatching {
@@ -79,11 +80,30 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                         song, results.filter { com.prism.music.data.ExplicitFilter.plays(explicitMode, it) },
                         preferExplicit = preferExplicit,
                     )
+                    val catalogs = mutableMapOf<String, MutableSet<String>>()
+                    val all = mutableListOf<Song>()
+                    if (preferExplicit) {
+                        val regions = SongVersions.alternativeCatalogs(country)
+                        suspend fun foreign(q: String, region: String, filter: SearchFilter): List<Song> =
+                            try { c.ytm.catalogSongs(q, region, filter) }
+                            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                            catch (_: Exception) { emptyList() }
+                        // Different regions are requested independently, not by rewriting global settings.
+                        for (query in queries.take(2)) {
+                            val results = regions.map { region ->
+                                async { region to foreign(query, region, SearchFilter.SONGS) }
+                            }.map { it.await() }
+                            for ((region, songs) in results) {
+                                all += songs
+                                songs.forEach { catalogs.getOrPut(it.id) { mutableSetOf() }.add(region) }
+                            }
+                        }
+                    }
                     val initial = listOf(
                         async { search(queries.first(), SearchFilter.SONGS) },
                         async { search(queries.first(), SearchFilter.VIDEOS) },
                     ).map { it.await() }.flatten()
-                    val all = initial.toMutableList()
+                    all += initial
                     // Search for an explicit/original edition even when the Yandex report is absent.
                     // Additional queries are bounded and strictly filtered; do not lower identity checks.
                     if (matches(all).size < 4 || preferExplicit && matches(all).none { it.explicit }) {
@@ -97,7 +117,13 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                         queries.getOrNull(1)?.let { all += search(it, SearchFilter.VIDEOS) }
                     }
                     if (all.isEmpty()) throw java.io.IOException()
-                    matches(all)
+                    val ranked = matches(all).sortedWith(compareBy<Song>(
+                        { !(preferExplicit && SongVersions.preferredOriginal(song, it)) },
+                        { it.id !in catalogs },
+                        { it.isVideo },
+                        { kotlin.math.abs(song.durationSec - it.durationSec) }
+                    ))
+                    RegionalResults(ranked, catalogs.mapValues { it.value.toSet() })
                 }
             }
         }
@@ -188,13 +214,18 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
             when {
                 r == null -> PrismSpinner(Modifier.padding(22.dp).size(22.dp), stroke = 2.dp)
                 r.isFailure -> Quiet(tr(R.string.couldn_t_look_for_other_versions))
-                r.getOrThrow().isEmpty() -> Quiet(tr(R.string.youtube_has_no_other_version_of))
-                else -> r.getOrThrow().forEach { v ->
-                    VersionRow(v, when {
+                r.getOrThrow().songs.isEmpty() -> Quiet(tr(R.string.youtube_has_no_other_version_of))
+                else -> r.getOrThrow().songs.forEach { v ->
+                    val catalogLabel = r.getOrThrow().catalogs[v.id]?.takeIf { it.isNotEmpty() }?.let {
+                        tr(R.string.prism_version_catalog, it.joinToString(", "))
+                    }
+                    val kind = when {
                         preferExplicit && SongVersions.preferredOriginal(song, v) -> tr(R.string.prism_version_explicit_match)
                         SongVersions.sameRecording(song, v) -> tr(R.string.another_upload)
                         else -> null
-                    }, picked == v.id, Modifier.testTag("version:${v.id}")) {
+                    }
+                    VersionRow(v, listOfNotNull(kind, catalogLabel).joinToString(" · ").ifBlank { null },
+                        picked == v.id, Modifier.testTag("version:${v.id}")) {
                         // The version itself is kept too: the song shows as it from now on (#328).
                         choose(SongVersions.Pick(v.id, versionLabel(v), v))
                     }
