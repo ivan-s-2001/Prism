@@ -321,11 +321,7 @@ private fun MiniLike(song: com.prism.music.data.model.Song) {
     val likeOn = song.id in liked && song.id !in disliked
     IconButton(onClick = {
         haptics.click()
-        val wasDisliked = c.library.isDisliked(song.id)
-        if (wasDisliked) {
-            c.library.setDisliked(song, false)
-            c.library.setLiked(song, true)
-        } else c.library.toggleLike(song)
+        c.library.toggleLike(song)
     }, modifier = Modifier.size(44.dp).testTag("miniPlayer:like")) {
         Icon(if (likeOn) PrismIcons.HeartFilled else PrismIcons.Heart,
             tr(if (likeOn) R.string.unlike else R.string.like), Modifier.size(23.dp),
