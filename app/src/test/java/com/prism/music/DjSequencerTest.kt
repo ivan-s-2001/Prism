@@ -9,6 +9,15 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DjSequencerTest {
+    @Test
+    fun manualTracksAreBarriersEvenAfterGeneratedTracks() {
+        val protected = setOf(5, 9)
+        assertEquals(5, DjSequencer.protectedEnd(2, 12) { it in protected })
+        assertEquals(9, DjSequencer.protectedEnd(6, 12) { it in protected })
+        assertEquals(12, DjSequencer.protectedEnd(10, 12) { it in protected })
+        assertEquals(5, DjSequencer.protectedEnd(5, 12) { it in protected })
+    }
+
     private fun t(id: String, tonic: Int, minor: Boolean = false, bpm: Double = 120.0, loud: Float = -9f, artist: String = id) =
         DjTrack(id, MusicKey(tonic, minor, 0.2f), bpm, loud, artist)
 

@@ -260,7 +260,7 @@ fun PlayerOptionsSheet(
     )
     if (MenuAction.PREVIOUS in fromPlayer) put(MenuAction.PREVIOUS, ActionItem(PrismIcons.Previous, tr(R.string.previous_song), keepOpen = true) { c.player.previous() })
     if (MenuAction.NEXT in fromPlayer && hasNext) put(MenuAction.NEXT, ActionItem(PrismIcons.Next, tr(R.string.next_song), keepOpen = true) { c.player.next() })
-    if (MenuAction.DJ in fromPlayer) put(MenuAction.DJ, ActionItem(if (djOn) PrismIcons.TurntableFilled else PrismIcons.Turntable, tr(R.string.dj_mode), active = djOn, keepOpen = true) { c.dj.setOn(!djOn) })
+    if (MenuAction.DJ in fromPlayer) put(MenuAction.DJ, ActionItem(if (djOn) PrismIcons.TurntableFilled else PrismIcons.Turntable, tr(R.string.dj_mode), active = djOn, keepOpen = true) { c.player.setDjMode(!djOn) })
     if (MenuAction.EQUALIZER in fromPlayer) put(MenuAction.EQUALIZER, ActionItem(PrismIcons.Equalizer, tr(R.string.equalizer)) { onButton(PlayerButton.EQUALIZER) })
     put(MenuAction.SLEEP, sleepItem)
     if (!local && !song.isLive) put(

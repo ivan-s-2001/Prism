@@ -18,6 +18,10 @@ data class DjTrack(val id: String, val key: MusicKey?, val bpm: Double?, val lou
  * the set while that makes it smoother overall). Pure, so it's unit-tested.
  */
 object DjSequencer {
+    /** A manually placed track is a barrier, even if it is not in the leading Play-next block. */
+    internal fun protectedEnd(base: Int, end: Int, protected: (Int) -> Boolean): Int =
+        (base until end).firstOrNull(protected) ?: end
+
     private const val W_KEY = 1.0
     private const val W_TEMPO = 0.8
     private const val W_ENERGY = 0.6
