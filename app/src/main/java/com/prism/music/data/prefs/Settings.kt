@@ -1243,8 +1243,8 @@ enum class PlayerButton(val label: String) {
     EQUALIZER(tr(R.string.equalizer)), DOWNLOAD(tr(R.string.download)), RADIO(tr(R.string.start_radio)), SPEED(tr(R.string.speed));
 
     companion object {
-        /** As 1.7 had it: lyrics, the music video and the queue. */
-        val DEFAULT = listOf(LYRICS, VIDEO, QUEUE)
+        /** The full player owns negative feedback; the mini player only offers like. */
+        val DEFAULT = listOf(LYRICS, VIDEO, QUEUE, DISLIKE)
         const val MIN = 3
         const val MAX = 6
     }

@@ -100,7 +100,7 @@ fun MiniHome(c: ThemeColors, song: Song?) {
 
 /** The mini player in its style ([MiniPlayerStyle]), with its buttons and progress. */
 @Composable
-internal fun MiniBar(c: ThemeColors, song: Song?, waveReactions: Boolean = false) {
+internal fun MiniBar(c: ThemeColors, song: Song?) {
     val s = LocalAppSettings.current
     val ui = LocalUi.current
     val scheme = c.scheme
@@ -111,7 +111,7 @@ internal fun MiniBar(c: ThemeColors, song: Song?, waveReactions: Boolean = false
         if (s.miniProgress == MiniProgress.FILL) Box(Modifier.fillMaxHeight().fillMaxWidth(0.42f).background(scheme.onBackground.copy(alpha = 0.08f)))
         androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
         val skips = com.prism.music.ui.player.miniWaveSkips(maxWidth, height - 20.dp, 20.dp,
-            s.miniPrevButton, s.miniSkipButtons, s.view.miniPlayButton, waveReactions)
+            s.miniPrevButton, s.miniSkipButtons, s.view.miniPlayButton, true)
         Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             StandIn(song, Modifier.size(height - 20.dp), if (s.miniPlayerStyle == MiniPlayerStyle.PILL) CircleShape else ui.smallArt, standIns[0])
             Spacer(Modifier.width(10.dp))
@@ -120,12 +120,8 @@ internal fun MiniBar(c: ThemeColors, song: Song?, waveReactions: Boolean = false
                 Text(song?.artistText ?: tr(R.string.prism_sample), style = MaterialTheme.typography.bodySmall, color = c.ink2, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (skips.previous) Icon(PrismIcons.Previous, null, Modifier.size(22.dp), tint = scheme.onBackground)
-            if (waveReactions) {
-                listOf(PrismIcons.Heart, PrismIcons.ThumbDown).forEach { glyph ->
-                    Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                        Icon(glyph, null, Modifier.size(23.dp), tint = scheme.onSurfaceVariant)
-                    }
-                }
+            Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                Icon(PrismIcons.Heart, null, Modifier.size(23.dp), tint = scheme.onSurfaceVariant)
             }
             if (s.view.miniPlayButton) Box(Modifier.padding(horizontal = 6.dp).size(36.dp).clip(CircleShape).border(1.5.dp, Brush.sweepGradient(c.ring), CircleShape), contentAlignment = Alignment.Center) {
                 Icon(PrismIcons.Play, null, Modifier.size(16.dp), tint = scheme.onBackground)

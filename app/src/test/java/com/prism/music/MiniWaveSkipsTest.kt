@@ -11,10 +11,12 @@ class MiniWaveSkipsTest {
         assertEquals(MiniWaveSkips(true, true),
             miniWaveSkips(280.dp, 44.dp, 24.dp, true, true, true, false))
     }
-    @Test fun wavePrioritizesReactionsAndCredits() {
+    @Test fun globalLikePrioritizesCredits() {
         assertEquals(MiniWaveSkips(false, false),
-            miniWaveSkips(320.dp, 44.dp, 24.dp, true, true, true, true))
+            miniWaveSkips(280.dp, 44.dp, 24.dp, true, true, true, true))
         assertEquals(MiniWaveSkips(false, true),
+            miniWaveSkips(320.dp, 44.dp, 24.dp, true, true, true, true))
+        assertEquals(MiniWaveSkips(true, true),
             miniWaveSkips(360.dp, 44.dp, 24.dp, true, true, true, true))
         assertEquals(MiniWaveSkips(true, true),
             miniWaveSkips(440.dp, 44.dp, 24.dp, true, true, true, true))
