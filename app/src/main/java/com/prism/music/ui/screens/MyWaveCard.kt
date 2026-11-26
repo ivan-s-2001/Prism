@@ -31,17 +31,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.animation.Crossfade
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
-import coil3.compose.AsyncImage
-import coil3.compose.AsyncImagePainter
-import coil3.request.ImageRequest
-import com.prism.music.data.model.hiRes
-import com.prism.music.ui.player.playerCoverRequest
-import androidx.compose.animation.core.tween
-import com.prism.music.ui.player.PlayerScrubber
 import com.prism.music.data.model.SongItem
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
@@ -253,28 +242,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val djOn by c.dj.on.collectAsState()
     val ui = LocalUi.current
     val scheme = MaterialTheme.colorScheme
-    val liked by c.library.likedIds.collectAsState()
-    val disliked by c.library.dislikedIds.collectAsState()
-    val hasNext by c.player.hasNext.collectAsState()
-    val hasPrevious by c.player.hasPrevious.collectAsState()
-    val current = song.takeIf { wave }
-    val cover = current?.let { c.covers.art(SongItem(it)) }
-    // An embedded card always follows Prism's active appearance; no independent Vibe palette.
-    val context = LocalContext.current
-    val artUrl = hiRes(cover, 360)
-    var artTry by remember(artUrl) { mutableIntStateOf(0) }
-    var artFailed by remember(artUrl) { mutableStateOf(false) }
-    val artRequest = remember(artUrl, artTry) { playerCoverRequest(context, artUrl, false) }
-    var shownCover by remember { mutableStateOf<ImageRequest?>(null) }
-    LaunchedEffect(artUrl, artFailed, artTry) {
-        if (artUrl == null) shownCover = null
-        else if (artFailed && artTry < com.prism.music.ui.player.COVER_RETRIES) {
-            kotlinx.coroutines.delay(com.prism.music.ui.player.COVER_RETRY_MS)
-            artFailed = false
-            artTry++
-        } else if (artFailed) shownCover = null
-    }
-    val fadeMs = if (settings.reduceMotion) 0 else 320
     fun depthName(v: MyWave.Depth) = when (v) {
         MyWave.Depth.ANY -> tr(R.string.prism_stream_all)
         MyWave.Depth.HITS -> tr(R.string.prism_stream_hits)
@@ -308,75 +275,12 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             }
         }
     }
-    // A station first; the currently playing recording is a small, separately accessible attribution.
+    // One discovery surface; Prism's global mini player handles the song, reactions and transport.
     @Composable fun Hero(modifier: Modifier) {
-        @Composable fun TrackArtwork(modifier: Modifier) {
-            val shape = com.prism.music.ui.theme.CoverShapes.of(settings.shapes.player, settings.player.artCorners.dp)
-            Box(modifier.clip(shape).background(scheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
-                if (shownCover == null) Icon(PrismIcons.Song, null, Modifier.fillMaxSize(0.45f), tint = scheme.onSurfaceVariant)
-                Crossfade(targetState = shownCover, animationSpec = tween(fadeMs), label = "streamArtwork",
-                    modifier = Modifier.matchParentSize()) { image ->
-                    if (image != null) AsyncImage(image, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                }
-                if (artUrl != null && shownCover != artRequest) AsyncImage(
-                    artRequest, null, contentScale = ContentScale.Crop,
-                    modifier = Modifier.matchParentSize().graphicsLayer { alpha = 0f },
-                    onState = { state ->
-                        if (state is AsyncImagePainter.State.Success) shownCover = artRequest
-                        else if (state is AsyncImagePainter.State.Error) artFailed = true
-                    })
-            }
-        }
-        @Composable fun Reaction(like: Boolean) {
-            val item = current ?: return
-            val on = if (like) item.id in liked else item.id in disliked
-            val glyph = if (like) {
-                if (on) PrismIcons.HeartFilled else PrismIcons.Heart
-            } else if (on) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown
-            VibeTrackAction(glyph, if (like) tr(R.string.prism_stream_like) else tr(R.string.prism_stream_not_for_me), selected = on, onClick = {
-                if (like) c.library.toggleLike(item)
-                else {
-                    c.library.setDisliked(item, !on)
-                    if (!on && c.player.hasNext.value) c.player.next()
-                }
-            })
-        }
-        VibeFlowField(modifier.testTag("home:my_wave").customizable(CustomizeTarget.VIBE), animated = wave && playing && !buffering,
-            energy = style.diversity / 100f) { visual ->
-            CompositionLocalProvider(com.prism.music.ui.player.LocalEmbeddedPlayerInk provides scheme.onSurface,
-                LocalContentColor provides scheme.onSurface) {
-                VibeStationOverlay(settings, vibeStationTitle(activeSaved, activeScenario),
-                    hasTrack = current != null, visual = visual, artist = current?.primaryArtist,
-                    play = {
-                        VibeStationAction(playing = wave && playing, starting = starting && !wave, active = wave,
-                            onPlay = { if (wave) c.player.togglePlay() else if (!starting) start() })
-                    },
-                    credits = {
-                        current?.let { item -> VibeCredits(settings, item.title, item.primaryArtist,
-                            artwork = { TrackArtwork(it) }, onOpen = onOpenPlayer, showArtist = item.primaryArtist.isBlank()) }
-                    },
-                    previous = {
-                        VibeTrackAction(PrismIcons.Previous, tr(R.string.widget_previous), { c.player.previous() }, enabled = hasPrevious)
-                    },
-                    next = {
-                        VibeTrackAction(PrismIcons.Next, tr(R.string.prism_stream_next), { c.player.next() }, enabled = hasNext)
-                    },
-                    dislike = { Reaction(false) },
-                    like = { Reaction(true) },
-                    progress = {
-                        val item = current
-                        if (item != null) {
-                            val timing by produceState(0L to 0L, item.id, playing) {
-                                while (true) {
-                                    value = if (c.player.currentSong.value?.id == item.id)
-                                        c.player.position to c.player.duration.coerceAtLeast(0L) else 0L to 0L
-                                    kotlinx.coroutines.delay(if (playing) 250L else 500L)
-                                }
-                            }
-                            if (timing.second > 0L) Box(Modifier.testTag("stream:seek")) { PlayerScrubber(timing.first, timing.second) }
-                        }
-                    })
-            }
+        VibeFlowField(modifier.testTag("home:my_wave").customizable(CustomizeTarget.VIBE),
+            animated = wave && playing && !buffering, energy = style.diversity / 100f) { visual ->
+            VibeDiscoveryStage(settings, vibeStationTitle(activeSaved, activeScenario),
+                active = wave, starting = starting, onStart = { if (!starting) start() }, visual = visual)
         }
     }
 

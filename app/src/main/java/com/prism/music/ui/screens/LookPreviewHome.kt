@@ -100,7 +100,7 @@ fun MiniHome(c: ThemeColors, song: Song?) {
 
 /** The mini player in its style ([MiniPlayerStyle]), with its buttons and progress. */
 @Composable
-private fun MiniBar(c: ThemeColors, song: Song?) {
+internal fun MiniBar(c: ThemeColors, song: Song?) {
     val s = LocalAppSettings.current
     val ui = LocalUi.current
     val scheme = c.scheme
@@ -141,7 +141,7 @@ private fun NavTab.icon(): ImageVector = when (this) {
 
 /** The tab bar in its style ([NavBarStyle]) with its labels, the first tab current. */
 @Composable
-private fun TabBarPreview(c: ThemeColors) {
+internal fun TabBarPreview(c: ThemeColors) {
     val s = LocalAppSettings.current
     val scheme = c.scheme
     val light = Brush.horizontalGradient(*c.run.toTypedArray())

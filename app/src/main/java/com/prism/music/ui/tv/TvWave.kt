@@ -202,7 +202,7 @@ internal fun TvWavePlace(nav: TvNav) {
                                                 com.prism.music.ui.screens.StandIn(current, it,
                                                     com.prism.music.ui.theme.CoverShapes.of(appSettings.shapes.player, appSettings.player.artCorners.dp),
                                                     com.prism.music.ui.screens.standIns.first())
-                                            }, showArtist = false)
+                                            })
                                     },
                                     previous = { PreviewIcon(PrismIcons.Previous) }, next = { PreviewIcon(PrismIcons.Next) },
                                     dislike = { PreviewIcon(PrismIcons.ThumbDown) }, like = { PreviewIcon(PrismIcons.Heart) })
@@ -346,7 +346,7 @@ internal fun TvWavePlace(nav: TvNav) {
                         }, credits = {
                             if (current != null) com.prism.music.ui.screens.VibeCredits(appSettings,
                                 now?.title ?: current.title, now?.artist ?: current.primaryArtist,
-                                artwork = { Artwork(now?.art, it, shape = com.prism.music.ui.theme.CoverShapes.of(appSettings.shapes.player, appSettings.player.artCorners.dp), size = 180) }, showArtist = false)
+                                artwork = { Artwork(now?.art, it, shape = com.prism.music.ui.theme.CoverShapes.of(appSettings.shapes.player, appSettings.player.artCorners.dp), size = 180) })
                         }, previous = {
                             TvIconButton(PrismIcons.Previous, tr(R.string.widget_previous),
                                 { if (c.player.hasPrevious.value) c.player.previous() }, Modifier.tvItem("tv_wave/previous"))

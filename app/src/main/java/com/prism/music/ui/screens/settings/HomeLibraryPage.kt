@@ -354,13 +354,7 @@ internal fun VibeAppearanceRows(s: AppSettings, d: AppSettings) {
         SliderRow(tr(R.string.speed), s.streamMotion, 0f..2f, { "${(it * 100).toInt()}%" }, steps = 7, changed = s.streamMotion != d.streamMotion) { prefs.setStreamMotion(it) }
         SliderRow(tr(R.string.intensity), s.streamSensitivity, 0f..2f, { "${(it * 100).toInt()}%" }, steps = 7, changed = s.streamSensitivity != d.streamSensitivity) { prefs.setStreamSensitivity(it) }
     }
-    SwitchRow(tr(R.string.prism_stream_appearance_panel), s.streamGlassPanel, changed = s.streamGlassPanel != d.streamGlassPanel) { prefs.setStreamGlassPanel(it) }
-    SwitchRow(tr(R.string.artwork), s.streamShowCover, changed = s.streamShowCover != d.streamShowCover) { prefs.setStreamShowCover(it) }
-    if (s.streamShowCover) ChoiceRow(tr(R.string.cover_size), StreamCoverSize.entries, s.streamCoverSize, { it.label }, changed = s.streamCoverSize != d.streamCoverSize) { prefs.setStreamCoverSize(it) }
-    SwitchRow(tr(R.string.progress_bar), s.streamShowProgress, changed = s.streamShowProgress != d.streamShowProgress) { prefs.setStreamShowProgress(it) }
-    SwitchRow(tr(R.string.prism_stream_appearance_reactions), s.streamShowReactions, changed = s.streamShowReactions != d.streamShowReactions) { prefs.setStreamShowReactions(it) }
     SwitchRow(tr(R.string.prism_stream_appearance_status), s.streamShowStatus, changed = s.streamShowStatus != d.streamShowStatus) { prefs.setStreamShowStatus(it) }
-    SwitchRow(tr(R.string.prism_stream_appearance_reverse), s.streamReverseLayout, changed = s.streamReverseLayout != d.streamReverseLayout) { prefs.setStreamReverseLayout(it) }
 }
 
 val homeLibraryLookKeys: List<String> = listOf(

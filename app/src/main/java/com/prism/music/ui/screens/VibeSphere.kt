@@ -1,6 +1,6 @@
 /*
  * SPDX-License-Identifier: GPL-3.0-only
- * The AGSL noise/sphere shader below is adapted from Vexorter42/Unison,
+ * Earlier versions included an AGSL noise/sphere shader adapted from Vexorter42/Unison,
  * WaveSphere.kt at 844b796e4adbd26a4b9ff6930f8da22a6aab9edc (GPL-3.0).
  * https://github.com/Vexorter42/Unison/blob/844b796e4adbd26a4b9ff6930f8da22a6aab9edc/app/src/main/java/com/musichub/ui/WaveSphere.kt
  * Modified for Prism: theme-aware compositing, station energy, bounded animation,
@@ -8,10 +8,6 @@
  */
 package com.prism.music.ui.screens
 
-import android.graphics.RuntimeShader
-import android.os.Build
-import android.util.Log
-import androidx.annotation.RequiresApi
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,7 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -47,86 +42,6 @@ import com.prism.music.data.prefs.StreamVisualStyle
 import com.prism.music.ui.theme.LocalAppSettings
 import com.prism.music.ui.theme.LocalIsDark
 import androidx.compose.material3.MaterialTheme
-
-private const val SPHERE_AGSL = """
-uniform float2 size;
-uniform float2 center;
-uniform float time;
-uniform float bass;
-uniform float4 frequencies;
-uniform float energy;
-uniform float opacity;
-uniform float3 colA;
-uniform float3 colB;
-uniform float3 colC;
-
-float hash(float2 p) { return fract(sin(dot(p, float2(127.1, 311.7))) * 43758.5453); }
-float noise(float2 p) {
-    float2 i = floor(p);
-    float2 f = fract(p);
-    f = f * f * (3.0 - 2.0 * f);
-    float a = hash(i);
-    float b = hash(i + float2(1.0, 0.0));
-    float c = hash(i + float2(0.0, 1.0));
-    float d = hash(i + float2(1.0, 1.0));
-    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-}
-float fbm(float2 p) {
-    float v = 0.60 * noise(p);
-    p = p * 2.03 + float2(13.7, 9.2);
-    v += 0.28 * noise(p);
-    p = p * 2.01 + float2(7.1, 17.3);
-    return v + 0.12 * noise(p);
-}
-
-half4 main(float2 fc) {
-    float shortest = min(size.x, size.y);
-    // The backdrop breathes across the stage, including wide TV compositions.
-    float2 uv = (fc - center) / float2(min(size.x, shortest * 1.65), min(size.y, shortest * 1.60));
-    uv -= float2(sin(time * 0.37), cos(time * 0.29)) * 0.026;
-    float t = time * (0.42 + energy * 0.36);
-    // Two independently travelling distortion fields make the light fold, rather than rotate as a flat picture.
-    float angle = atan(uv.y, uv.x);
-    float r = length(uv);
-    float spin = 0.34 * sin(t * 0.73) + t * 0.16 + 0.56 * exp(-r * 3.2);
-    float cs = cos(spin);
-    float sn = sin(spin);
-    float2 p = float2(uv.x * cs - uv.y * sn, uv.x * sn + uv.y * cs);
-    float cloud = fbm(p * 3.1 + float2(t * 0.21, -t * 0.16));
-    float detail = fbm(p * 5.4 + float2(cloud * 1.8, -cloud * 1.6) + float2(-t * 0.15, t * 0.12));
-    // Low frequencies swell the body, mids fold the membrane, highs ripple its edge.
-    float fold = (0.042 + 0.027 * frequencies.y) * sin(angle * 3.0 + t * 1.15)
-               + (0.025 + 0.021 * frequencies.z) * sin(angle * 5.0 - t * 0.82)
-               + (0.010 + 0.012 * frequencies.w) * sin(angle * 9.0 + t * 1.7);
-    float radius = 0.345 + 0.024 * sin(t * 1.08) + 0.044 * bass + 0.024 * frequencies.x;
-    float edge = r + (cloud - 0.5) * (0.11 + 0.10 * energy) + (detail - 0.5) * 0.042 + fold;
-    float outer = 1.0 - smoothstep(radius * 0.91, radius * 1.48, edge);
-    float inner = 0.24 + 0.76 * smoothstep(radius * 0.16, radius * 0.92, edge);
-    float ribbon = 0.5 + 0.5 * sin(angle * 2.0 + detail * 6.2 + t * 0.9);
-    float silk = 0.5 + 0.5 * cos((edge - radius) * 96.0 + 4.0 * cloud + angle * 3.0 - t * 0.8);
-    float litRim = smoothstep(0.30, 0.95, 0.5 + 0.5 * sin(angle + t * 0.32 + cloud * 1.8));
-    float sheen = pow(ribbon, 2.1) * (0.30 + 0.70 * detail);
-    float tone = 0.5 + 0.5 * sin(angle + cloud * 4.5 - t * 0.8);
-    float3 col = mix(mix(colA, colB, smoothstep(0.0, 0.56, tone)), colC, smoothstep(0.52, 1.0, tone));
-    col = mix(col, colC, sheen * 0.23);
-    // A soft transparent center protects text contrast even in a light theme.
-    float m = (edge - radius) * 26.0;
-    float n = (edge - radius * 0.79 + 0.013 * sin(angle * 4.0 - t)) * 36.0;
-    float membrane = exp(-m * m);
-    float secondary = exp(-n * n);
-    float light = outer * inner * (0.30 + 0.38 * cloud + sheen * 0.28)
-        + membrane * (0.22 + 0.40 * sheen + 0.12 * frequencies.w)
-        + secondary * (0.08 + 0.20 * detail)
-        + outer * inner * silk * (0.045 + 0.08 * frequencies.z) * litRim;
-    col = mix(col, colB, membrane * litRim * 0.32);
-    light *= 0.88 + 0.29 * bass;
-    float clipEdge = 1.0 - smoothstep(0.35, 0.53, r);
-    // Low-contrast atmosphere connects the membrane to the entire stage, instead of a floating sticker.
-    float atmosphere = 0.085 * exp(-r * r * 5.0) * (0.65 + 0.35 * cloud);
-    float al = clamp((light * clipEdge + atmosphere) * opacity, 0.0, 0.95);
-    return half4(half3(clamp(col, 0.0, 1.0) * al), half(al));
-}
-"""
 
 /** A station ambience, not an audio capture service. Reads Prism's existing audio tap only while visible. */
 @Composable
@@ -156,7 +71,8 @@ internal fun VibeSphere(
     val c = if (palette.isEmpty()) lerp(a, scheme.background, if (dark) 0.28f else 0.18f)
         else lerp(a, palette.last(), 0.55f)
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
-    val motion = !preview && !settings.reduceMotion && !settings.performanceMode && lifecycle.isAtLeast(Lifecycle.State.RESUMED)
+    val motion = !preview && !settings.reduceMotion && lifecycle.isAtLeast(Lifecycle.State.STARTED)
+    val frameInterval = if (settings.performanceMode) 66_000_000L else 30_000_000L
     val listening = motion && animated && settings.streamSensitivity > 0f
     val spectrum = remember { Spectrum() }
     val playing = rememberUpdatedState(animated)
@@ -171,7 +87,7 @@ internal fun VibeSphere(
         if (listening) VisualizerTap.listen()
         onDispose { if (listening) VisualizerTap.stop() }
     }
-    LaunchedEffect(motion, listening) {
+    LaunchedEffect(motion, listening, frameInterval) {
         if (!motion) {
             level.floatValue = 0f
             bands.fill(0f)
@@ -184,7 +100,7 @@ internal fun VibeSphere(
             withFrameNanos { now ->
                 if (last == 0L) last = now
                 val dt = now - last
-                if (dt >= 30_000_000L) {
+                if (dt >= frameInterval) {
                     val seconds = (dt / 1e9f).coerceIn(0.001f, 0.1f)
                     if (listening) spectrum.update(seconds * 1000f)
                     val gain = sensitivity.value
@@ -198,7 +114,7 @@ internal fun VibeSphere(
                         group[i] = sum / 7f
                     }
                     // A separate clock tick keeps draw invalidation alive at zero motion speed, for the FFT.
-                    time.floatValue += seconds * (if (playing.value) 2.2f else 0.55f) * speed.value
+                    time.floatValue = advanceVibeTime(time.floatValue, seconds, speed.value, playing.value)
                     frame.longValue++
                     last = now
                 }
@@ -206,7 +122,7 @@ internal fun VibeSphere(
         }
     }
     val bass = { frame.longValue; if (motion) level.floatValue else 0f }
-    val opacity = if (dark) 0.72f else 0.48f
+    val opacity = if (dark) 0.92f else 0.76f
     if (style == StreamVisualStyle.GLOW) {
         Canvas(modifier) { drawVibeGlow(a, b, bass(), opacity, if (motion) time.floatValue else 7f) }
     } else if (style == StreamVisualStyle.RING || style == StreamVisualStyle.EQUALIZER) {
@@ -215,41 +131,20 @@ internal fun VibeSphere(
             val t = if (motion) time.floatValue else 7f
             drawVibeSpectrum(a, b, bands, t, opacity, style == StreamVisualStyle.RING, preview)
         }
-    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !settings.performanceMode) {
-        ShaderSphere(modifier, a, b, c, energy.coerceIn(0f, 1f), opacity, { time.floatValue }, bass, bands, group)
     } else {
-        Canvas(modifier) { drawLiquidVibe(a, b, c, bands, bass(), opacity, if (motion) time.floatValue else 7f) }
+        Canvas(modifier) {
+            frame.longValue
+            drawLiquidVibe(a, b, c, bands, bass(), opacity, if (motion) time.floatValue else 7f,
+                energy.coerceIn(0f, 1f), settings.performanceMode)
+        }
     }
 }
 
-@RequiresApi(Build.VERSION_CODES.TIRAMISU)
-@Composable
-private fun ShaderSphere(
-    modifier: Modifier, a: Color, b: Color, c: Color, energy: Float, opacity: Float,
-    time: () -> Float, bass: () -> Float, bands: FloatArray, group: FloatArray,
-) {
-    // RuntimeShader compilation can fail on a device's Skia implementation. Keep the screen usable.
-    val shader = remember { runCatching { RuntimeShader(SPHERE_AGSL) }.onFailure { Log.w("PrismVibe", "AGSL unavailable; using animated gradients", it) }.getOrNull() }
-    Canvas(modifier) {
-        if (size.minDimension <= 0f) return@Canvas
-        val level = bass()
-        if (shader == null) {
-            drawLiquidVibe(a, b, c, bands, level, opacity, time())
-        } else {
-            shader.setFloatUniform("size", size.width, size.height)
-            shader.setFloatUniform("center", center.x, center.y)
-            shader.setFloatUniform("time", time())
-            shader.setFloatUniform("bass", level)
-            shader.setFloatUniform("frequencies", group[0], group[1], group[2], group[3])
-            shader.setFloatUniform("energy", energy)
-            shader.setFloatUniform("opacity", opacity)
-            shader.setFloatUniform("colA", a.red, a.green, a.blue)
-            shader.setFloatUniform("colB", b.red, b.green, b.blue)
-            shader.setFloatUniform("colC", c.red, c.green, c.blue)
-            // Create a fresh brush after writing uniforms, avoiding a cached native shader snapshot.
-            drawRect(ShaderBrush(shader))
-        }
-    }
+/** The phase advances without any audio input, even while paused. */
+internal fun advanceVibeTime(time: Float, seconds: Float, speed: Float, playing: Boolean): Float {
+    val dt = if (seconds.isFinite()) seconds.coerceIn(0f, 0.15f) else 0f
+    val rate = if (speed.isFinite()) speed.coerceIn(0f, 2f) else 1f
+    return (if (time.isFinite()) time else 0f) + dt * rate * (if (playing) 2.8f else 1.15f)
 }
 
 /** A quiet, theme-colored halo; deliberately different from the turbulent Wave renderer. */
@@ -277,44 +172,57 @@ internal fun smoothVibe(previous: Float, next: Float, seconds: Float = 1f / 30f)
     return current + (target - current) * (1f - exp(-dt / tau))
 }
 
-/** A portable liquid membrane with continuous curved contours, even without AGSL. */
-private fun DrawScope.drawLiquidVibe(a: Color, b: Color, c: Color, bands: FloatArray, bass: Float, opacity: Float, time: Float) {
+/** An asymmetric field of translucent pigment, deformed by real frequency bands.
+ * Fixed-size geometry, no runtime shader compiler or mutable GPU uniforms. */
+private fun DrawScope.drawLiquidVibe(a: Color, b: Color, c: Color, bands: FloatArray,
+    bass: Float, opacity: Float, time: Float, energy: Float, economical: Boolean) {
     if (size.minDimension <= 0f) return
-    val radius = size.minDimension * (0.37f + 0.035f * bass)
-    val origin = center + Offset(sin(time * 0.37f), cos(time * 0.29f)) * (radius * 0.09f)
-    drawSoftSphere(a, b, c, bass, opacity * 0.36f, time)
-    val count = 84
-    for (layer in 0..3) {
-        val phase = time * (0.26f + layer * 0.037f) + layer * 0.9f
-        val points = Array(count) { i ->
+    val span = size.minDimension
+    val rx = minOf(size.width * 0.46f, span * 0.64f)
+    val ry = minOf(size.height * 0.44f, span * 0.69f)
+    val origin = center + Offset(sin(time * 0.67f) * rx * 0.11f, cos(time * 0.49f) * ry * 0.12f)
+    drawRect(Brush.radialGradient(listOf(a.copy(alpha = 0.13f * opacity), Color.Transparent),
+        center = origin, radius = maxOf(size.width, size.height) * 0.70f))
+    val count = if (economical) 36 else 64
+    val layers = if (economical) 3 else 4
+    val points = FloatArray(count * 2)
+    val path = Path()
+    for (layer in 0 until layers) {
+        val phase = time * (0.65f + layer * 0.13f) + layer * 1.7f
+        val shrink = 1f - layer * 0.105f
+        val at = origin + Offset(cos(phase * 0.71f) * rx * 0.075f, sin(phase * 0.92f) * ry * 0.09f)
+        for (i in 0 until count) {
             val angle = i * 6.2831853f / count
-            val index = i * bands.size.toFloat() / count
-            val left = index.toInt() % bands.size
-            val right = (left + 1) % bands.size
-            val v = bands[left] + (bands[right] - bands[left]) * (index - index.toInt())
-            val shape = 1f + 0.16f * sin(3f * angle + phase) + 0.085f * cos(5f * angle - phase * 1.3f) +
-                0.045f * sin(7f * angle + phase * 0.8f) + v * 0.10f
-            val r = radius * (1f - layer * 0.072f) * shape
-            origin + Offset(cos(angle), sin(angle)) * r
+            val pos = i * bands.size.toFloat() / count
+            val lo = pos.toInt() % bands.size
+            val hi = (lo + 1) % bands.size
+            val frequency = bands[lo] + (bands[hi] - bands[lo]) * (pos - pos.toInt())
+            val radius = shrink * (0.82f + 0.09f * bass +
+                (0.14f + 0.06f * energy) * sin(3f * angle + phase) +
+                0.09f * cos(2f * angle - phase * 0.77f) +
+                0.055f * sin(5f * angle + phase * 1.26f) + frequency * 0.13f)
+            points[i * 2] = at.x + cos(angle) * rx * radius
+            points[i * 2 + 1] = at.y + sin(angle) * ry * radius
         }
-        val path = Path()
-        val start = (points.last() + points.first()) * 0.5f
-        path.moveTo(start.x, start.y)
-        for (i in points.indices) {
-            val p = points[i]
-            val end = (p + points[(i + 1) % count]) * 0.5f
-            path.quadraticBezierTo(p.x, p.y, end.x, end.y)
+        path.reset()
+        path.moveTo((points[(count - 1) * 2] + points[0]) / 2f,
+            (points[(count - 1) * 2 + 1] + points[1]) / 2f)
+        for (i in 0 until count) {
+            val j = (i + 1) % count
+            path.quadraticBezierTo(points[i * 2], points[i * 2 + 1],
+                (points[i * 2] + points[j * 2]) / 2f, (points[i * 2 + 1] + points[j * 2 + 1]) / 2f)
         }
         path.close()
-        val color = if (layer % 2 == 0) a else b
-        val brush = Brush.sweepGradient(listOf(a, b, c, a), origin)
+        val color = when (layer % 3) { 0 -> a; 1 -> b; else -> c }
+        val light = at + Offset(cos(phase) * rx * 0.50f, sin(phase) * ry * 0.50f)
         drawPath(path, Brush.radialGradient(
-            0f to Color.Transparent, 0.5f to Color.Transparent,
-            0.83f to color.copy(alpha = 0.12f * opacity), 1f to Color.Transparent,
-            center = origin, radius = radius * 1.3f
-        ))
-        drawPath(path, brush, alpha = opacity * (0.20f - layer * 0.03f), style = Stroke((2.8f - layer * 0.4f) * density))
-        drawPath(path, brush, alpha = opacity * (0.36f - layer * 0.05f), style = Stroke(0.7f * density))
+            0f to color.copy(alpha = 0.38f * opacity),
+            0.50f to lerp(color, b, 0.4f).copy(alpha = 0.21f * opacity),
+            1f to a.copy(alpha = 0.05f * opacity), center = light, radius = maxOf(rx, ry) * 1.4f))
+        drawPath(path, Brush.linearGradient(
+            listOf(a.copy(alpha = 0.05f), b.copy(alpha = 0.52f), c.copy(alpha = 0.08f)),
+            start = light, end = at - (light - at)), alpha = opacity * 0.65f,
+            style = Stroke((3.6f - layer * 0.55f) * density))
     }
 }
 

@@ -150,40 +150,30 @@ private fun MiniVibe(c: ThemeColors, song: Song?) {
         if (backdrop != com.prism.music.ui.theme.Backdrop.DEFAULT) {
             com.prism.music.ui.theme.BackdropLayer(backdrop, photo, s.backdropDim, false, Modifier.fillMaxSize())
         }
-        VibePageLayout(s, scrollable = false, header = {
-            com.prism.music.ui.components.ScreenHeader(tr(R.string.stream),
-                subtitle = tr(R.string.prism_stream_personal_stream).takeIf { s.streamShowStatus }) {
-                Icon(PrismIcons.Shuffle, null, Modifier.size(24.dp))
-            }
-        }, player = { panel ->
-            VibeFlowField(panel, preview = true) { visual ->
-                VibeStationOverlay(s, tr(R.string.prism_stream_station_default), hasTrack = true,
-                    visual = visual, artist = song?.primaryArtist ?: tr(R.string.artist),
-                    play = { VibeStationAction(false, starting = false, active = true, onPlay = {}) },
-                    credits = {
-                        VibeCredits(s, song?.title ?: tr(R.string.song), song?.primaryArtist ?: tr(R.string.artist),
-                            artwork = { StandIn(song, it, com.prism.music.ui.theme.CoverShapes.of(s.shapes.player, s.player.artCorners.dp), standIns.first()) }, showArtist = false)
-                    }, previous = {
-                        VibeTrackAction(PrismIcons.Previous, tr(R.string.widget_previous), {})
-                    }, next = {
-                        VibeTrackAction(PrismIcons.Next, tr(R.string.prism_stream_next), {})
-                    }, dislike = {
-                        VibeTrackAction(PrismIcons.ThumbDown, tr(R.string.prism_stream_not_for_me), {})
-                    }, like = {
-                        VibeTrackAction(PrismIcons.Heart, tr(R.string.prism_stream_like), {})
-                    }, progress = { PreviewBar(s, Brush.horizontalGradient(c.ring), ink = scheme.onSurface) })
-            }
-        }, scenarios = {
-            val scenarios = com.prism.music.data.foryou.WaveScenarios.visibleOrder(com.prism.music.data.foryou.WaveScenarios.all, s.streamScenarioOrder)
-            Row(Modifier.fillMaxWidth().padding(horizontal = ui.gap(12.dp), vertical = ui.gap(2.dp)),
-                horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp)), verticalAlignment = Alignment.CenterVertically) {
-                val style = com.prism.music.data.foryou.MyWave.restore(null, s.streamStyleOrigin, s.streamRussianPercent)
-                val tiles = vibeShortcuts(style, s.streamPresets, scenarios, s.streamScenarioStyles, null, null).take(3)
-                tiles.forEach { tile ->
-                    VibeScenarioTile(s.streamCompactScenarios, tile.label, tile.icon, tile.selected, {}, Modifier.weight(1f))
+        Column(Modifier.fillMaxSize()) {
+            VibePageLayout(s, modifier = Modifier.weight(1f), scrollable = false, header = {
+                com.prism.music.ui.components.ScreenHeader(tr(R.string.stream),
+                    subtitle = tr(R.string.prism_stream_personal_stream).takeIf { s.streamShowStatus }) {
+                    Icon(PrismIcons.Palette, null, Modifier.size(24.dp))
                 }
-            }
-        })
+            }, player = { panel ->
+                VibeFlowField(panel, preview = true) { visual ->
+                    VibeDiscoveryStage(s, tr(R.string.prism_stream_station_default), active = true,
+                        starting = false, onStart = {}, visual = visual)
+                }
+            }, scenarios = {
+                val scenarios = com.prism.music.data.foryou.WaveScenarios.visibleOrder(com.prism.music.data.foryou.WaveScenarios.all, s.streamScenarioOrder)
+                Row(Modifier.fillMaxWidth().padding(horizontal = ui.gap(12.dp), vertical = ui.gap(2.dp)),
+                    horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp)), verticalAlignment = Alignment.CenterVertically) {
+                    val style = com.prism.music.data.foryou.MyWave.restore(null, s.streamStyleOrigin, s.streamRussianPercent)
+                    vibeShortcuts(style, s.streamPresets, scenarios, s.streamScenarioStyles, null, null).take(3).forEach { tile ->
+                        VibeScenarioTile(s.streamCompactScenarios, tile.label, tile.icon, tile.selected, {}, Modifier.weight(1f))
+                    }
+                }
+            })
+            Box(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) { MiniBar(c, song) }
+            Box(Modifier.padding(horizontal = 12.dp).padding(bottom = 14.dp)) { TabBarPreview(c) }
+        }
     }
 }
 

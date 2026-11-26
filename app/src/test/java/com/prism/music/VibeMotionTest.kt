@@ -1,10 +1,19 @@
 package com.prism.music
 
 import com.prism.music.ui.screens.smoothVibe
+import com.prism.music.ui.screens.advanceVibeTime
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VibeMotionTest {
+    @Test fun phaseMovesWithoutAudioAndWhilePaused() {
+        val start = 7f
+        assertTrue(advanceVibeTime(start, 0.033f, 1f, false) > start)
+        assertTrue(advanceVibeTime(start, 0.033f, 1f, true) > advanceVibeTime(start, 0.033f, 1f, false))
+        assertTrue(advanceVibeTime(start, 0.033f, 0f, true) == start)
+        assertTrue(advanceVibeTime(start, 0.066f, 1f, false).isFinite())
+    }
+
     @Test fun attackIsFastAndReleaseIsGentle() {
         val attack = smoothVibe(0f, 1f)
         val release = smoothVibe(1f, 0f)
