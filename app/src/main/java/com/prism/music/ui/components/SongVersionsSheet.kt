@@ -42,6 +42,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 
 /**
  * "Play a different version" (1.7.9, Reddit: a song from an album played as someone's guitar cover): the other
@@ -152,6 +153,13 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
             catch (e: Exception) { Result.failure(e) }
         }
     }
+    var link by remember(song.id) { mutableStateOf("") }
+    var checkingLink by remember(song.id) { mutableStateOf(false) }
+    var checkedLink by remember(song.id) { mutableStateOf<Song?>(null) }
+    var linkError by remember(song.id) { mutableStateOf(false) }
+    var enteringLink by remember(song.id) { mutableStateOf(false) }
+    val linkScope = androidx.compose.runtime.rememberCoroutineScope()
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     fun choose(pick: SongVersions.Pick?) {
         c.pickVersion(song, pick)
         android.widget.Toast.makeText(
@@ -262,6 +270,55 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                     else -> candidates.forEach { v ->
                         VersionRow(v, "Audius", picked == v.id, Modifier.testTag("version:${v.id}")) {
                             choose(SongVersions.Pick(v.id, "Audius · " + versionLabel(v), v))
+                        }
+                    }
+                }
+            }
+            if (preferExplicit && !song.isLocal && !song.isEpisode && !song.isLive && !song.isUpload) {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                        clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Prism", "${song.primaryArtist} ${song.title}"))
+                        runCatching { uriHandler.openUri("https://zaycev.net/") }
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                ) { Text(tr(R.string.prism_zaycev_open)) }
+                androidx.compose.material3.TextButton(
+                    onClick = { enteringLink = !enteringLink },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                ) { Text(tr(R.string.prism_bc_manual)) }
+                if (enteringLink) {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = link,
+                        onValueChange = { link = it; checkedLink = null; linkError = false },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),
+                        enabled = !checkingLink,
+                        singleLine = true,
+                        label = { Text("Bandcamp URL") },
+                    )
+                    androidx.compose.material3.TextButton(
+                        enabled = link.isNotBlank() && !checkingLink,
+                        onClick = {
+                            checkingLink = true
+                            checkedLink = null
+                            linkError = false
+                            val requested = link
+                            linkScope.launch {
+                                try {
+                                    checkedLink = withContext(Dispatchers.IO) { c.streams.bandcampVersionFromLink(song, requested) }
+                                    linkError = checkedLink == null
+                                } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                                catch (_: Exception) { linkError = true }
+                                finally { checkingLink = false }
+                            }
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    ) { Text(tr(R.string.prism_bc_check)) }
+                    if (checkingLink) PrismSpinner(Modifier.padding(22.dp).size(22.dp), stroke = 2.dp)
+                    if (linkError) Quiet(tr(R.string.prism_bc_link_failed))
+                    checkedLink?.let { v ->
+                        VersionRow(v, "Bandcamp", picked == v.id, Modifier.testTag("version:manual")) {
+                            choose(SongVersions.Pick(v.id, "Bandcamp · " + versionLabel(v), v))
                         }
                     }
                 }

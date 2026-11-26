@@ -5805,4 +5805,8 @@
     <string name="prism_version_catalog">Catalog search: %1$s</string>
     <string name="prism_bandcamp_note">Public artist releases. Matching metadata does not verify the absence of edits.</string>
     <string name="prism_audius_note">Public tracks from Audius. Audio is not verified for censorship.</string>
+    <string name="prism_zaycev_open">Copy track name and open Zaycev.net</string>
+    <string name="prism_bc_manual">Add a public Bandcamp track link</string>
+    <string name="prism_bc_check">Check recording</string>
+    <string name="prism_bc_link_failed">No matching full public recording could be verified.</string>
 </resources>

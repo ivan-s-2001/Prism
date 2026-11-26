@@ -5904,4 +5904,8 @@
     <string name="prism_version_catalog">Поиск в каталогах: %1$s</string>
     <string name="prism_bandcamp_note">Открытые релизы исполнителей. Совпадение метаданных не подтверждает отсутствие цензуры.</string>
     <string name="prism_audius_note">Открытые записи Audius. Звук на наличие цензуры не проверен.</string>
+    <string name="prism_zaycev_open">Скопировать название и открыть Zaycev.net</string>
+    <string name="prism_bc_manual">Добавить ссылку на трек Bandcamp</string>
+    <string name="prism_bc_check">Проверить запись</string>
+    <string name="prism_bc_link_failed">Не удалось подтвердить совпадение и доступность полной записи.</string>
 </resources>

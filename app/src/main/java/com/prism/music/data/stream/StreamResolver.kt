@@ -1159,19 +1159,23 @@ class StreamResolver(
                 com.prism.music.data.SongVersions.recordingTitle(song.title) }
             .distinctBy { it.url }.take(12)
         return hits.mapNotNull { item ->
-            runCatching {
-                val id = BandcampVersion.id(item.url) ?: return@runCatching null
-                val info = StreamInfo.getInfo(service, BandcampVersion.url(id)!!)
-                val candidate = com.prism.music.data.model.Song(
-                    id, info.name, listOf(com.prism.music.data.model.ArtistRef(info.uploaderName.orEmpty())),
-                    durationSec = info.duration.takeIf { it in 1..Int.MAX_VALUE.toLong() }?.toInt() ?: 0,
-                    thumbnail = info.thumbnails.firstOrNull()?.url,
-                )
-                if (!com.prism.music.data.SongVersions.compatibleRecording(song, candidate)) return@runCatching null
-                val f = formats(id)
-                candidate.takeIf { f.audio.isNotEmpty() && kotlin.math.abs(f.durationSec - song.durationSec) <= 3 }
-            }.getOrNull()
+            runCatching { bandcampVersionFromLink(song, item.url) }.getOrNull()
         }.take(6)
+    }
+
+    /** Explicitly supplied public track link: validate full metadata and available audio before offering a pick. */
+    fun bandcampVersionFromLink(song: com.prism.music.data.model.Song, url: String): com.prism.music.data.model.Song? {
+        val id = BandcampVersion.id(url.trim()) ?: return null
+        val canonical = BandcampVersion.url(id) ?: return null
+        val info = StreamInfo.getInfo(ServiceList.Bandcamp, canonical)
+        val candidate = com.prism.music.data.model.Song(
+            id, info.name, listOf(com.prism.music.data.model.ArtistRef(info.uploaderName.orEmpty())),
+            durationSec = info.duration.takeIf { it in 1..Int.MAX_VALUE.toLong() }?.toInt() ?: 0,
+            thumbnail = info.thumbnails.firstOrNull()?.url,
+        )
+        if (!com.prism.music.data.SongVersions.compatibleRecording(song, candidate)) return null
+        val f = formats(id)
+        return candidate.takeIf { f.audio.isNotEmpty() && kotlin.math.abs(f.durationSec - song.durationSec) <= 3 }
     }
 
     private fun anonymousFormats(videoId: String, ipv4: Boolean = false): Formats {
