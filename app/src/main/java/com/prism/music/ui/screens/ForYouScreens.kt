@@ -187,9 +187,19 @@ fun MadeForYouSection(cfg: HomeSectionConfig, offline: Boolean = false, yours: L
         })
         return
     }
+    val featured = shown.first()
+    val playFeatured = {
+        c.player.playQueue(featured.songs, 0, com.prism.music.playback.QueueSource(com.prism.music.playback.QueueKind.PLAYLIST, featured.title, originId = featured.id))
+    }
+    FeaturedHomeMix(featured, onOpen = { nav.go(Routes.mix(featured.id)) }, onPlay = playFeatured)
+    val rest = remember(shown) { shown.drop(1) }
+    if (rest.isEmpty()) return
     val w = LocalUi.current.cardWidth
-    LazyRow(contentPadding = PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        items(shown, key = { it.id }) { mix ->
+    LazyRow(
+        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        items(rest, key = { it.id }) { mix ->
             Column(
                 Modifier.width(w).clip(LocalUi.current.tile)
                     .combinedClickable(
@@ -197,9 +207,44 @@ fun MadeForYouSection(cfg: HomeSectionConfig, offline: Boolean = false, yours: L
                         onLongClick = { c.player.playQueue(mix.songs, 0, com.prism.music.playback.QueueSource(com.prism.music.playback.QueueKind.PLAYLIST, mix.title, originId = mix.id)) },
                     ).padding(4.dp),
             ) {
-                MixCover(mix, Modifier.fillMaxWidth().aspectRatio(1f))
+                MixCover(mix, Modifier.fillMaxWidth().aspectRatio(1f), showTitle = false)
                 Spacer(Modifier.height(8.dp))
-                Text(mix.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(mix.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(mix.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+/** A prominent, static mix card. One cover and a gradient, no moving layers or extra blur. */
+@Composable
+private fun FeaturedHomeMix(mix: Mix, onOpen: () -> Unit, onPlay: () -> Unit) {
+    val ui = LocalUi.current
+    val scheme = MaterialTheme.colorScheme
+    val tint = Color(mix.color)
+    val covers = remember(mix) { mix.covers }
+    val base = androidx.compose.ui.graphics.lerp(scheme.surfaceContainerHigh, tint, 0.28f)
+    Box(
+        Modifier.padding(horizontal = 16.dp).fillMaxWidth()
+            .clip(ui.shape(20.dp)).background(base).clickable(onClick = onOpen),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Artwork(covers.firstOrNull(), Modifier.size(104.dp), shape = ui.art, size = 360)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(mix.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis, color = scheme.onSurface)
+                Text(mix.subtitle, style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                androidx.compose.material3.IconButton(
+                    onClick = onPlay,
+                    modifier = Modifier.size(44.dp).clip(CircleShape).background(scheme.primary),
+                ) {
+                    Icon(PrismIcons.Play, tr(R.string.widget_play), tint = scheme.onPrimary, modifier = Modifier.size(24.dp))
+                }
             }
         }
     }

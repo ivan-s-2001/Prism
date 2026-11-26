@@ -1537,7 +1537,7 @@ object HomeSections {
     )
 
     /** What a fresh install's Home shows (and what Reset goes back to). */
-    val initial = listOf(
+    private val previousForYou = listOf(
         HomeSectionConfig(GREETING, TILES_TITLE, style = SectionStyle.HERO),
         HomeSectionConfig(RECENT, "Recently played"),
         HomeSectionConfig(MADE_FOR_YOU, "Made for you"),
@@ -1548,6 +1548,20 @@ object HomeSections {
         HomeSectionConfig(SEASONAL, "Holiday music"),
         HomeSectionConfig(REPLAY, "Replay teaser", style = SectionStyle.HERO),
     )
+    private val legacyForYou = listOf(REPLAY, GREETING, QUICK_PICKS, SEASONAL, MADE_FOR_YOU, NEW_RELEASES, ON_REPEAT, "${YT_PREFIX}mixed for you")
+    val initial = listOf(MADE_FOR_YOU, GREETING, QUICK_PICKS, RECENT, ON_REPEAT, NEW_RELEASES, "${YT_PREFIX}mixed for you", SEASONAL, REPLAY)
+        .map { key -> previousForYou.first { it.key == key } }
+
+    /** Only migrate the exact previous stock arrangements; hidden, renamed, pinned and moved sections stay as saved. */
+    internal fun upgradeForYou(layout: List<HomeSectionConfig>): List<HomeSectionConfig> {
+        val keys = layout.map { it.key }
+        if (keys != previousForYou.map { it.key } && keys != legacyForYou) return layout
+        if (layout.any { row ->
+                val stock = previousForYou.firstOrNull { it.key == row.key }
+                stock == null || row.copy(title = stock.title) != stock
+            }) return layout
+        return initial.map { row -> layout.firstOrNull { it.key == row.key } ?: row }
+    }
 
     /**
      * Sections added in a later Prism, put into an existing layout once (after Quick picks, or at the top), so people
@@ -3429,6 +3443,7 @@ class SettingsRepository(
         once("home_replay_top") { HomeSections.replayOnTop(it) }
         // The holiday mixes' section (1.8.0), after Quick picks: it only shows in November and December.
         once("home_holiday_1_8") { HomeSections.withNewSections(it, listOf(HomeSectionConfig(HomeSections.SEASONAL, "Holiday music"))) }
+        once("prism_for_you_feed_v2") { HomeSections.upgradeForYou(it) }
         keepSmartDownloads(p)
         splitLyricsOnPhone(p)
     }

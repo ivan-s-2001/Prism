@@ -472,9 +472,6 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
             }
             item(key = "update") { UpdateBanner() }
             if (!online) item(key = "offline") { OfflineNote() }
-            if (online && home.state is Load.Loading && shelves.isEmpty()) item { LoadingState() }
-            // With the last Home on show, a failed refresh leaves it there (pull to refresh tries again).
-            (home.state as? Load.Err)?.takeIf { online && shelves.isEmpty() }?.let { e -> item { ErrorState(e.message) { home.reload(false) } } }
 
             layout.forEach { raw ->
                 // A section renamed in Customize Home (1.7.6) goes by its new name, also where it reads its own title.
@@ -579,6 +576,11 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
                     }
                     }
                 }
+            }
+            // The remote feed may still be loading; never place its spinner above available local music.
+            if (online && home.state is Load.Loading && shelves.isEmpty()) item(key = "feed:loading") { LoadingState() }
+            (home.state as? Load.Err)?.takeIf { online && shelves.isEmpty() }?.let { e ->
+                item(key = "feed:error") { ErrorState(e.message) { home.reload(false) } }
             }
             // 1.8.8 (plan-tour.md D11): neither offer while a new install's First steps is still to come.
             item(key = "performance") { if (!com.prism.music.ui.tour.FirstSteps.offersWait()) PerformanceOffer() }
