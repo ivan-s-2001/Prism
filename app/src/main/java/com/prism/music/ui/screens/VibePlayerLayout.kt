@@ -350,8 +350,16 @@ private fun VibeIdentity(source: String, origin: com.prism.music.playback.VibeOr
         else -> MaterialTheme.typography.headlineSmall
     }).copy(fontWeight = FontWeight.SemiBold)
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val line = with(density) { MaterialTheme.typography.labelLarge.lineHeight.toDp() }.coerceAtLeast(16.dp)
-    val nameLine = with(density) { nameStyle.lineHeight.toDp() }.coerceAtLeast(24.dp)
+    // User-selected typefaces can leave lineHeight unspecified (NaN); never pass it to layout.
+    val labelStyle = MaterialTheme.typography.labelLarge
+    val line = with(density) {
+        val height = labelStyle.lineHeight
+        if (height.value.isFinite() && height.value > 0f) height.toDp() else 20.dp
+    }.coerceAtLeast(16.dp)
+    val nameLine = with(density) {
+        val height = nameStyle.lineHeight
+        if (height.value.isFinite() && height.value > 0f) height.toDp() else 36.dp
+    }.coerceAtLeast(24.dp)
     val gap = if (compact) 1.dp else 3.dp
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(gap)) {

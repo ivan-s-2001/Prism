@@ -762,17 +762,23 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         val old = c.queue.source.value
         val offline = !c.network.isOnline()
         fun eligible(song: Song): Boolean = c.yourMusic.recommendationAllowed(song, offlineOnly = offline)
-        var context = com.prism.music.data.foryou.VibeContext.anchors(anchors.filter(::eligible))
+        // Filtering long collections can touch cached audio and preference stores. Keep it off the UI thread.
+        var context = withContext(Dispatchers.IO) {
+            com.prism.music.data.foryou.VibeContext.anchors(anchors.filter(::eligible))
+        }
+        if (!stillStarting(token) || c.queue.followingHost || c.queue.source.value !== old) return@withContext false
         if (context.isEmpty() && !offline) {
             val supplied = try {
                 kotlinx.coroutines.withTimeoutOrNull(5000L) { provider() }.orEmpty()
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) { emptyList() }
-            context = com.prism.music.data.foryou.VibeContext.anchors(supplied.filter(::eligible))
+            context = withContext(Dispatchers.IO) {
+                com.prism.music.data.foryou.VibeContext.anchors(supplied.filter(::eligible))
+            }
         }
         if (context.isEmpty() || !stillStarting(token) || c.queue.followingHost || c.queue.source.value !== old) return@withContext false
         val initial = VibeQueuePolicy.initial(context, c.sessionHeard::has)
-        val first = initial.first()
+        val first = initial.firstOrNull() ?: return@withContext false
         val identity = origin ?: VibeOrigin(VibeOriginKind.COLLECTION, title)
         val source = QueueSource(QueueKind.VIBE, title, seedId = first.id,
             vibeAnchors = context, vibeOrigin = identity)

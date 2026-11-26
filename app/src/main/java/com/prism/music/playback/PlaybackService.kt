@@ -558,19 +558,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 if (c.queue.source.value === source) refreshVibePreferences()
             }
         }
-        // A changed positive taste should also influence the personal Wave's already generated future,
-        // not just the next refill. Coalesce bulk likes and library sync into one refresh.
-        scope.launch {
-            kotlinx.coroutines.flow.combine(c.library.likedIds, c.library.profileArtists, c.exclusions.playlists) { likes, artists, playlists ->
-                Triple(likes, artists.mapTo(hashSetOf()) { it.id }, playlists.mapTo(hashSetOf()) { it.id })
-            }.distinctUntilChanged().drop(1).collectLatest {
-                val source = c.queue.source.value
-                if (!source.isMyWave || c.queue.followingHost) return@collectLatest
-                delay(350)
-                while (c.queue.filling && c.queue.source.value === source) delay(50)
-                if (c.queue.source.value === source) refreshVibePreferences(rebuild = true)
-            }
-        }
+        // Positive taste is read fresh on each refill. Do not tear down a buffered queue
+        // on every library synchronization or like: it causes redundant timeline events and network work.
         // Another network (or back online): songs that failed on the old one may play now (plan 4.4), and the one coming up
         // is looked up afresh too (its lookup ahead of time may have failed, and a link can be bound to the old address).
         scope.launch {
@@ -956,10 +945,12 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 index >= c.queue.autoplayStart.value.let { if (it < 0) Int.MAX_VALUE else it })
 
     private fun transitionAllowed(song: Song, index: Int, source: QueueSource, automatic: Boolean): Boolean {
+        val explicitAllowed = com.prism.music.data.ExplicitFilter.plays(c.settings.current.behavior.explicitContent, song)
+        if (!explicitAllowed || !automatic) return explicitAllowed
         val manual = song.id in c.queue.userQueued.value
         val generated = isGeneratedTransition(song, index, source)
         return VibeQueuePolicy.transitionAllowed(
-            explicitAllowed = com.prism.music.data.ExplicitFilter.plays(c.settings.current.behavior.explicitContent, song),
+            explicitAllowed = explicitAllowed,
             available = song.isLive || c.network.online.value || c.availableOffline(song.id),
             automatic = automatic,
             manual = manual,

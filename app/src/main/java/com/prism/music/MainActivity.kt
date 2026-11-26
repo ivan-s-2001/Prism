@@ -639,8 +639,10 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
         LaunchedEffect(Unit) {
             c.player.showVibe.collect {
                 playerOpen = false
-                latestSelectTab(Routes.MY_WAVE)
-                navController.popBackStack(Routes.MY_WAVE, inclusive = false)
+                // A single navigation operation, rather than restore followed by a second pop during animation.
+                if (navController.currentDestination?.route != Routes.MY_WAVE) {
+                    latestSelectTab(Routes.MY_WAVE)
+                }
             }
         }
 
@@ -689,7 +691,7 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
                     // The same cross-fade both ways, and for the back gesture too: left to its default,
                     // a predictive back (swipe from the edge) shrinks the page like a card instead.
                     // "Fades between screens" off (#227): pages swap at once, so a tap can't land on the one fading out.
-                    val fadeMs = if (settings.behavior.screenFades) 700 else 0
+                    val fadeMs = if (settings.behavior.screenFades && !settings.reduceMotion && !settings.performanceMode) 200 else 0
                     // "Slide between screens" (#208, 1.7.9.2): a new page comes in from the side and Back takes it
                     // away the same way (from the left in right-to-left languages); the page underneath moves a little.
                     val slides = PageSlides(settings.behavior.screenFades && settings.behavior.pageSlide, androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl)
