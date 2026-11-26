@@ -558,14 +558,15 @@ private fun TopBar(
     com.prism.music.ui.theme.StatusBarIcons(lightBar = !lightIcons)
     var menu by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxWidth()) {
-        Box(Modifier.fillMaxWidth().statusBarsPadding().height(60.dp)) {
+        Row(Modifier.fillMaxWidth().statusBarsPadding().height(60.dp).padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            com.prism.music.ui.components.RoundAction(PrismIcons.ArrowBack, tr(R.string.back), glass = true) { nav.back() }
             Text(
-                page.name, Modifier.align(Alignment.Center).padding(horizontal = 112.dp).graphicsLayer { alpha = solid() },
+                page.name, Modifier.weight(1f).padding(horizontal = 12.dp).graphicsLayer { alpha = solid() },
                 style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
-            com.prism.music.ui.components.RoundAction(PrismIcons.ArrowBack, tr(R.string.back), Modifier.align(Alignment.CenterStart).padding(start = 12.dp), glass = true) { nav.back() }
-            Row(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (hasMix) com.prism.music.ui.components.RoundAction(PrismIcons.Stream, tr(R.string.vibe_from_artist), glass = true, onClick = onMix)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (hasMix) ContextVibePill(onClick = onMix, modifier = Modifier.testTag("artist:vibe"))
                 Box {
                     com.prism.music.ui.components.RoundAction(PrismIcons.More, tr(R.string.more), glass = true) { menu = true }
                     DropdownMenu(menu, { menu = false }) {

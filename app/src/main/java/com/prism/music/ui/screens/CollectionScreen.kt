@@ -1013,6 +1013,7 @@ internal fun CollectionContent(type: CollectionType, live: LiveCollection, initi
                     else -> PrismIcons.Download
                 },
                 downloading = downloadingCount > 0,
+                onVibe = startRadio.takeIf { canVibe },
                 onDownload = toggleDownloads,
                 onShare = { sharing = true },
                 onMore = { pageMenu = true },
@@ -1255,6 +1256,7 @@ private fun CollectionTopBar(
     solid: () -> Float,
     downloadIcon: androidx.compose.ui.graphics.vector.ImageVector?,
     downloading: Boolean,
+    onVibe: (() -> Unit)?,
     onDownload: () -> Unit,
     onShare: () -> Unit,
     onMore: () -> Unit,
@@ -1267,7 +1269,8 @@ private fun CollectionTopBar(
                 title, Modifier.weight(1f).padding(horizontal = 12.dp).graphicsLayer { alpha = solid() },
                 style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (onVibe != null) ContextVibePill(onClick = onVibe, modifier = Modifier.testTag("collection:vibe"))
                 if (downloadIcon != null) {
                     if (downloading) com.prism.music.ui.components.FloatingDisc { ink ->
                         Box(Modifier.fillMaxSize().clickable(onClickLabel = tr(R.string.downloading_2), onClick = onDownload), contentAlignment = Alignment.Center) {
