@@ -44,7 +44,6 @@ import kotlin.math.sin
 
 internal data class VibeWaveSignal(val phase: Float, val beat: Float, val bands: FloatArray)
 private data class WaveViewport(val size: IntSize = IntSize.Zero, val origin: Offset = Offset.Zero)
-private data class WaveFrame(val image: ImageBitmap, val drift: Offset)
 internal data class WaveColors(val palette: List<Color>, val opacity: Float)
 private data class WaveInput(val sample: VibeWaveSignal, val anchor: Offset?, val colors: WaveColors)
 
@@ -112,10 +111,9 @@ internal fun YamusicWaveBackdrop(
     val targetColors = rememberUpdatedState(WaveColors(palette, opacity))
     val transition = remember { WaveColorTransition(targetColors.value) }
     val duration = rememberUpdatedState(colorDurationMs)
-    val frame by produceState<WaveFrame?>(null, viewport, scale, style, energy, moving, scene) {
+    val frame by produceState<ImageBitmap?>(null, viewport, scale, style, energy, moving, scene) {
         val view = viewport.size
         if (view.width <= 0 || view.height <= 0) {
-            scene?.drift = Offset.Zero
             value = null
             return@produceState
         }
@@ -135,16 +133,15 @@ internal fun YamusicWaveBackdrop(
                 val bitmap = withContext(Dispatchers.Default) {
                     renderYamusicWave(w, h, framePalette, sample, blended.opacity, scale, style, energy, center)
                 }
-                // Publish geometry and pixels together; the controls follow the frame actually on screen.
-                value = WaveFrame(bitmap, drift)
-                scene?.drift = drift
+                // Only the ambient field moves. The anchor and its touch targets remain stationary.
+                value = bitmap
             }
     }
     Canvas(modifier.onGloballyPositioned {
         viewport = WaveViewport(it.size, it.positionInRoot())
     }) {
         frame?.let {
-            drawImage(it.image, dstSize = IntSize(size.width.roundToInt().coerceAtLeast(1),
+            drawImage(it, dstSize = IntSize(size.width.roundToInt().coerceAtLeast(1),
                 size.height.roundToInt().coerceAtLeast(1)), filterQuality = FilterQuality.Low)
         }
     }

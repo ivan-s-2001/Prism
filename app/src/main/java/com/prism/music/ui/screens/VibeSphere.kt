@@ -12,7 +12,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
@@ -48,11 +47,7 @@ internal fun VibeSphere(
 ) {
     val settings = LocalAppSettings.current
     val style = settings.streamVisualStyle
-    val scene = LocalVibeScene.current
-    if (style == StreamVisualStyle.OFF) {
-        SideEffect { scene?.drift = androidx.compose.ui.geometry.Offset.Zero }
-        return
-    }
+    if (style == StreamVisualStyle.OFF) return
     val dark = LocalIsDark.current
     val currentScheme = MaterialTheme.colorScheme
     val artwork = LocalArtworkColor.current

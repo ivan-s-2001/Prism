@@ -47,7 +47,6 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -61,7 +60,6 @@ import com.prism.music.ui.theme.LocalUi
  * The anchor excludes the translated child, so motion cannot feed back into the next layout. */
 internal class VibeSceneState {
     var anchor by mutableStateOf<Offset?>(null)
-    var drift by mutableStateOf(Offset.Zero)
 }
 internal val LocalVibeScene = staticCompositionLocalOf<VibeSceneState?> { null }
 
@@ -77,11 +75,7 @@ internal fun VibeSceneAnchor(modifier: Modifier = Modifier, content: @Composable
     Box(modifier.onGloballyPositioned { coordinates ->
         scene?.anchor = coordinates.positionInRoot() + Offset(coordinates.size.width / 2f, coordinates.size.height / 2f)
     }, contentAlignment = Alignment.Center) {
-        Box(Modifier.graphicsLayer {
-            val drift = scene?.drift ?: Offset.Zero
-            translationX = drift.x
-            translationY = drift.y
-        }) { content() }
+        content()
     }
 }
 
