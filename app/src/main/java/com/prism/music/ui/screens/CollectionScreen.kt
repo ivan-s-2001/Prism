@@ -559,7 +559,7 @@ internal fun CollectionContent(type: CollectionType, live: LiveCollection, initi
                 CollectionType.PLAYLIST, CollectionType.PRISM -> com.prism.music.playback.VibeOriginKind.PLAYLIST
                 CollectionType.MIX -> com.prism.music.playback.VibeOriginKind.MIX
                 else -> com.prism.music.playback.VibeOriginKind.COLLECTION
-            }, page.title, art)) {
+            }, page.title, art, artist = if (type == CollectionType.ALBUM) page.artists.joinToString(", ") { it.name }.ifBlank { null } else null)) {
                 if (!c.network.isOnline()) emptyList() else radioId?.let { c.radio(null, it).songs }.orEmpty()
             }
             if (!ok) Toast.makeText(context, tr(R.string.couldn_t_start_the_radio), Toast.LENGTH_SHORT).show()
