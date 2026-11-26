@@ -1585,6 +1585,7 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                                         onVideoMode = { pc.setVideoMode(it) },
                                         episode = song.isEpisode,
                                         onButton = onButton,
+                                        primaryVibeVisible = canStartTrackVibe(song),
                                     )
                                 }
                                 // The gaps the deck always had after each part (none after the last); Small keeps them tight.
