@@ -31,6 +31,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import com.prism.music.data.model.SongItem
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
@@ -164,7 +165,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
     LaunchedEffect(Unit) {
         val selected = shortcuts.indexOfFirst { it.selected }
-        if (selected > 3) scenarioScroll.scrollToItem(selected)
+        if (selected >= 0) scenarioScroll.scrollToItem(selected)
     }
     LaunchedEffect(savedPresets, revealPresetId) {
         val index = savedPresets.indexOfFirst { it.id == revealPresetId }
@@ -277,8 +278,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         }
     }
     // The mini player stays global; the Vibe stage also owns its stationary transport.
-    val liked by c.library.likedIds.collectAsState()
-    val disliked by c.library.dislikedIds.collectAsState()
     val hasPrevious by c.player.hasPrevious.collectAsState()
     val hasNext by c.player.hasNext.collectAsState()
     @Composable fun Hero(modifier: Modifier) {
@@ -306,25 +305,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 VibeTrackAction(PrismIcons.Next, tr(R.string.prism_stream_next),
                     { if (hasNext) c.player.next() }, enabled = hasNext)
             },
-            dislike = {
-                if (current != null) {
-                    val on = current.id in disliked
-                    VibeTrackAction(if (on) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown,
-                        tr(R.string.prism_stream_not_for_me), {
-                            val set = c.library.toggleDislike(current)
-                            if (set && c.player.currentSong.value?.id == current.id && c.player.hasNext.value) c.player.next()
-                        }, selected = on)
-                }
-            },
-            like = {
-                if (current != null) {
-                    val on = current.id in liked && current.id !in disliked
-                    VibeTrackAction(if (on) PrismIcons.HeartFilled else PrismIcons.Heart,
-                        tr(R.string.prism_stream_like), {
-                            c.library.toggleLike(current)
-                        }, selected = on)
-                }
-            },
             progress = {
                 if (current != null) {
                     var position by remember(current.id) { mutableLongStateOf(c.player.position) }
@@ -346,16 +326,36 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
 
     @Composable fun Controls() {
-        LazyRow(Modifier.fillMaxWidth().scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward }),
-            state = scenarioScroll,
-            flingBehavior = rememberSnapFlingBehavior(lazyListState = scenarioScroll, snapPosition = SnapPosition.Start),
-            horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp)),
-            contentPadding = PaddingValues(horizontal = ui.gap(12.dp), vertical = ui.gap(2.dp))) {
-            items(shortcuts, key = { it.key }) { shortcut ->
-                ScenarioTile(shortcut.label, shortcut.icon, shortcut.selected && !contextual, onClick = {
-                    val target = shortcut.style
-                    if (target != null && (!wave || contextual || !shortcut.selected)) start(target, shortcut.scenarioId)
-                }, modifier = Modifier.testTag("wave:${shortcut.key}"))
+        // yamusic-rs-inspired orbit: center snapping, continuous depth and real touch targets.
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val compact = settings.streamCompactScenarios
+            val slotWidth = 88.dp
+            val spacing = ui.gap(8.dp)
+            val sidePadding = if (compact) ui.gap(12.dp) else ((maxWidth - slotWidth) / 2).coerceAtLeast(0.dp)
+            LazyRow(Modifier.fillMaxWidth().scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward }),
+                state = scenarioScroll,
+                flingBehavior = rememberSnapFlingBehavior(lazyListState = scenarioScroll,
+                    snapPosition = if (compact) SnapPosition.Start else SnapPosition.Center),
+                horizontalArrangement = Arrangement.spacedBy(spacing),
+                contentPadding = PaddingValues(horizontal = sidePadding, vertical = if (compact) 2.dp else 12.dp)) {
+                items(shortcuts, key = { it.key }) { shortcut ->
+                    val orbit = if (compact) Modifier else Modifier.graphicsLayer {
+                        val info = scenarioScroll.layoutInfo
+                        val item = info.visibleItemsInfo.firstOrNull { it.key == shortcut.key }
+                        val center = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+                        val depth = item?.let {
+                            vibeOrbitDepth((it.offset + it.size / 2f - center) / (slotWidth + spacing).toPx())
+                        } ?: 0f
+                        scaleX = 1f - 0.13f * depth
+                        scaleY = scaleX
+                        translationY = 12.dp.toPx() * depth * depth
+                        alpha = 1f - 0.23f * depth
+                    }
+                    ScenarioTile(shortcut.label, shortcut.icon, shortcut.selected && !contextual, onClick = {
+                        val target = shortcut.style
+                        if (target != null && (!wave || contextual || !shortcut.selected)) start(target, shortcut.scenarioId)
+                    }, modifier = Modifier.testTag("wave:${shortcut.key}").then(orbit))
+                }
             }
         }
     }

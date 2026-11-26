@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Brush
+import kotlin.math.abs
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -116,6 +117,10 @@ internal fun VibePageLayout(
     }
 }
 
+// The center tile is lifted and enlarged; distance changes continuously during scrolling.
+internal fun vibeOrbitDepth(distanceInSlots: Float): Float =
+    if (distanceInSlots.isFinite()) (abs(distanceInSlots) / 2f).coerceIn(0f, 1f) else 0f
+
 internal fun vibeFillsViewport(width: Dp, height: Dp): Boolean =
     height != Dp.Infinity && height >= if (width >= 620.dp) 400.dp else 560.dp
 
@@ -191,7 +196,7 @@ internal fun VibeStationOverlay(
     modifier: Modifier = Modifier, play: @Composable () -> Unit,
     credits: @Composable () -> Unit,
     previous: @Composable () -> Unit, next: @Composable () -> Unit,
-    dislike: @Composable () -> Unit, like: @Composable () -> Unit,
+    dislike: @Composable () -> Unit = {}, like: @Composable () -> Unit = {},
     extra: (@Composable () -> Unit)? = null,
     progress: @Composable () -> Unit = {},
     visual: @Composable (Modifier) -> Unit = {},
@@ -208,26 +213,17 @@ internal fun VibeStationOverlay(
         val wide = maxWidth >= 620.dp
         val stage = maxOf(minHeight, vibeStageMinHeight(maxWidth, maxHeight, layout, showVisual))
         val roomy = stage >= 360.dp && !compact
-        val expanded = roomy && minHeight > 0.dp
         val sideWidth = if (maxWidth < 300.dp) 48.dp else 52.dp
-        val playGap = ui.gap(if (compact || maxWidth < 300.dp) 10.dp else 24.dp)
         @Composable fun StationTitle() {
-            Box(Modifier.fillMaxWidth().heightIn(min = if (compact) 58.dp else if (roomy) 88.dp else 72.dp),
+            Box(Modifier.fillMaxWidth().heightIn(min = if (compact) 38.dp else if (roomy) 52.dp else 44.dp),
                 contentAlignment = Alignment.Center) {
                 if (origin == null) VibeIdentity(title, compact, roomy)
                 else VibeOriginIdentity(origin, compact, roomy)
             }
         }
         @Composable fun Transport() {
-            Row(horizontalArrangement = Arrangement.spacedBy(playGap), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.width(sideWidth), contentAlignment = Alignment.Center) {
-                    if (hasTrack && settings.streamShowReactions) dislike()
-                }
-                play()
-                Box(Modifier.width(sideWidth), contentAlignment = Alignment.Center) {
-                    if (hasTrack && settings.streamShowReactions) like()
-                }
-            }
+            // The wave has one primary action; reactions belong to the global player.
+            Box(contentAlignment = Alignment.Center) { play() }
         }
         @Composable fun TrackDetails() {
             if (hasTrack) {
@@ -246,27 +242,16 @@ internal fun VibeStationOverlay(
             }
         }
         @Composable fun Controls() {
-            Column(Modifier.widthIn(max = 460.dp).fillMaxWidth()
-                .then(if (expanded) Modifier.fillMaxHeight() else Modifier)
-                .padding(horizontal = ui.gap(12.dp), vertical = ui.gap(8.dp)),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center) {
-                if (expanded) Spacer(Modifier.weight(0.85f))
-                VibeSceneAnchor(Modifier.fillMaxWidth()) {
-                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        StationTitle()
-                        Spacer(Modifier.height(ui.gap(if (compact) 8.dp else 16.dp)))
-                        Transport()
-                        Spacer(Modifier.height(ui.gap(8.dp)))
-                        Box(Modifier.heightIn(min = 44.dp), contentAlignment = Alignment.Center) { tune() }
-                    }
+            // A single stationary composition, rather than weighted gaps splitting the hero.
+            VibeSceneAnchor(Modifier.widthIn(max = 460.dp).fillMaxWidth()
+                .padding(horizontal = ui.gap(12.dp), vertical = ui.gap(8.dp))) {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 6.dp else 12.dp))) {
+                    StationTitle()
+                    Transport()
+                    tune()
+                    if (hasTrack) TrackDetails()
                 }
-                if (hasTrack) {
-                    if (expanded) Spacer(Modifier.weight(0.65f))
-                    else Spacer(Modifier.height(ui.gap(12.dp)))
-                    TrackDetails()
-                }
-                if (expanded) Spacer(Modifier.weight(0.35f))
             }
         }
 
@@ -287,7 +272,7 @@ internal fun VibeStationOverlay(
                             verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 6.dp else 12.dp))) {
                             StationTitle()
                             Transport()
-                            Box(Modifier.heightIn(min = 44.dp), contentAlignment = Alignment.Center) { tune() }
+                            tune()
                         }
                     }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally,
@@ -409,10 +394,10 @@ internal fun VibeCredits(
     val ui = LocalUi.current
     val scheme = MaterialTheme.colorScheme
     val inline = settings.streamLayout != StreamLayout.CENTERED && settings.streamShowCover
-    val coverSize = (if (inline) 48.dp else 48.dp) * settings.streamCoverSize.fraction
+    val coverSize = 48.dp * settings.streamCoverSize.fraction
     @Composable fun Labels(modifier: Modifier = Modifier) {
         Column(modifier, horizontalAlignment = if (inline) Alignment.Start else Alignment.CenterHorizontally) {
-            Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium), minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium), maxLines = 1, overflow = TextOverflow.Ellipsis,
                 textAlign = if (inline) TextAlign.Start else TextAlign.Center)
             if (showArtist) Text(artist.ifBlank { " " }, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, textAlign = if (inline) TextAlign.Start else TextAlign.Center)

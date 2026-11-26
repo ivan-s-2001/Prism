@@ -61,7 +61,6 @@ internal fun TvWavePlace(nav: TvNav) {
     }
     val scenarioOrder = remember(automaticScenarioOrder, appSettings.streamScenarioOrder) { WaveScenarios.visibleOrder(automaticScenarioOrder, appSettings.streamScenarioOrder) }
     val song by c.player.currentSong.collectAsState()
-    val disliked by c.library.dislikedIds.collectAsState()
     val now = rememberTvNow(c).takeIf { source.continuousRecommendations }
     val current = song.takeIf { source.continuousRecommendations }
     val contextual = current != null && source.isSongRadio
@@ -181,7 +180,6 @@ internal fun TvWavePlace(nav: TvNav) {
                             TvWaveChoices(tr(R.string.artwork), listOf(true, false), appSettings.streamShowCover, "cover", { tr(if (it) R.string.on_2 else R.string.off) }) { c.settings.setStreamShowCover(it) }
                             if (appSettings.streamShowCover) TvWaveChoices(tr(R.string.cover_size), StreamCoverSize.entries, appSettings.streamCoverSize, "cover_size", { it.label }) { c.settings.setStreamCoverSize(it) }
                             TvWaveChoices(tr(R.string.progress_bar), listOf(true, false), appSettings.streamShowProgress, "progress", { tr(if (it) R.string.on_2 else R.string.off) }) { c.settings.setStreamShowProgress(it) }
-                            TvWaveChoices(tr(R.string.prism_stream_appearance_reactions), listOf(true, false), appSettings.streamShowReactions, "reactions", { tr(if (it) R.string.on_2 else R.string.off) }) { c.settings.setStreamShowReactions(it) }
                             TvWaveChoices(tr(R.string.prism_stream_appearance_panel), listOf(true, false), appSettings.streamGlassPanel, "panel", { tr(if (it) R.string.on_2 else R.string.off) }) { c.settings.setStreamGlassPanel(it) }
                             TvWaveChoices(tr(R.string.prism_stream_appearance_status), listOf(true, false), appSettings.streamShowStatus, "status", { tr(if (it) R.string.on_2 else R.string.off) }) { c.settings.setStreamShowStatus(it) }
                             if (appSettings.streamShowProgress) TvWaveChoices(tr(R.string.prism_stream_appearance_reverse), listOf(true, false), appSettings.streamReverseLayout, "progress_order", { tr(if (it) R.string.on_2 else R.string.off) }) { c.settings.setStreamReverseLayout(it) }
@@ -207,8 +205,7 @@ internal fun TvWavePlace(nav: TvNav) {
                                                     com.prism.music.ui.screens.standIns.first())
                                             })
                                     },
-                                    previous = { PreviewIcon(PrismIcons.Previous) }, next = { PreviewIcon(PrismIcons.Next) },
-                                    dislike = { PreviewIcon(PrismIcons.ThumbDown) }, like = { PreviewIcon(PrismIcons.Heart) })
+                                    previous = { PreviewIcon(PrismIcons.Previous) }, next = { PreviewIcon(PrismIcons.Next) })
                             }
                         }
                     }
@@ -362,13 +359,6 @@ internal fun TvWavePlace(nav: TvNav) {
                         }, next = {
                             TvIconButton(PrismIcons.Next, tr(R.string.prism_stream_next),
                                 { if (c.player.hasNext.value) c.player.next() }, Modifier.tvItem("tv_wave/next"))
-                        }, dislike = {
-                            if (current != null) TvIconButton(if (current.id in disliked) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown, tr(R.string.prism_stream_not_for_me),
-                                { if (c.library.toggleDislike(current) && c.player.currentSong.value?.id == current.id && c.player.hasNext.value) c.player.next() },
-                                Modifier.tvItem("tv_wave/dislike"), on = current.id in disliked)
-                        }, like = {
-                            if (current != null) TvIconButton(if (now?.liked == true) PrismIcons.HeartFilled else PrismIcons.Heart, tr(R.string.prism_stream_like),
-                                { c.library.toggleLike(current) }, Modifier.tvItem("tv_wave/like"), on = now?.liked == true)
                         }, extra = {
                             TvIconButton(PrismIcons.ChevronRight, tr(R.string.prism_stream_player), { nav.go(TvRoute.Player) }, Modifier.tvItem("tv_wave/player"))
                         }, progress = {

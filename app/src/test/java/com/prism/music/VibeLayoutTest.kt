@@ -10,6 +10,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class VibeLayoutTest {
+    @Test fun scenarioOrbitIsSymmetricAndBounded() {
+        assertEquals(0f, com.prism.music.ui.screens.vibeOrbitDepth(0f), 0.001f)
+        assertEquals(0.5f, com.prism.music.ui.screens.vibeOrbitDepth(1f), 0.001f)
+        assertEquals(0.5f, com.prism.music.ui.screens.vibeOrbitDepth(-1f), 0.001f)
+        assertEquals(1f, com.prism.music.ui.screens.vibeOrbitDepth(5f), 0.001f)
+        assertEquals(0f, com.prism.music.ui.screens.vibeOrbitDepth(Float.NaN), 0.001f)
+    }
+
     @Test fun normalPhoneAndTvUseRemainingSpace() {
         assertTrue(vibeFillsViewport(360.dp, 640.dp))
         assertTrue(vibeFillsViewport(960.dp, 450.dp))

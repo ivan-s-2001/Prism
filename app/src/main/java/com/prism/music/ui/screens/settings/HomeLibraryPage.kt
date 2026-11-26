@@ -92,7 +92,6 @@ fun HomeLibraryPage(bottomPadding: Dp, find: String? = null, showBack: Boolean =
     reset.add(tr(R.string.stream) + " · " + tr(R.string.layout), s.streamLayout, d.streamLayout, { it.label }) { prefs.setStreamLayout(it) }
     reset.add(tr(R.string.stream) + " · " + tr(R.string.visualizer) + " · " + tr(R.string.size), s.streamVisualSize, d.streamVisualSize, { it.label }) { prefs.setStreamVisualSize(it) }
     reset.add(tr(R.string.stream) + " · " + tr(R.string.visualizer), s.streamVisualStyle, d.streamVisualStyle, { it.label }) { prefs.setStreamVisualStyle(it) }
-    reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_reactions), s.streamShowReactions, d.streamShowReactions, onOff) { prefs.setStreamShowReactions(it) }
     reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_status), s.streamShowStatus, d.streamShowStatus, onOff) { prefs.setStreamShowStatus(it) }
     val streamCompactScenariosChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_compact_scenarios), s.streamCompactScenarios, d.streamCompactScenarios, onOff) { prefs.setStreamCompactScenarios(it) }
 
@@ -356,7 +355,6 @@ internal fun VibeAppearanceRows(s: AppSettings, d: AppSettings) {
         SliderRow(tr(R.string.speed), s.streamMotion, 0f..2f, { "${(it * 100).toInt()}%" }, steps = 7, changed = s.streamMotion != d.streamMotion) { prefs.setStreamMotion(it) }
         SliderRow(tr(R.string.intensity), s.streamSensitivity, 0f..2f, { "${(it * 100).toInt()}%" }, steps = 7, changed = s.streamSensitivity != d.streamSensitivity) { prefs.setStreamSensitivity(it) }
     }
-    SwitchRow(tr(R.string.prism_stream_appearance_reactions), s.streamShowReactions, changed = s.streamShowReactions != d.streamShowReactions) { prefs.setStreamShowReactions(it) }
     SwitchRow(tr(R.string.prism_stream_appearance_status), s.streamShowStatus, changed = s.streamShowStatus != d.streamShowStatus) { prefs.setStreamShowStatus(it) }
 }
 
@@ -406,7 +404,6 @@ val homeLibraryIndex: List<SettingEntry> by lazy {
         SettingEntry(page, g.stream, tr(R.string.size), tr(R.string.visualizer)),
         SettingEntry(page, g.stream, tr(R.string.visualizer), tr(R.string.stream)),
         SettingEntry(page, g.streamScenarios, tr(R.string.prism_stream_appearance_arrange), tr(R.string.stream)),
-        SettingEntry(page, g.stream, tr(R.string.prism_stream_appearance_reactions), tr(R.string.stream)),
         SettingEntry(page, g.stream, tr(R.string.prism_stream_appearance_status), tr(R.string.stream)),
         SettingEntry(page, g.streamScenarios, tr(R.string.prism_stream_appearance_compact_scenarios), tr(R.string.stream)),
         // Search
