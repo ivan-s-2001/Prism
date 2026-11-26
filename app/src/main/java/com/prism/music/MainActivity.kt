@@ -431,9 +431,8 @@ private fun rememberArtworkColor(song: Song?, settings: com.prism.music.data.pre
     val picked = song?.let { com.prism.music.data.PlaylistCovers.shared?.picked(it) }
     val key = if (settings.artworkChange == com.prism.music.data.prefs.ArtworkChange.ALBUM) (song?.album?.id ?: song?.album?.title ?: art) to picked else art
     LaunchedEffect(key, swatch, vivid) {
-        val url = art ?: return@LaunchedEffect
         // One palette for both: the accent's swatch, and the light "From the cover" (#123; also what its tile in Color shows).
-        val made = withContext(Dispatchers.IO) {
+        val made = art?.let { url -> withContext(Dispatchers.IO) {
             runCatching {
                 val req = ImageRequest.Builder(context).data(hiRes(url, 160)).allowHardware(false).build()
                 val bmp = (context.imageLoader.execute(req) as? SuccessResult)?.image?.toBitmap() ?: return@runCatching null
@@ -446,8 +445,8 @@ private fun rememberArtworkColor(song: Song?, settings: com.prism.music.data.pre
                 )
                 com.prism.music.ui.theme.pickSwatch(p, swatch, vivid)?.let { Color(it) } to stops
             }.getOrNull()
-        } ?: return@LaunchedEffect
-        made.first?.let { color = it }
+        } } ?: (null to com.prism.music.ui.theme.SpectrumPresets.SILVER)
+        color = made.first
         // The cover light fades as the accent does (#254), unless motion is reduced (Performance mode too) or "At once".
         val stops = com.prism.music.ui.theme.SpectrumPresets
         stops.coverTargetStops = made.second
