@@ -565,6 +565,9 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
         // Decided once: the tab Prism opens on is the root every other tab sits on, and the welcome
         // screen is a real destination, so signing in from it navigates inside a graph that already exists.
         val root = remember { (settings.startTab.takeIf { it in settings.navTabs } ?: settings.navTabs.first()).tab().route }
+        val navStack by navController.currentBackStack.collectAsState()
+        val tabRoutes = tabs.map { it.route }.toSet()
+        val activeTab = activeRootTab(navStack.mapNotNull { it.destination.route }, root, tabRoutes)
         val start = remember { if (!settings.onboarded && !settings.isLoggedIn) Routes.WELCOME else root }
         val goRoot: () -> Unit = {
             navController.navigate(root) {
@@ -617,10 +620,10 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
             val tabRoutes = tabs.map { it.route }.toSet()
             // Optional arguments aside ("liked?genre={genre}" is the Liked songs tab).
             val stack = navController.currentBackStack.value.mapNotNull { it.destination.route?.substringBefore('?') }
-            val currentTab = stack.drop(1).firstOrNull { it in tabRoutes } ?: root
+            val currentTab = activeRootTab(stack, root, tabRoutes)
             when {
                 // The root tab always means its top, from anywhere.
-                r == root -> if (!navController.popBackStack(root, inclusive = false, saveState = true)) goRoot()
+                r == root -> if (navController.currentDestination?.route != root && !navController.popBackStack(root, inclusive = false, saveState = true)) goRoot()
                 // Tapping the tab you're in takes you back to its top.
                 r == currentTab -> navController.popBackStack(r, inclusive = false)
                 // Every other tab keeps its own pages: leaving Settings on Appearance comes back to Appearance.
@@ -632,10 +635,11 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
             }
         }
 
+        val latestSelectTab by androidx.compose.runtime.rememberUpdatedState(selectTab)
         LaunchedEffect(Unit) {
             c.player.showVibe.collect {
                 playerOpen = false
-                selectTab(Routes.MY_WAVE)
+                latestSelectTab(Routes.MY_WAVE)
                 navController.popBackStack(Routes.MY_WAVE, inclusive = false)
             }
         }
@@ -885,7 +889,7 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
                 CompositionLocalProvider(com.prism.music.ui.components.LocalHiddenByPlayer provides hiddenByPlayer) {
                 if (useRail) {
                     NavRail(
-                        tabs, route, settings, selectTab,
+                        tabs, activeTab, settings, selectTab,
                         Modifier.align(Alignment.CenterStart).then(underPlayer).padding(start = cutoutStart + RAIL_MARGIN),
                     )
                     Column(
@@ -935,7 +939,7 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
                                 MiniPlayer(Modifier.customizable(com.prism.music.ui.components.CustomizeTarget.MINI_PLAYER), bare = true) { playerOpen = true }
                             }
                         })
-                        Box(Modifier.customizable(com.prism.music.ui.components.CustomizeTarget.TAB_BAR)) { TabBar(tabs, route, barT, settings, joinedMini, selectTab) }
+                        Box(Modifier.customizable(com.prism.music.ui.components.CustomizeTarget.TAB_BAR)) { TabBar(tabs, activeTab, barT, settings, joinedMini, selectTab) }
                     }
                 }
                 }
@@ -1148,6 +1152,14 @@ private fun NavRail(tabs: List<Tab>, route: String?, settings: AppSettings, onSe
 private fun tabMark(route: String): Modifier = Modifier.tourAnchor(
     when (route) { Routes.SETTINGS -> TourAnchor.SETTINGS_TAB; Routes.LIBRARY -> TourAnchor.LIBRARY_TAB; else -> null },
 )
+
+/** The first top-level destination above the graph's root owns its nested pages. */
+internal fun activeRootTab(stack: List<String>, root: String, tabs: Set<String>): String {
+    val routes = stack.map { it.substringBefore('?') }
+    val rootIndex = routes.indexOf(root)
+    val nested = if (rootIndex >= 0) routes.drop(rootIndex + 1) else routes
+    return nested.firstOrNull { it in tabs && it != root } ?: root
+}
 
 private fun isSelected(tab: Tab, route: String?): Boolean =
     route == tab.route || (tab.route == Routes.SETTINGS && route?.startsWith("settings/") == true) ||
