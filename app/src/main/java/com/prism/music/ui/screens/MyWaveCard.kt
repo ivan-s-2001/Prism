@@ -375,7 +375,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             state = scenarioScroll,
             flingBehavior = rememberSnapFlingBehavior(lazyListState = scenarioScroll, snapPosition = SnapPosition.Start),
             horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp)),
-            contentPadding = PaddingValues(horizontal = ui.gap(16.dp), vertical = ui.gap(4.dp))) {
+            contentPadding = PaddingValues(horizontal = ui.gap(12.dp), vertical = ui.gap(2.dp))) {
             item(key = "wave:tune") {
                 ScenarioTile(tr(R.string.prism_stream_tune), PrismIcons.Customize, selected = false,
                     onClick = { openSettings() }, modifier = Modifier.testTag("home:my_wave:settings"))

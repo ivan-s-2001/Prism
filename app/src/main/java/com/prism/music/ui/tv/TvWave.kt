@@ -258,7 +258,7 @@ internal fun TvWavePlace(nav: TvNav) {
             }
             }
         } else {
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(ui.gap(16.dp))) {
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(ui.gap(8.dp))) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(title, Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium)
                     if (current != null) TvIconButton(if (djOn) PrismIcons.TurntableFilled else PrismIcons.Turntable,
@@ -269,7 +269,7 @@ internal fun TvWavePlace(nav: TvNav) {
                     if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (current != null) TvIconButton(PrismIcons.Shuffle, tr(R.string.prism_stream_refresh), { if (!starting) { if (djOn) c.player.toggleShuffle() else start() } }, Modifier.tvItem("tv_wave/refresh"))
                 }
-                com.prism.music.ui.screens.VibeFlowField(Modifier.weight(1f).fillMaxWidth(), animated = now?.playing == true,
+                com.prism.music.ui.screens.VibeFlowField(Modifier.weight(1f, fill = false).fillMaxWidth().heightIn(min = 240.dp), animated = now?.playing == true,
                     energy = style.diversity / 100f) {
                     com.prism.music.ui.screens.VibeStationOverlay(appSettings,
                         (chosenPresetId?.let { id -> savedPresets.firstOrNull { it.id == id }?.name
@@ -309,7 +309,7 @@ internal fun TvWavePlace(nav: TvNav) {
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(16.dp)), verticalAlignment = Alignment.CenterVertically) {
                     Row(Modifier.weight(1f).scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward })
-                        .horizontalScroll(scenarioScroll).padding(vertical = 8.dp, horizontal = 14.dp)
+                        .horizontalScroll(scenarioScroll).padding(vertical = 4.dp, horizontal = 14.dp)
                         .rememberedFocus().focusGroup(),
                         horizontalArrangement = Arrangement.spacedBy(ui.gap(16.dp)), verticalAlignment = Alignment.CenterVertically) {
                         ScenarioTile(tr(R.string.prism_stream_tune), PrismIcons.Customize, selected = false,

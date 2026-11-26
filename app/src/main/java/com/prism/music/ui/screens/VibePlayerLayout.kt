@@ -33,9 +33,7 @@ import androidx.compose.ui.unit.dp
 import com.prism.music.data.prefs.AppSettings
 import com.prism.music.ui.theme.LocalUi
 
-/** Top-level Prism page geometry: native header, one flexible player and a single full-width shelf.
- * On short windows the page scrolls instead of shrinking the artwork and controls to zero.
- */
+/** Content-driven page: header, station and shelf remain adjacent. Only short windows scroll. */
 @Composable
 internal fun VibePageLayout(
     settings: AppSettings, modifier: Modifier = Modifier, scrollable: Boolean = true,
@@ -44,15 +42,13 @@ internal fun VibePageLayout(
     val ui = LocalUi.current
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         val wide = maxWidth >= 520.dp
-        val minimum = (if (wide) 440.dp else 550.dp) *
-            settings.textScale.coerceAtLeast(1f)
-        val height = if (scrollable) maxOf(maxHeight, minimum) else maxHeight
-        val scroll = rememberScrollState()
+        val fieldMin = if (wide) 252.dp else (maxWidth * 0.83f).coerceIn(260.dp, 344.dp)
         val page = Modifier.widthIn(max = 1040.dp).fillMaxWidth()
-        Column(page.then(if (scrollable) Modifier.verticalScroll(scroll) else Modifier).height(height),
-            verticalArrangement = Arrangement.spacedBy(ui.gap(4.dp))) {
+        val scroll = rememberScrollState()
+        Column(page.then(if (scrollable) Modifier.verticalScroll(scroll) else Modifier),
+            verticalArrangement = Arrangement.spacedBy(ui.gap(6.dp))) {
             header()
-            player(Modifier.weight(1f).fillMaxWidth().padding(horizontal = ui.gap(16.dp)))
+            player(Modifier.fillMaxWidth().heightIn(min = fieldMin).padding(horizontal = ui.gap(8.dp)))
             scenarios()
         }
     }
@@ -64,8 +60,11 @@ internal fun VibeFlowField(
     modifier: Modifier = Modifier, animated: Boolean = false, energy: Float = 0.5f,
     preview: Boolean = false, content: @Composable BoxScope.() -> Unit,
 ) {
-    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
-        VibeSphere(Modifier.size(minOf(maxWidth, maxHeight, 520.dp)), animated, energy, preview)
+    Box(modifier, contentAlignment = Alignment.Center) {
+        // The effect follows the measured controls, never establishes the height of the page.
+        BoxWithConstraints(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
+            VibeSphere(Modifier.size(minOf(maxWidth, maxHeight, 520.dp)), animated, energy, preview)
+        }
         content()
     }
 }
@@ -81,13 +80,13 @@ internal fun VibeStationOverlay(
     progress: @Composable () -> Unit = {},
 ) {
     val ui = LocalUi.current
-    BoxWithConstraints(modifier.widthIn(max = 350.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
-        val gap = ui.gap(if (maxHeight < 280.dp) 3.dp else 8.dp)
-        Column(Modifier.fillMaxWidth().padding(horizontal = ui.gap(8.dp)),
-            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(gap)) {
+    BoxWithConstraints(modifier.widthIn(max = 416.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = ui.gap(6.dp), vertical = ui.gap(22.dp)),
+            horizontalAlignment = Alignment.CenterHorizontally) {
             Text(title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Row(horizontalArrangement = Arrangement.spacedBy(ui.gap(16.dp)), verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.height(ui.gap(14.dp)))
+            Row(horizontalArrangement = Arrangement.spacedBy(ui.gap(20.dp)), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.width(52.dp), contentAlignment = Alignment.Center) {
                     if (hasTrack && settings.streamShowReactions) dislike()
                 }
@@ -97,6 +96,7 @@ internal fun VibeStationOverlay(
                 }
             }
             if (hasTrack) {
+                Spacer(Modifier.height(ui.gap(12.dp)))
                 @Composable fun TrackRow() {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.width(52.dp), contentAlignment = Alignment.Center) { previous() }
@@ -107,7 +107,7 @@ internal fun VibeStationOverlay(
                 if (settings.streamReverseLayout && settings.streamShowProgress) progress()
                 TrackRow()
                 if (!settings.streamReverseLayout && settings.streamShowProgress) progress()
-                extra?.invoke()
+                if (extra != null) { Spacer(Modifier.height(ui.gap(2.dp))); extra() }
             }
         }
     }
@@ -130,7 +130,7 @@ internal fun VibeStationAction(
     val shape = ui.button
     PrismButton(onClick = onPlay, enabled = !starting, shape = shape,
         contentPadding = PaddingValues(0.dp),
-        modifier = modifier.size(ui.gap(72.dp).coerceIn(64.dp, 84.dp))
+        modifier = modifier.size(ui.gap(76.dp).coerceIn(64.dp, 84.dp))
             .then(if (settings.view.playRing && !ui.classicControls) Modifier.border(1.5.dp, PrismTokens.spectrumRing(), shape) else Modifier)
             .testTag("home:my_wave:play")) {
         if (starting) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
@@ -145,7 +145,7 @@ internal fun VibeTrackAction(
     enabled: Boolean = true, modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
-    IconButton(onClick = onClick, enabled = enabled, modifier = modifier.size(44.dp).semantics { this.selected = selected }) {
+    IconButton(onClick = onClick, enabled = enabled, modifier = modifier.size(48.dp).semantics { this.selected = selected }) {
         Icon(icon, label, Modifier.size(22.dp), tint = when {
             !enabled -> scheme.onSurface.copy(alpha = 0.38f)
             selected -> scheme.primary
@@ -167,13 +167,15 @@ internal fun VibeCredits(
         Row(Modifier.fillMaxWidth().then(if (onOpen != null) Modifier.clickable(onClick = onOpen) else Modifier)
             .padding(vertical = ui.gap(3.dp), horizontal = ui.gap(4.dp)),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ui.gap(6.dp))) {
-            if (settings.streamShowCover) artwork(Modifier.size(coverSize))
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                if (settings.streamShowCover) {
+                    artwork(Modifier.size(coverSize))
+                    Spacer(Modifier.height(ui.gap(4.dp)))
+                }
                 Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
                 Text(artist, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1,
                     overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
             }
-            if (settings.streamShowCover) Spacer(Modifier.width(coverSize))
         }
     }
     if (settings.streamGlassPanel) GlassSurface(Modifier.fillMaxWidth(), shape = ui.shape(16.dp), onMedia = false, inPage = true) { Body() }
