@@ -111,8 +111,7 @@ private fun VibePreferencesContent(modifier: Modifier, onClose: () -> Unit, onAd
                     items(shown, key = { it.id }) { artist ->
                         PreferenceRow(artist.name) {
                             RoundAction(PrismIcons.Block, tr(R.string.don_t_play_this_artist)) {
-                                c.library.setFavoriteArtist(artist, artist.channelId, false)
-                                c.exclusions.setArtist(Excluded(artist.id, artist.name, artist.thumbnail), true)
+                                c.library.setArtistExcluded(Excluded(artist.id, artist.name, artist.thumbnail), true, artist.channelId)
                             }
                             RoundAction(PrismIcons.Close, tr(R.string.prism_vibe_clear_reaction)) { c.library.setFavoriteArtist(artist, artist.channelId, false) }
                         }

@@ -190,7 +190,7 @@ class LibraryRepository(private val c: AppContainer) {
         }
     }
 
-    private data class ReactionRequest(val song: Song, val target: SongReaction)
+    private data class ReactionRequest(val song: Song, val target: SongReaction, val remoteKey: String?)
     private val reactionLock = Mutex()
     private val reactionRequests = Channel<ReactionRequest>(Channel.UNLIMITED)
     private val pendingReactions = mutableMapOf<String, ReactionRequest>()
@@ -201,7 +201,7 @@ class LibraryRepository(private val c: AppContainer) {
         c.scope.launch(Dispatchers.IO) {
             for (request in reactionRequests) {
                 try {
-                    reactionLock.withLock { applyReaction(request.song, request.target) }
+                    reactionLock.withLock { applyReaction(request.song, request.target, request.remoteKey) }
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -233,7 +233,7 @@ class LibraryRepository(private val c: AppContainer) {
             val current = pendingReactions[song.id]?.target ?: storedReaction(song.id)
             if (song.isRss) return@synchronized current
             val target = choose(current)
-            val request = ReactionRequest(song, target)
+            val request = ReactionRequest(song, target, remoteReactionKey().takeIf { c.settings.current.isLoggedIn })
             pendingReactions[song.id] = request
             reactionWriter
             reactionRequests.trySend(request)
@@ -302,7 +302,7 @@ class LibraryRepository(private val c: AppContainer) {
         }
     }
 
-    private suspend fun applyReaction(song: Song, target: SongReaction) {
+    private suspend fun applyReaction(song: Song, target: SongReaction, remoteKey: String?) {
         val existing = songs.get(song.id)
         val liked = target == SongReaction.LIKE
         val disliked = target == SongReaction.DISLIKE
@@ -329,10 +329,9 @@ class LibraryRepository(private val c: AppContainer) {
         if (target != SongReaction.DISLIKE) c.recFeedback.forgiveTrack(song.id)
         if (song.isLocal) return
         if (liked && !wasLiked && c.settings.current.downloadLikes) c.downloads.download(song)
-        if (c.settings.current.isLoggedIn) {
-            val key = remoteReactionKey()
-            savePendingRemote(key, pendingRemote(key) + (song.id to target))
-            if (c.network.isOnline()) sendPendingReaction(key, song.id, target)
+        if (remoteKey != null) {
+            savePendingRemote(remoteKey, pendingRemote(remoteKey) + (song.id to target))
+            if (c.network.isOnline() && remoteReactionKey() == remoteKey) sendPendingReaction(remoteKey, song.id, target)
         }
     }
 
@@ -356,6 +355,7 @@ class LibraryRepository(private val c: AppContainer) {
             // Protect edits from this sync even if YouTube briefly returns a stale snapshot after acknowledging them.
             for ((id, reaction) in localEdits) sendPendingReaction(key, id, reaction)
             val remote = c.ytm.likedSongs().filterNot { it.id in dislikedIds.value || localEdits[it.id]?.let { reaction -> reaction != SongReaction.LIKE } == true }
+            if (remoteReactionKey() != key || !c.settings.current.isLoggedIn) return@withContext
             val before = likedIds.value
             val now = System.currentTimeMillis()
             // Chunked: SQLite caps bound parameters at 999 on older Android versions.
@@ -375,6 +375,7 @@ class LibraryRepository(private val c: AppContainer) {
                 remote.filter { it.id !in before }.forEach { c.downloads.download(it) }
             }
             }
+            flushArtistEdits()
             reloadPlaylists()
             runCatching { albums.value = c.ytm.libraryAlbums() }
             runCatching { artists.value = c.ytm.libraryArtists() }
@@ -565,12 +566,64 @@ class LibraryRepository(private val c: AppContainer) {
         if (on && artists.value.none { it.id == artist.id }) {
             artists.value = listOf(ArtistItem(artist.id, artist.name, "Artist", artist.thumbnail)) + artists.value
         }
-        if (c.settings.current.isLoggedIn) c.scope.launch(Dispatchers.IO) {
-            runCatching {
-                val channel = channelId ?: artist.channelId ?: c.ytm.artist(artist.id).channelId
-                if (channel != null) c.ytm.subscribe(channel, on)
-            }.onFailure { lastError.value = tr(R.string.couldn_t_update_on_youtube_music, artist.name, it.friendlyMessage()) }
+        if (c.settings.current.isLoggedIn) {
+            val key = remoteReactionKey() + ":artists"
+            synchronized(artistEditLock) {
+                val edits = pendingArtists(key).toMutableMap()
+                edits[artist.id] = ArtistEdit(channelId ?: artist.channelId, on)
+                saveArtistEdits(key, edits)
+            }
+            c.scope.launch(Dispatchers.IO) { flushArtistEdits() }
         }
+    }
+
+    private data class ArtistEdit(val channel: String?, val on: Boolean)
+    private val artistEditLock = Any()
+    private val artistSyncLock = Mutex()
+
+    private fun pendingArtists(key: String): Map<String, ArtistEdit> =
+        dislikePrefs.getStringSet(key, emptySet()).orEmpty().mapNotNull { row ->
+            val parts = row.split('\t')
+            if (parts.size != 3 || parts[0].isBlank()) null
+            else parts[0] to ArtistEdit(parts[1].ifBlank { null }, parts[2] == "1")
+        }.toMap()
+
+    private fun saveArtistEdits(key: String, edits: Map<String, ArtistEdit>) {
+        dislikePrefs.edit().putStringSet(key, edits.map { (id, edit) ->
+            "$id\t${edit.channel.orEmpty()}\t${if (edit.on) 1 else 0}"
+        }.toSet()).commit()
+    }
+
+    private suspend fun flushArtistEdits() = artistSyncLock.withLock {
+        if (!c.settings.current.isLoggedIn || !c.network.isOnline()) return@withLock
+        val key = remoteReactionKey() + ":artists"
+        val edits = synchronized(artistEditLock) { pendingArtists(key) }
+        for ((id, edit) in edits) {
+            if (!c.settings.current.isLoggedIn || key != remoteReactionKey() + ":artists") break
+            try {
+                val sent = kotlinx.coroutines.withTimeoutOrNull(8000L) {
+                    val channel = edit.channel ?: c.ytm.artist(id).channelId ?: return@withTimeoutOrNull false
+                    if (key != remoteReactionKey() + ":artists") return@withTimeoutOrNull false
+                    c.ytm.subscribe(channel, edit.on)
+                    true
+                } == true
+                if (sent) synchronized(artistEditLock) {
+                    val latest = pendingArtists(key)
+                    if (latest[id] == edit) saveArtistEdits(key, latest - id)
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { lastError.value = e.friendlyMessage() }
+        }
+    }
+
+    fun setArtistExcluded(artist: com.prism.music.data.foryou.Excluded, excluded: Boolean, channelId: String? = null) {
+        if (excluded) {
+            val favorite = c.artistPrefs.favorites.value.firstOrNull { it.id == artist.id || it.name.equals(artist.name, true) }
+            if (favorite != null || channelId != null) {
+                setFavoriteArtist(favorite ?: FavoriteArtist(artist.id, artist.name, artist.thumbnail), channelId ?: favorite?.channelId, false)
+            }
+        }
+        c.exclusions.setArtist(artist, excluded)
     }
 
     /**

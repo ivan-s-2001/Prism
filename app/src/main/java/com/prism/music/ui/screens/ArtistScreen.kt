@@ -605,7 +605,7 @@ private fun TopBar(
                         val out = excluded.any { it.id == page.id || it.name.equals(page.name, true) }
                         DropdownMenuItem(
                             { Text(if (out) tr(R.string.play_this_artist_again) else tr(R.string.don_t_play_this_artist)) },
-                            { menu = false; c.exclusions.setArtist(com.prism.music.data.foryou.Excluded(page.id, page.name, page.thumbnail), !out) },
+                            { menu = false; c.library.setArtistExcluded(com.prism.music.data.foryou.Excluded(page.id, page.name, page.thumbnail), !out, page.channelId) },
                             leadingIcon = { Icon(PrismIcons.Block, null) },
                         )
                     }

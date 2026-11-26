@@ -538,7 +538,7 @@ fun PickArtistsScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit
                 val photo by produceState(a.thumbnail, a.id) { value = ArtistPhotos.of(c, a) }
                 Column(
                     Modifier.clip(LocalUi.current.tile).clickable {
-                        c.artistPrefs.setFavorite(FavoriteArtist(a.id, a.name, photo), !on)
+                        c.library.setFavoriteArtist(FavoriteArtist(a.id, a.name, photo), null, !on)
                     }.padding(4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
