@@ -86,7 +86,7 @@ import androidx.compose.ui.semantics.semantics
 
 // The phone's own music files have their own page (Local files, from Playlists), with Songs, Artists and Albums.
 // Tags (1.8.3) last, and only once there's a tag: the other tabs keep their places.
-private enum class LibTab(val label: String) { PLAYLISTS(tr(R.string.playlists)), SONGS(tr(R.string.songs)), ALBUMS(tr(R.string.albums)), ARTISTS(tr(R.string.artists)), HISTORY(tr(R.string.history)), DOWNLOADS(tr(R.string.downloads)), TAGS(tr(R.string.tags)) }
+private enum class LibTab(val label: String) { OVERVIEW(tr(R.string.prism_collection_overview)), PLAYLISTS(tr(R.string.playlists)), SONGS(tr(R.string.songs)), ALBUMS(tr(R.string.albums)), ARTISTS(tr(R.string.artists)), HISTORY(tr(R.string.history)), DOWNLOADS(tr(R.string.downloads)), TAGS(tr(R.string.tags)) }
 
 /** One row of History (#118): a play, or a run of plays of the same song one after another. */
 private data class HistoryEntry(val song: com.prism.music.data.model.Song, val at: Long, val times: Int, val ids: List<Long> = emptyList())
@@ -213,10 +213,12 @@ fun LibraryScreen(bottomPadding: Dp) {
     val remoteAlbums by c.library.albums.collectAsState()
     val remoteArtists by c.library.artists.collectAsState()
     val liked by c.library.likedShown.collectAsState()
+    val disliked by c.library.dislikedIds.collectAsState()
+    val blockedArtists by c.exclusions.artists.collectAsState()
     val sync by c.library.syncState.collectAsState()
     val dls by c.downloadState.collectAsState()
     val thumbs by c.library.artistThumbs.collectAsState()
-    val favorites by c.artistPrefs.favorites.collectAsState()
+    val favorites by c.library.profileArtists.collectAsState()
     // Playlists and albums kept on the phone (without an account, the only ones there are).
     val prismLists by c.prismLibrary.lists.collectAsState()
     val savedAlbums by c.prismLibrary.albums.collectAsState()
@@ -579,6 +581,70 @@ fun LibraryScreen(bottomPadding: Dp) {
                     }
                 }
                 when (tab) {
+                    LibTab.OVERVIEW -> {
+                        // A collection landing page, using the same live stores and native rows as its full lists.
+                        item(key = "overview-likes", span = { GridItemSpan(maxLineSpan) }) {
+                            com.prism.music.ui.components.SectionHeader(tr(R.string.liked_songs),
+                                strapline = com.prism.music.data.model.songCount(liked.size),
+                                onMore = { nav.go(Routes.liked()) })
+                        }
+                        if (liked.isEmpty()) item(key = "overview-empty-likes", span = { GridItemSpan(maxLineSpan) }) {
+                            EmptyState(PrismIcons.HeartFilled, tr(R.string.no_liked_songs_yet), tr(R.string.tap_the_heart_on_the_player))
+                        }
+                        items(liked.take(4), key = { "overview-song:" + it.id }, span = { GridItemSpan(maxLineSpan) }) { song ->
+                            SongRow(song) {
+                                c.player.playQueue(liked, liked.indexOf(song),
+                                    com.prism.music.playback.QueueSource(com.prism.music.playback.QueueKind.LIBRARY, tr(R.string.liked_songs)))
+                            }
+                        }
+                        item(key = "overview-artists", span = { GridItemSpan(maxLineSpan) }) {
+                            com.prism.music.ui.components.SectionHeader(tr(R.string.your_artists),
+                                onMore = { scope.launch { pager.animateScrollToPage(LibTab.ARTISTS.ordinal) } })
+                        }
+                        if (favorites.isEmpty()) item(key = "overview-pick-artists", span = { GridItemSpan(maxLineSpan) }) {
+                            ShortcutTile(tr(R.string.prism_vibe_add_artists), "", PrismIcons.Person, true) { nav.go(Routes.PICK_ARTISTS) }
+                        }
+                        items(favorites.take(6), key = { "overview-artist:" + it.id }) { favorite ->
+                            LibraryItem(ArtistItem(favorite.id, favorite.name, "", favorite.thumbnail), asList) { nav.go(Routes.artist(favorite.id)) }
+                        }
+                        item(key = "overview-playlists", span = { GridItemSpan(maxLineSpan) }) {
+                            com.prism.music.ui.components.SectionHeader(tr(R.string.your_playlists),
+                                onMore = { scope.launch { pager.animateScrollToPage(LibTab.PLAYLISTS.ordinal) } })
+                        }
+                        item(key = "overview-create-playlist") {
+                            ShortcutTile(tr(R.string.new_playlist), "", PrismIcons.Add, asList) { creating = true }
+                        }
+                        items(sortedPlaylists.take(5), key = { "overview-playlist:" + it.id }) { playlist ->
+                            LibraryItem(shown(playlist), asList, onLongClick = { menuFor = playlist }) { nav.open(playlist, onSong) }
+                        }
+                        item(key = "overview-albums", span = { GridItemSpan(maxLineSpan) }) {
+                            com.prism.music.ui.components.SectionHeader(tr(R.string.albums),
+                                onMore = { scope.launch { pager.animateScrollToPage(LibTab.ALBUMS.ordinal) } })
+                        }
+                        if (albums.isEmpty()) item(key = "overview-empty-albums", span = { GridItemSpan(maxLineSpan) }) {
+                            EmptyState(PrismIcons.Album, tr(R.string.no_albums_yet), tr(R.string.tap_the_bookmark_on_an_album))
+                        }
+                        items(albums.take(6), key = { "overview-album:" + it.id }) { album ->
+                            LibraryItem(shown(album), asList, onLongClick = { itemMenu = album }) { nav.open(album, onSong) }
+                        }
+                        item(key = "overview-preferences", span = { GridItemSpan(maxLineSpan) }) {
+                            com.prism.music.ui.components.SectionHeader(tr(R.string.prism_vibe_reactions), onMore = { editingReactions = true })
+                        }
+                        item(key = "overview-dislikes", span = { GridItemSpan(maxLineSpan) }) {
+                            ShortcutTile(tr(R.string.prism_vibe_dislikes_count, disliked.size),
+                                tr(R.string.prism_vibe_blocked_artists_count, blockedArtists.size),
+                                PrismIcons.ThumbDown, true) { editingReactions = true }
+                        }
+                        item(key = "overview-history") {
+                            ShortcutTile(tr(R.string.history), "", PrismIcons.History, asList) { scope.launch { pager.animateScrollToPage(LibTab.HISTORY.ordinal) } }
+                        }
+                        item(key = "overview-downloads") {
+                            ShortcutTile(tr(R.string.downloads), "", PrismIcons.DownloadDone, asList) { nav.go(Routes.DOWNLOADS) }
+                        }
+                        item(key = "overview-local") {
+                            ShortcutTile(tr(R.string.local_files), "", PrismIcons.Phone, asList) { nav.go(Routes.LOCAL) }
+                        }
+                    }
                     LibTab.PLAYLISTS -> {
                       // The tiles picked and ordered with the edit button at the top (Settings → Library & Replay too).
                       val tilesPart: androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit = {
@@ -842,7 +908,7 @@ fun LibraryScreen(bottomPadding: Dp) {
             }
             // #376: a thumb a finger can hold on Library's long lists. Only its own grip takes touches, and only while it's
             // showing, so it needs no switch: the rows along the edge and the swipes between tabs are all still there.
-            if (tab != LibTab.HISTORY && tab != LibTab.DOWNLOADS && !rearranging) com.prism.music.ui.components.FastScroller(
+            if (tab != LibTab.OVERVIEW && tab != LibTab.HISTORY && tab != LibTab.DOWNLOADS && !rearranging) com.prism.music.ui.components.FastScroller(
                 gridState, Modifier.align(Alignment.CenterEnd).padding(bottom = bottomPadding),
                 description = tr(R.string.scroll_through_the_list), thumbOnly = true,
             ) { _ -> gridState.layoutInfo.visibleItemsInfo.firstNotNullOfOrNull { rowMarks.value[it.key as? String] } }

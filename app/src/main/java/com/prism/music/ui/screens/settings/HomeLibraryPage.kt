@@ -57,7 +57,7 @@ internal object HlGroups {
 /** Library's tabs, by the name each is stored under ("Open Library on"). */
 private val libraryTabs: List<Pair<String, String>>
     get() = listOf(
-        "PLAYLISTS" to tr(R.string.playlists), "SONGS" to tr(R.string.songs), "ALBUMS" to tr(R.string.albums), "ARTISTS" to tr(R.string.artists),
+        "OVERVIEW" to tr(R.string.prism_collection_overview), "PLAYLISTS" to tr(R.string.playlists), "SONGS" to tr(R.string.songs), "ALBUMS" to tr(R.string.albums), "ARTISTS" to tr(R.string.artists),
         "HISTORY" to tr(R.string.history), "DOWNLOADS" to tr(R.string.downloads),
     )
 
@@ -124,7 +124,7 @@ fun HomeLibraryPage(bottomPadding: Dp, find: String? = null, showBack: Boolean =
     val detailsChanged = reset.add(tr(R.string.details_under_each_one), s.library.subtitles, d.library.subtitles, onOff) { prefs.setLibrarySubtitles(it) }
     val tabs = libraryTabs
     // "LOCAL" (On this phone) was a tab before Local files got its own page: Playlists stands in for it.
-    val startTab = s.library.startTab.takeIf { k -> tabs.any { it.first == k } } ?: "PLAYLISTS"
+    val startTab = s.library.startTab.takeIf { k -> tabs.any { it.first == k } } ?: "OVERVIEW"
     val tabName: (String) -> String = { k -> tabs.firstOrNull { it.first == k }?.second ?: k }
     val startTabChanged = reset.add(tr(R.string.open_library_on), startTab, d.library.startTab, tabName) { prefs.setLibraryStartTab(it) }
     val songAndVideoChanged = reset.add(tr(R.string.a_song_and_its_video_as), s.mergeLikedVideos, d.mergeLikedVideos, onOff) { prefs.setMergeLikedVideos(it) }
