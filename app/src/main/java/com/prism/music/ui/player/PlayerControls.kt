@@ -1007,8 +1007,8 @@ fun PlayerActionRow(
     onToggleQueue: () -> Unit,
     onVideoMode: (Boolean) -> Unit,
     episode: Boolean = false,
-    onButton: (PlayerButton) -> Unit = {},
     primaryVibeVisible: Boolean = false,
+    onButton: (PlayerButton) -> Unit = {},
 ) {
     val c = LocalContainer.current
     val pc = c.player
