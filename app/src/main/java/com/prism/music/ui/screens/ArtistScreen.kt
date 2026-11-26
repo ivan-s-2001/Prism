@@ -259,7 +259,8 @@ private fun ArtistContent(opened: ArtistOpened, bottomPadding: Dp) {
     val shuffle = { if (ownPool != null) playOwn(ownPool, true) else playList(page.shufflePlaylistId, page.name, page.shuffleVideoId, page.shuffleParams) }
     val mix: () -> Unit = {
         scope.launch {
-            val ok = c.player.playContextVibe(page.name, ownPool ?: topSongs) {
+            val ok = c.player.playContextVibe(page.name, ownPool ?: topSongs,
+                origin = com.prism.music.playback.VibeOrigin(com.prism.music.playback.VibeOriginKind.ARTIST, page.name, page.thumbnail)) {
                 if (offline) emptyList() else page.radioPlaylistId?.let { c.radio(page.radioVideoId, it, page.radioParams).songs }.orEmpty()
             }
             if (!ok) notHere()
