@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -315,7 +316,10 @@ fun LibraryScreen(bottomPadding: Dp) {
     // Songs "From" (1.8.3, #382): liked songs and the songs of playlists the listener picks, once each. Prism's own
     // lists are read as they are now; YouTube's are loaded whole once per session.
     var songsFrom by remember { mutableStateOf(com.prism.music.data.SongsFrom.decode(c.library.sortOf(com.prism.music.data.SongsFrom.KEY))) }
-    val fromLoaded by androidx.compose.runtime.produceState(emptyMap<String, List<com.prism.music.data.model.Song>>(), songsFrom.playlists) {
+    val onSongs = tabs.getOrNull(pager.currentPage) == LibTab.SONGS
+    val fromLoaded by androidx.compose.runtime.produceState(emptyMap<String, List<com.prism.music.data.model.Song>>(), songsFrom.playlists, onSongs) {
+        if (!onSongs) return@produceState
+        value = value.filterKeys { it in songsFrom.playlists }
         songsFrom.playlists.filter { !com.prism.music.data.PrismLibrary.isPrismList(it) }.forEach { id ->
             c.playlistSongs.songs(id)?.let { value = value + (id to it) }
         }
@@ -468,7 +472,7 @@ fun LibraryScreen(bottomPadding: Dp) {
         }
         PagerChips(tabs.map { it.label }, pager)
 
-        HorizontalPager(pager, Modifier.weight(1f), beyondViewportPageCount = 1) { page ->
+        HorizontalPager(pager, Modifier.weight(1f), beyondViewportPageCount = 0) { page ->
             val tab = tabs.getOrNull(page) ?: return@HorizontalPager
             @Suppress("NAME_SHADOWING") val asList = listFor(tab)
             val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
@@ -555,7 +559,7 @@ fun LibraryScreen(bottomPadding: Dp) {
             com.prism.music.ui.components.SelectableSongs(pickList, remover = historyRemover, resetKey = pager.settledPage to fromAccountShown) {
             LazyVerticalGrid(
                 when {
-                    asList -> GridCells.Fixed(1)
+                    asList || tab == LibTab.OVERVIEW -> GridCells.Fixed(1)
                     settings.library.columns.count > 0 -> GridCells.Fixed(settings.library.columns.count)
                     else -> GridCells.Adaptive(160.dp)
                 },
@@ -586,77 +590,90 @@ fun LibraryScreen(bottomPadding: Dp) {
                 }
                 when (tab) {
                     LibTab.OVERVIEW -> {
-                        // A collection landing page, using the same live stores and native rows as its full lists.
-                        item(key = "overview-likes", span = { GridItemSpan(maxLineSpan) }) {
-                            com.prism.music.ui.components.SectionHeader(tr(R.string.liked_songs),
-                                strapline = com.prism.music.data.model.songCount(liked.size),
-                                onMore = { nav.go(Routes.liked()) })
-                        }
-                        if (liked.isEmpty()) item(key = "overview-empty-likes", span = { GridItemSpan(maxLineSpan) }) {
-                            EmptyState(PrismIcons.HeartFilled, tr(R.string.no_liked_songs_yet), tr(R.string.tap_the_heart_on_the_player))
-                        }
-                        items(liked.take(4), key = { "overview-song:" + it.id }, span = { GridItemSpan(maxLineSpan) }) { song ->
-                            SongRow(song) {
-                                c.player.playQueue(liked, liked.indexOf(song),
-                                    com.prism.music.playback.QueueSource(com.prism.music.playback.QueueKind.LIBRARY, tr(R.string.liked_songs)))
-                            }
-                        }
-                        item(key = "overview-artists", span = { GridItemSpan(maxLineSpan) }) {
-                            com.prism.music.ui.components.SectionHeader(tr(R.string.your_artists),
-                                onMore = { scope.launch { pager.animateScrollToPage(LibTab.ARTISTS.ordinal) } })
-                        }
-                        if (favorites.isEmpty()) item(key = "overview-pick-artists", span = { GridItemSpan(maxLineSpan) }) {
-                            ShortcutTile(tr(R.string.prism_vibe_add_artists), "", PrismIcons.Person, true) { nav.go(Routes.PICK_ARTISTS) }
-                        }
-                        if (favorites.isNotEmpty()) item(key = "overview-artist-row", span = { GridItemSpan(maxLineSpan) }) {
-                            Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                favorites.take(8).forEach { favorite ->
-                                    ItemCard(ArtistItem(favorite.id, favorite.name, "", favorite.thumbnail), width = 112.dp) { nav.go(Routes.artist(favorite.id)) }
+                        item(key = "overview-access", span = { GridItemSpan(maxLineSpan) }) {
+                            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    CollectionQuickLink(tr(R.string.liked_songs), com.prism.music.data.model.songCount(liked.size),
+                                        PrismIcons.HeartFilled, Modifier.weight(1f), primary = true) { nav.go(Routes.liked()) }
+                                    CollectionQuickLink(tr(R.string.downloads), com.prism.music.data.model.songCount(dls.values.count { it.state == androidx.media3.exoplayer.offline.Download.STATE_COMPLETED }),
+                                        PrismIcons.DownloadDone, Modifier.weight(1f)) { nav.go(Routes.DOWNLOADS) }
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    CollectionQuickLink(tr(R.string.history), "", PrismIcons.History, Modifier.weight(1f)) {
+                                        scope.launch { pager.scrollToPage(LibTab.HISTORY.ordinal) }
+                                    }
+                                    CollectionQuickLink(tr(R.string.local_files), "", PrismIcons.Phone, Modifier.weight(1f)) { nav.go(Routes.LOCAL) }
                                 }
                             }
                         }
                         item(key = "overview-playlists", span = { GridItemSpan(maxLineSpan) }) {
                             com.prism.music.ui.components.SectionHeader(tr(R.string.your_playlists),
-                                onMore = { scope.launch { pager.animateScrollToPage(LibTab.PLAYLISTS.ordinal) } })
+                                onMore = { scope.launch { pager.scrollToPage(LibTab.PLAYLISTS.ordinal) } })
                         }
                         item(key = "overview-playlists-row", span = { GridItemSpan(maxLineSpan) }) {
-                            Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Box(Modifier.width(136.dp)) { ShortcutTile(tr(R.string.new_playlist), "", PrismIcons.Add, false) { creating = true } }
-                                sortedPlaylists.take(8).forEach { playlist ->
+                            LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                item(key = "create") {
+                                    Box(Modifier.width(136.dp)) { ShortcutTile(tr(R.string.new_playlist), "", PrismIcons.Add, false) { creating = true } }
+                                }
+                                val previews = sortedPlaylists.distinctBy { it.id }.take(12)
+                                items(previews.size, key = { "playlist:" + previews[it].id }) { i ->
+                                    val playlist = previews[i]
                                     ItemCard(shown(playlist), width = 136.dp, onLongClick = { menuFor = playlist }) { nav.open(playlist, onSong) }
                                 }
                             }
                         }
-                        item(key = "overview-albums", span = { GridItemSpan(maxLineSpan) }) {
-                            com.prism.music.ui.components.SectionHeader(tr(R.string.albums),
-                                onMore = { scope.launch { pager.animateScrollToPage(LibTab.ALBUMS.ordinal) } })
-                        }
-                        if (albums.isEmpty()) item(key = "overview-empty-albums", span = { GridItemSpan(maxLineSpan) }) {
-                            EmptyState(PrismIcons.Album, tr(R.string.no_albums_yet), tr(R.string.tap_the_bookmark_on_an_album))
-                        }
-                        if (albums.isNotEmpty()) item(key = "overview-albums-row", span = { GridItemSpan(maxLineSpan) }) {
-                            Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                albums.take(8).forEach { album ->
-                                    ItemCard(shown(album), width = 136.dp, onLongClick = { itemMenu = album }) { nav.open(album, onSong) }
+                        if (liked.isNotEmpty()) {
+                            item(key = "overview-likes", span = { GridItemSpan(maxLineSpan) }) {
+                                com.prism.music.ui.components.SectionHeader(tr(R.string.liked_songs), onMore = { nav.go(Routes.liked()) })
+                            }
+                            items(liked.distinctBy { it.id }.take(3), key = { "overview-song:" + it.id }, span = { GridItemSpan(maxLineSpan) }) { song ->
+                                SongRow(song, showAlbum = false) {
+                                    c.player.playQueue(liked, liked.indexOf(song),
+                                        com.prism.music.playback.QueueSource(com.prism.music.playback.QueueKind.LIBRARY, tr(R.string.liked_songs)))
                                 }
                             }
                         }
-                        item(key = "overview-preferences", span = { GridItemSpan(maxLineSpan) }) {
-                            com.prism.music.ui.components.SectionHeader(tr(R.string.prism_vibe_reactions), onMore = { editingReactions = true })
+                        item(key = "overview-artists", span = { GridItemSpan(maxLineSpan) }) {
+                            com.prism.music.ui.components.SectionHeader(tr(R.string.your_artists),
+                                onMore = { scope.launch { pager.scrollToPage(LibTab.ARTISTS.ordinal) } })
+                        }
+                        item(key = "overview-artist-row", span = { GridItemSpan(maxLineSpan) }) {
+                            LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                val previews = favorites.distinctBy { it.id }.take(12)
+                                items(previews.size, key = { "artist:" + previews[it].id }) { i ->
+                                    val favorite = previews[i]
+                                    ItemCard(ArtistItem(favorite.id, favorite.name, "", favorite.thumbnail ?: thumbs[favorite.id]), width = 104.dp) { nav.go(Routes.artist(favorite.id)) }
+                                }
+                                item(key = "addArtist") {
+                                    Box(Modifier.width(104.dp)) {
+                                        ShortcutTile(tr(R.string.prism_vibe_add_artists), "", PrismIcons.Add, false) { nav.go(Routes.PICK_ARTISTS) }
+                                    }
+                                }
+                            }
+                        }
+                        if (albums.isNotEmpty()) {
+                            item(key = "overview-albums", span = { GridItemSpan(maxLineSpan) }) {
+                                com.prism.music.ui.components.SectionHeader(tr(R.string.albums),
+                                    onMore = { scope.launch { pager.scrollToPage(LibTab.ALBUMS.ordinal) } })
+                            }
+                            item(key = "overview-albums-row", span = { GridItemSpan(maxLineSpan) }) {
+                                LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    val previews = albums.distinctBy { it.id }.take(12)
+                                    items(previews.size, key = { "album:" + previews[it].id }) { i ->
+                                        val album = previews[i]
+                                        ItemCard(shown(album), width = 136.dp, onLongClick = { itemMenu = album }) { nav.open(album, onSong) }
+                                    }
+                                }
+                            }
                         }
                         item(key = "overview-dislikes", span = { GridItemSpan(maxLineSpan) }) {
+                            com.prism.music.ui.components.SectionHeader(tr(R.string.prism_vibe_reactions))
                             ShortcutTile(tr(R.string.prism_vibe_dislikes_count, disliked.size),
                                 tr(R.string.prism_vibe_blocked_artists_count, blockedArtists.size),
                                 PrismIcons.ThumbDown, true) { editingReactions = true }
                         }
-                        item(key = "overview-history") {
-                            ShortcutTile(tr(R.string.history), "", PrismIcons.History, asList) { scope.launch { pager.animateScrollToPage(LibTab.HISTORY.ordinal) } }
-                        }
-                        item(key = "overview-downloads") {
-                            ShortcutTile(tr(R.string.downloads), "", PrismIcons.DownloadDone, asList) { nav.go(Routes.DOWNLOADS) }
-                        }
-                        item(key = "overview-local") {
-                            ShortcutTile(tr(R.string.local_files), "", PrismIcons.Phone, asList) { nav.go(Routes.LOCAL) }
+                        item(key = "overview-replay", span = { GridItemSpan(maxLineSpan) }) {
+                            ShortcutTile(tr(R.string.replay_2), tr(R.string.your_listening_recap), PrismIcons.Replay, true) { nav.go(Routes.REPLAY) }
                         }
                     }
                     LibTab.PLAYLISTS -> {
@@ -1033,6 +1050,33 @@ private fun RearrangePlaylists(playlists: List<com.prism.music.data.model.Browse
             )
             // The grip moves the playlist at once; the rest of the row after a hold.
             com.prism.music.ui.components.DragGrip(Modifier.dragHandle().padding(end = 8.dp), tr(R.string.drag, p.title))
+        }
+    }
+}
+
+/** Compact shortcuts in the collection overview, using the same theme tokens as the Home tiles. */
+@Composable
+private fun CollectionQuickLink(
+    title: String, subtitle: String, icon: ImageVector, modifier: Modifier = Modifier,
+    primary: Boolean = false, onClick: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val ui = com.prism.music.ui.theme.LocalUi.current
+    Row(
+        modifier.height(72.dp).clip(ui.tile)
+            .background(if (primary) scheme.primaryContainer else scheme.surfaceContainerHigh)
+            .clickable(onClick = onClick).padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val ink = if (primary) scheme.onPrimaryContainer else scheme.onSurface
+        Icon(icon, null, Modifier.size(24.dp), tint = ink)
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = ink, style = MaterialTheme.typography.titleSmall,
+                maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            if (subtitle.isNotBlank()) Text(subtitle, color = ink.copy(alpha = 0.72f),
+                style = MaterialTheme.typography.bodySmall, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
     }
 }

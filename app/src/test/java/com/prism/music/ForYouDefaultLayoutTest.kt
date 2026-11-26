@@ -9,7 +9,7 @@ class ForYouDefaultLayoutTest {
     @Test fun personalMusicPrecedesSeasonalAndRecap() {
         val keys = HomeSections.initial.map { it.key }
         assertEquals(keys.distinct(), keys)
-        assertEquals(HomeSections.GREETING, keys.first())
+        assertEquals(HomeSections.MADE_FOR_YOU, keys.first())
         assertTrue(keys.indexOf(HomeSections.RECENT) < keys.indexOf(HomeSections.REPLAY))
         assertTrue(keys.indexOf(HomeSections.MADE_FOR_YOU) < keys.indexOf(HomeSections.SEASONAL))
         assertTrue(keys.indexOf(HomeSections.QUICK_PICKS) < keys.indexOf(HomeSections.REPLAY))
