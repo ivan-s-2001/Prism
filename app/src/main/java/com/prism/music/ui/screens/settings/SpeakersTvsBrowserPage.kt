@@ -42,7 +42,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.prism.music.R
 import com.prism.music.connect.PairedBrowser
 import com.prism.music.connect.ShownCode
-import com.prism.music.connect.TvInstall
 import com.prism.music.data.prefs.AppSettings
 import com.prism.music.tr
 import com.prism.music.ui.components.tickWhileShown
@@ -92,11 +91,8 @@ fun SpeakersTvsBrowserPage(bottomPadding: Dp, find: String? = null, showBack: Bo
     val onOff: (Boolean) -> String = { ListeningResets.onOff(it) }
     val remoteChanged = reset.add(tr(R.string.control_from_a_browser), s.webRemote, d.webRemote, onOff) { c.settings.setWebRemote(it) }
     val handoffChanged = reset.add(tr(R.string.available_for_handoff), s.handoffAvailable, d.handoffAvailable, onOff) { c.settings.setHandoffAvailable(it) }
-    // Held by the page, not by its group: the list is lazy, and sharing mustn't stop because a card scrolled away.
-    val tv = rememberTvShare()
 
     SettingsPageScaffold(page.title, bottomPadding, showBack = showBack, onSearch = onSearch, find = find, reset = reset.pageReset()) {
-        group(tr(R.string.prism_on_a_tv)) { TvRows(tv) }
         group(tr(R.string.cn_browser_remote)) {
             SwitchRow(
                 tr(R.string.control_from_a_browser), s.webRemote, info = tr(R.string.play_search_and_see_the_queue), changed = remoteChanged,
@@ -114,53 +110,6 @@ fun SpeakersTvsBrowserPage(bottomPadding: Dp, find: String? = null, showBack: Bo
     }
 }
 
-// ---------------------------------------------------------------------------- Prism on a TV
-
-/** "Share Prism with a TV": on only while the page is open (the switch isn't kept), see [rememberTvShare]. */
-private class TvShare(val share: TvInstall) {
-    var on by mutableStateOf(false)
-    var failed by mutableStateOf(false)
-
-    fun set(want: Boolean) {
-        if (want) { failed = !share.start(); on = !failed } else { share.stop(); on = false }
-    }
-}
-
-/**
- * Prism on a TV (1.8.0): off whenever the page opens, and sharing stops when it goes, so nothing listens on the network
- * unless someone is putting Prism on a TV right now. Prism put away with the page still open (another app, the screen
- * off): sharing stops a little later, not at once (a TV may be part-way through taking it, the phone's screen gone dark
- * meanwhile), and not if Prism comes back.
- */
-@Composable
-private fun rememberTvShare(): TvShare {
-    val share = LocalContainer.current.tvInstall
-    val tv = remember(share) { TvShare(share) }
-    DisposableEffect(share) { onDispose { share.stop() } }
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val scope = rememberCoroutineScope()
-    DisposableEffect(lifecycle, share) {
-        var later: Job? = null
-        val o = LifecycleEventObserver { _, e ->
-            when (e) {
-                Lifecycle.Event.ON_STOP -> if (tv.on) later = scope.launch {
-                    delay(SHARE_AWAY_MS)
-                    share.stop()
-                    tv.on = false
-                }
-                Lifecycle.Event.ON_START -> { later?.cancel(); later = null }
-                else -> Unit
-            }
-        }
-        lifecycle.addObserver(o)
-        onDispose { later?.cancel(); lifecycle.removeObserver(o) }
-    }
-    return tv
-}
-
-/** How long "Share Prism with a TV" goes on with Prism put away (a TV part-way through taking it finishes). */
-private const val SHARE_AWAY_MS = 2 * 60_000L
-
 /** Copies a text and says so. */
 @Composable
 internal fun copier(): (String) -> Unit {
@@ -170,35 +119,6 @@ internal fun copier(): (String) -> Unit {
         clipboard.setText(AnnotatedString(text))
         android.widget.Toast.makeText(context, tr(R.string.copied), android.widget.Toast.LENGTH_SHORT).show()
     }
-}
-
-/** The switch (its line says how it's going), the address to type on the TV while it's on, and the Downloader code. */
-@Composable
-private fun TvRows(tv: TvShare) {
-    val copy = copier()
-    val sent by tv.share.sent.collectAsState()
-    SwitchRow(
-        tr(R.string.share_prism_with_a_tv), tv.on,
-        value = when {
-            tv.failed -> tr(R.string.this_copy_can_t_be_shared)
-            tv.on && sent > 0 -> tr(R.string.sent_finish_installing_on_the_tv)
-            else -> null
-        },
-        info = tr(R.string.tv_share_info) + "\n\n" + tr(R.string.tv_share_steps),
-    ) { tv.set(it) }
-    if (tv.on) {
-        // The address follows the network (another Wi-Fi), so it's read again every few seconds.
-        var tick by remember { mutableIntStateOf(0) }
-        val lifecycle = LocalLifecycleOwner.current.lifecycle
-        LaunchedEffect(lifecycle) { lifecycle.tickWhileShown(2_000) { tick++ } }
-        val address = remember(tick) { tv.share.address }
-        // A tap copies it.
-        LinkRow(tr(R.string.address), value = address ?: tr(R.string.connect_to_wi_fi_to_use), action = true) { address?.let(copy) }
-    }
-    val code = TvInstall.DOWNLOADER_CODE
-    if (code.isNotBlank()) LinkRow(
-        tr(R.string.downloader_code), value = tr(R.string.downloader_code_detail, code), info = tr(R.string.downloader_code_info), action = true,
-    ) { copy(code) }
 }
 
 // ---------------------------------------------------------------------------- Browser remote
@@ -354,13 +274,10 @@ val speakersTvsBrowserOldGroups: Map<String, String> by lazy { mapOf(tr(R.string
 
 /** The page's lines in Settings' search (each names the group it is drawn in). */
 val speakersTvsBrowserIndex: List<SettingEntry> by lazy {
-    val tvGroup = tr(R.string.prism_on_a_tv)
     val browser = tr(R.string.cn_browser_remote)
     val handoff = tr(R.string.handoff)
     with(SettingNeeds) {
         listOf(
-            SettingEntry(page, tvGroup, tr(R.string.share_prism_with_a_tv), tr(R.string.tv_install_keywords) + " " + tr(R.string.from_this_phone_over_your_wi_fi)),
-            SettingEntry(page, tvGroup, tr(R.string.downloader_code), tr(R.string.tv_install_keywords)),
             // "From a computer or tablet on this Wi-Fi" was the switch's second line.
             SettingEntry(
                 page, browser, tr(R.string.control_from_a_browser),

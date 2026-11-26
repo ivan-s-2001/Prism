@@ -179,14 +179,6 @@ open class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        // Prism TV (1.8.0): on a TV, Prism's screens are TvActivity's (made for a remote); whatever opened this one (a
-        // link, the media notification, an old shortcut) opens that instead.
-        if (com.prism.music.ui.tv.TvDevice.isTv(this)) {
-            // Added to its flags, not in their place: a shared file's or link's read permission comes with them.
-            startActivity(Intent(intent).setComponent(android.content.ComponentName(this, TvActivity::class.java)).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP))
-            finish()
-            return
-        }
         val c = container
         c.player.connect()
         // The downloads start in the background (their index and cache come off the disk) while the first frame draws;
@@ -263,7 +255,7 @@ open class MainActivity : ComponentActivity() {
     /** A touch or key: the listener is here (desk mode's ambient screen waits, or goes). */
     override fun onUserInteraction() {
         super.onUserInteraction()
-        com.prism.music.ui.tv.Idle.touched()
+        com.prism.music.ui.ambient.Idle.touched()
     }
 
     /** Every touch: on slow phones background song scans wait while the listener scrolls (#343). */
@@ -610,7 +602,7 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
         }
         com.prism.music.ui.components.HandoffDialogs()
         // Desk mode (#265, 1.8.0, off unless switched on): the ambient screen while charging and playing.
-        com.prism.music.ui.tv.AmbientHost(onTv = false)
+        com.prism.music.ui.ambient.AmbientHost(onTv = false)
         LaunchedEffect(Unit) {
             deepLink.collect { uri -> if (uri != null) { handleDeepLink(uri, navigator, c); deepLink.value = null } }
         }

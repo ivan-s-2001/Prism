@@ -208,7 +208,7 @@ class Handoff(private val app: Application, private val c: AppContainer) : Hando
 
     // ------------------------------------------------------------ A TV's side (1.8.0)
 
-    override val isTv: Boolean by lazy { com.prism.music.ui.tv.TvDevice.isTv(app) }
+    override val isTv: Boolean = false
 
     private val tvPairing = PairingCode()
     /** The code the TV's pairing screen shows, while it's open; a TV takes pairings only then. */

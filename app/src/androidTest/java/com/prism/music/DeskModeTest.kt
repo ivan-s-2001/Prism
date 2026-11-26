@@ -8,7 +8,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.prism.music.playback.QueueKind
 import com.prism.music.playback.QueueSource
-import com.prism.music.ui.tv.TAG_AMBIENT
+import com.prism.music.ui.ambient.TAG_AMBIENT
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertTrue

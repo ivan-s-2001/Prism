@@ -1,4 +1,4 @@
-package com.prism.music.ui.tv
+package com.prism.music.ui.ambient
 
 import android.os.BatteryManager
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -165,9 +165,7 @@ fun AmbientHost(onTv: Boolean, content: (@Composable () -> Unit)? = null) {
     if (shown && onTv) androidx.activity.compose.BackHandler { Idle.touched() }
     if (shown) {
         val ambient: @Composable () -> Unit = {
-            TvTheme(settings) {
-                AmbientNow(c, Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { Idle.touched() } })
-            }
+            AmbientNow(c, Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { Idle.touched() } })
         }
         // A phone: a window of its own over all of Prism (Back or a tap brings Prism back). A TV: drawn over the
         // screens, so the remote's keys keep going through the activity.
@@ -183,19 +181,17 @@ fun AmbientHost(onTv: Boolean, content: (@Composable () -> Unit)? = null) {
 /** What the ambient screen shows now: the song, the line being sung (when it has lyrics), the time, drifting. */
 @Composable
 fun AmbientNow(c: AppContainer, modifier: Modifier = Modifier) {
-    val now = rememberTvNow(c)
     val song by c.player.currentSong.collectAsState()
     val clock by produceState(System.currentTimeMillis()) { while (true) { value = System.currentTimeMillis(); delay(CHECK_MS * 2) } }
     val time = remember(clock / 60_000) { DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(clock)) }
-    val accent = rememberTvAccent(now?.art)
     val line = song?.let { s ->
         val lyrics = rememberLyricsState(s)
         val lines = lyrics.lines
         val at by produceState(-1, lines) { while (true) { value = CarLyricsCard.lineAt(lines, c.player.lyricPosition); delay(500) } }
         lines.getOrNull(at)?.text?.takeIf { it.isNotBlank() }
     }
-    val n = now ?: return
-    TvAmbientScreen(n, line, time, modifier, drift = ambientDrift(clock), accent = accent)
+    val n = song ?: return
+    PhoneAmbientScreen(n, line, time, modifier, drift = ambientDrift(clock))
 }
 
 private fun isCharging(context: android.content.Context): Boolean =

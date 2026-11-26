@@ -1,7 +1,8 @@
-package com.prism.music.ui.tv
+package com.prism.music.ui.ambient
 
 import android.service.dreams.DreamService
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,8 +28,8 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
-import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Text
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import com.prism.music.R
 import com.prism.music.container
 import com.prism.music.ui.theme.LocalContainer
@@ -60,7 +61,7 @@ class PrismDream : DreamService(), LifecycleOwner, SavedStateRegistryOwner {
         setContentView(ComposeView(this).apply {
             setViewTreeLifecycleOwner(this@PrismDream)
             setViewTreeSavedStateRegistryOwner(this@PrismDream)
-            setContent { CompositionLocalProvider(LocalContainer provides c) { TvTheme { DreamContent() } } }
+            setContent { CompositionLocalProvider(LocalContainer provides c) { androidx.compose.material3.MaterialTheme(colorScheme = androidx.compose.material3.darkColorScheme()) { DreamContent() } } }
         })
     }
 
@@ -88,7 +89,7 @@ fun DreamContent() {
     if (song != null) { AmbientNow(c, Modifier.fillMaxSize().testTag(TAG_DREAM)); return }
     val clock by produceState(System.currentTimeMillis()) { while (true) { value = System.currentTimeMillis(); delay(10_000) } }
     val drift = ambientDrift(clock)
-    Box(Modifier.fillMaxSize().tvBackdrop(null, Color(0xFF050507)).testTag(TAG_DREAM), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().background(Color(0xFF050507)).testTag(TAG_DREAM), contentAlignment = Alignment.Center) {
         Column(Modifier.offset(drift.x * 3, drift.y * 3), horizontalAlignment = Alignment.CenterHorizontally) {
             Image(painterResource(R.drawable.ic_launcher_foreground), null, Modifier.size(160.dp))
             Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(clock)), style = MaterialTheme.typography.displayMedium, color = Color(0xFFD8D8DE).copy(alpha = 0.7f))

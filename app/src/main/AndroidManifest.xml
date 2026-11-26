@@ -34,10 +34,6 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
-    <!-- Prism TV (1.8.0): the same APK on Android TV and Google TV. A TV has no touchscreen, often no Wi-Fi (Ethernet),
-         camera or autofocus; none of them is needed (microphone and camera are declared above). -->
-    <uses-feature android:name="android.software.leanback" android:required="false" />
-    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.hardware.wifi" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
@@ -58,7 +54,6 @@
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
-        android:banner="@drawable/tv_banner"
         android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
@@ -193,24 +188,9 @@
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity-alias>
 
-        <!-- Prism TV (1.8.0): the TV launcher's entry, with its own screens for a remote (ui/tv). On a TV the phone's
-             screen above sends itself here. -->
-        <activity
-            android:name=".TvActivity"
-            android:banner="@drawable/tv_banner"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode"
-            android:exported="true"
-            android:launchMode="singleTask"
-            android:theme="@style/Theme.Prism">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
-            </intent-filter>
-        </activity>
-
         <!-- Prism's screensaver (1.8.0), where the TV or phone lets you pick one: the ambient screen. -->
         <service
-            android:name=".ui.tv.PrismDream"
+            android:name=".ui.ambient.PrismDream"
             android:exported="true"
             android:label="@string/app_name"
             android:permission="android.permission.BIND_DREAM_SERVICE">

@@ -78,8 +78,6 @@ class PrismApp : Application(), coil3.SingletonImageLoader.Factory {
                 coil3.disk.DiskCache.Builder()
                     .directory(File(context.cacheDir, "image_cache").absolutePath.toPath())
                     .maxSizePercent(0.02)
-                    // #535: a TV box has 8 GB in all; pictures keep to less there.
-                    .apply { if (com.prism.music.ui.tv.TvDevice.isTv(context)) maximumMaxSizeBytes(com.prism.music.data.TvCacheRoom.IMAGES) }
                     .build()
             }
             .build()
@@ -505,7 +503,7 @@ class AppContainer(val app: Application) {
         )
     }
     /** #535: a TV (Android TV / Google TV): the caches keep to [com.prism.music.data.TvCacheRoom]'s smaller rooms. */
-    val isTv: Boolean by lazy { com.prism.music.ui.tv.TvDevice.isTv(app) }
+    val isTv: Boolean = false
     private val freeSpace by lazy { com.prism.music.data.TvCacheRoom.FreeSpace { app.cacheDir.usableSpace } }
     /** Recently played animated covers and loops together. */
     private val canvasRecentBytes: Long get() = if (isTv) com.prism.music.data.TvCacheRoom.CANVAS else 400L * 1024 * 1024
@@ -787,8 +785,6 @@ class AppContainer(val app: Application) {
     private val webRemoteMade = lazy { com.prism.music.connect.WebRemote(app, this) }
     /** Prism Connect: Prism played from a browser on the same Wi-Fi (Settings → Prism Connect). */
     val webRemote by webRemoteMade
-    /** Prism on a TV: this phone's own copy handed to a TV on the Wi-Fi while its settings group is switched on. */
-    val tvInstall by lazy { com.prism.music.connect.TvInstall { com.prism.music.connect.TvInstall.installedApk(app.applicationInfo) } }
     /** Rewind: each year in music (Replay → a year). */
     val rewind by lazy { com.prism.music.data.Rewinds(this) }
     /** A year's Rewind to open (Home's Rewind card, the 1 December notification): Replay shows it and clears this. */
