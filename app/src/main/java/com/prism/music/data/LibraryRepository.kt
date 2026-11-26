@@ -30,7 +30,21 @@ import kotlinx.coroutines.flow.combine
 
 enum class SyncState { IDLE, SYNCING, DONE, ERROR }
 
+@kotlinx.serialization.Serializable
 internal enum class SongReaction { NONE, LIKE, DISLIKE }
+
+@kotlinx.serialization.Serializable
+internal data class ReactionRequest(
+    val song: Song,
+    val target: SongReaction,
+    val remoteKey: String?,
+    val operationId: String = java.util.UUID.randomUUID().toString(),
+) {
+    val journalKey: String get() = reactionJournalKey(song.id, remoteKey)
+}
+
+internal fun reactionJournalKey(id: String, remoteKey: String?): String =
+    "${remoteKey ?: "device"}\n$id"
 
 internal fun mergeProfileArtists(
     local: List<FavoriteArtist>,
@@ -187,6 +201,7 @@ class LibraryRepository(private val c: AppContainer) {
         }
         }
         }
+        restoreReactionJournal()
         syncInBackground()
     }
 
@@ -224,7 +239,7 @@ class LibraryRepository(private val c: AppContainer) {
         }
     }
 
-    private data class ReactionRequest(val song: Song, val target: SongReaction, val remoteKey: String?)
+    private val reactionJournal = c.app.getSharedPreferences("reaction_journal", android.content.Context.MODE_PRIVATE)
     private val reactionLock = Mutex()
     private val remoteReactionLock = Mutex()
     private val remoteReactionWake = Channel<Unit>(Channel.CONFLATED)
@@ -234,19 +249,42 @@ class LibraryRepository(private val c: AppContainer) {
     // Guard against the brief delay between a write ACK and its appearance in the remote liked playlist.
     private val acknowledgedReactions = mutableMapOf<String, MutableMap<String, AcknowledgedReaction>>()
 
+    private fun reactionOwner(id: String): String? =
+        remoteReactionKey().takeIf { c.settings.current.isLoggedIn && !id.startsWith(Song.LOCAL_PREFIX) }
+
+    private fun journalReaction(request: ReactionRequest): Boolean =
+        reactionJournal.edit().putString(request.journalKey,
+            com.prism.music.data.innertube.InnerTube.json.encodeToString(ReactionRequest.serializer(), request)).commit()
+
+    /** Replay committed but unfinished edits. A different account's journal remains on disk until it returns. */
+    private fun restoreReactionJournal() = synchronized(pendingReactions) {
+        for ((key, raw) in reactionJournal.all) {
+            if (key in pendingReactions || raw !is String) continue
+            val request = runCatching {
+                com.prism.music.data.innertube.InnerTube.json.decodeFromString(ReactionRequest.serializer(), raw)
+            }.getOrNull() ?: continue
+            if (key != request.journalKey || request.remoteKey != reactionOwner(request.song.id)) continue
+            pendingReactions[key] = request
+            reactionWriter
+            reactionRequests.trySend(request)
+        }
+    }
+
     // One ordered local writer. Remote operations are serialized independently, never holding the local lock during I/O.
     private val reactionWriter by lazy {
         c.scope.launch(Dispatchers.IO) {
             for (request in reactionRequests) {
                 try {
                     val applied = reactionLock.withLock {
-                        // A queued edit from the previous channel must never change the new channel's local mirror.
-                        if (request.remoteKey != null && !request.song.isLocal &&
-                            (!c.settings.current.isLoggedIn || request.remoteKey != remoteReactionKey())) {
-                            savePendingRemote(request.remoteKey, pendingRemote(request.remoteKey) + (request.song.id to request.target))
-                            false
-                        } else {
+                        // The disk journal already contains the latest intent, so obsolete queued writes can be skipped.
+                        val latest = synchronized(pendingReactions) { pendingReactions[request.journalKey] === request }
+                        if (!latest || request.remoteKey != reactionOwner(request.song.id)) false
+                        else {
                             applyReaction(request.song, request.target, request.remoteKey)
+                            synchronized(pendingReactions) {
+                                if (pendingReactions[request.journalKey] === request)
+                                    check(reactionJournal.edit().remove(request.journalKey).commit()) { "Could not finish reaction journal" }
+                            }
                             true
                         }
                     }
@@ -266,7 +304,7 @@ class LibraryRepository(private val c: AppContainer) {
                     lastError.value = e.friendlyMessage()
                 } finally {
                     synchronized(pendingReactions) {
-                        if (pendingReactions[request.song.id] === request) pendingReactions.remove(request.song.id)
+                        if (pendingReactions[request.journalKey] === request) pendingReactions.remove(request.journalKey)
                     }
                 }
             }
@@ -280,7 +318,7 @@ class LibraryRepository(private val c: AppContainer) {
     }
 
     private fun desiredReaction(id: String): SongReaction = synchronized(pendingReactions) {
-        pendingReactions[id]?.target ?: storedReaction(id)
+        pendingReactions[reactionJournalKey(id, reactionOwner(id))]?.target ?: storedReaction(id)
     }
 
     fun isDisliked(id: String) = desiredReaction(id) == SongReaction.DISLIKE
@@ -288,11 +326,18 @@ class LibraryRepository(private val c: AppContainer) {
 
     private fun requestReaction(song: Song, choose: (SongReaction) -> SongReaction): SongReaction =
         synchronized(pendingReactions) {
-            val current = pendingReactions[song.id]?.target ?: storedReaction(song.id)
+            val owner = reactionOwner(song.id)
+            val key = reactionJournalKey(song.id, owner)
+            val current = pendingReactions[key]?.target ?: storedReaction(song.id)
             if (song.isRss) return@synchronized current
             val target = choose(current)
-            val request = ReactionRequest(song, target, remoteReactionKey().takeIf { c.settings.current.isLoggedIn })
-            pendingReactions[song.id] = request
+            val request = ReactionRequest(song, target, owner)
+            // Persist before returning the optimistic state to the UI, including metadata needed for recovery.
+            if (!journalReaction(request)) {
+                lastError.value = "Could not save reaction"
+                return@synchronized current
+            }
+            pendingReactions[key] = request
             reactionWriter
             reactionRequests.trySend(request)
             target
@@ -336,7 +381,7 @@ class LibraryRepository(private val c: AppContainer) {
         }.toMap()
 
     private fun savePendingRemote(key: String, pending: Map<String, SongReaction>) {
-        dislikePrefs.edit().putStringSet(key, pending.map { (id, target) -> "$id\t${target.name}" }.toSet()).commit()
+        check(dislikePrefs.edit().putStringSet(key, pending.map { (id, target) -> "$id\t${target.name}" }.toSet()).commit()) { "Could not save remote reaction queue" }
     }
 
     /** Local state wins until its latest explicit change is acknowledged by the same remote account. */
@@ -376,27 +421,28 @@ class LibraryRepository(private val c: AppContainer) {
         // Write metadata before publishing the exclusion so it can be edited after a restart.
         if (wasLiked != liked || (disliked && existing == null)) {
             songs.upsert(song.toEntity(existing).copy(liked = liked, likedAt = if (liked) System.currentTimeMillis() else 0))
-            if (wasLiked != liked) c.lastFm.liked(song, liked)
+            if (wasLiked != liked) runCatching { c.lastFm.liked(song, liked) }
         }
         if (disliked) {
             val next = dislikedIds.value + song.id
-            dislikePrefs.edit().putStringSet("ids", next).commit()
+            check(dislikePrefs.edit().putStringSet("ids", next).commit()) { "Could not save dislikes" }
             dislikedIds.value = next
         }
         if (!disliked && oldDisliked) {
             val next = dislikedIds.value - song.id
-            dislikePrefs.edit().putStringSet("ids", next).commit()
+            check(dislikePrefs.edit().putStringSet("ids", next).commit()) { "Could not save dislikes" }
             dislikedIds.value = next
         }
-        if (disliked && c.downloads.downloads.value.containsKey(song.id) && existing?.smartDownload == true) {
-            c.downloads.remove(song.id, byListener = false)
-        }
-        if (target != SongReaction.DISLIKE) c.recFeedback.forgiveTrack(song.id)
-        if (song.isLocal) return
-        if (liked && !wasLiked && c.settings.current.downloadLikes) c.downloads.download(song)
-        if (remoteKey != null) {
+        if (remoteKey != null && !song.isLocal) {
             savePendingRemote(remoteKey, pendingRemote(remoteKey) + (song.id to target))
             remoteReactionWake.trySend(Unit)
+        }
+        // Nonessential integrations cannot prevent the durable preference from being saved.
+        runCatching {
+            if (disliked && c.downloads.downloads.value.containsKey(song.id) && existing?.smartDownload == true)
+                c.downloads.remove(song.id, byListener = false)
+            if (target != SongReaction.DISLIKE) c.recFeedback.forgiveTrack(song.id)
+            if (!song.isLocal && liked && !wasLiked && c.settings.current.downloadLikes) c.downloads.download(song)
         }
     }
 
@@ -692,6 +738,10 @@ class LibraryRepository(private val c: AppContainer) {
 
     init {
         c.scope.launch(Dispatchers.IO) {
+            kotlinx.coroutines.delay(1_000L)
+            restoreReactionJournal()
+        }
+        c.scope.launch(Dispatchers.IO) {
             for (wake in remoteReactionWake) flushRemoteReactions()
         }
         c.scope.launch(Dispatchers.IO) {
@@ -706,6 +756,7 @@ class LibraryRepository(private val c: AppContainer) {
         c.scope.launch(Dispatchers.IO) {
             while (isActive) {
                 kotlinx.coroutines.delay(60_000L)
+                restoreReactionJournal()
                 flushRemoteReactions()
                 flushArtistEdits()
             }
