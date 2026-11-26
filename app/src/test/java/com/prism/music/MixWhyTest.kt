@@ -22,9 +22,6 @@ import com.prism.music.playback.MixWhy
 import com.prism.music.playback.mixWhyHeld
 import com.prism.music.playback.mixWhyNot
 import com.prism.music.playback.toMediaItem
-import com.prism.music.ui.player.QUEUE_DJ_WHY
-import com.prism.music.ui.player.QueueHeader
-import com.prism.music.ui.player.queueDjWhy
 import com.prism.music.ui.screens.settings.crossfadeInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -283,21 +280,4 @@ class MixWhyTest {
         assertTrue(with, with.startsWith(base) && with.endsWith("\n\nLast time: This song is shorter than 30 seconds."))
     }
 
-    @Test fun theDjChipsInfoShowsWhyOnATap() {
-        assertNull("no reason: no ⓘ", queueDjWhy(null, mixing = true))
-        assertNull("Mix and DJ off: no ⓘ", queueDjWhy(MixWhy.VIDEO, mixing = false))
-        val line = queueDjWhy(MixWhy.SLOW, mixing = true)!!
-        compose.setContent { QueueHeader("Queue", dj = true, onDj = {}, djWhy = line, onSave = null, onClear = null, locked = false, onLock = {}) }
-        compose.waitForIdle()
-        assertEquals("behind the ⓘ, not on the row", 0, compose.onAllNodes(hasText(line)).fetchSemanticsNodes().size)
-        compose.onNodeWithTag(QUEUE_DJ_WHY).performClick()
-        compose.waitForIdle()
-        assertEquals(1, compose.onAllNodes(hasText("Last time: Getting the blend ready took too long.")).fetchSemanticsNodes().size)
-    }
-
-    @Test fun withNoReasonTheDjChipHasNoInfo() {
-        compose.setContent { QueueHeader("Queue", dj = true, onDj = {}, djWhy = null, onSave = null, onClear = null, locked = false, onLock = {}) }
-        compose.waitForIdle()
-        assertFalse(compose.onAllNodes(androidx.compose.ui.test.hasTestTag(QUEUE_DJ_WHY)).fetchSemanticsNodes().isNotEmpty())
-    }
 }

@@ -47,12 +47,12 @@ class PlayerYourWayTest {
     @Test
     fun listsComeBackInTheirOrderAndTheDeckWhole(): Unit = runBlocking {
         val s = settings()
-        s.setPlayerButtons(listOf(PlayerButton.LIKE, PlayerButton.SLEEP, PlayerButton.QUEUE, PlayerButton.DJ))
+        s.setPlayerButtons(listOf(PlayerButton.LIKE, PlayerButton.SLEEP, PlayerButton.QUEUE, PlayerButton.EQUALIZER))
         s.setSessionButtons(listOf(SessionButton.BACK_10, SessionButton.AHEAD_30))
         // A deck saved without some parts (an older order, say) still has every part, the missing ones at the end.
         s.setPlayerDeck(listOf(DeckPart.TRANSPORT, DeckPart.SCRUBBER))
         val now = withTimeout(5_000) { s.flow.first { it.player.buttons.first() == PlayerButton.LIKE && it.sessionButtons.size == 2 && it.player.deck.first() == DeckPart.TRANSPORT } }
-        assertEquals(listOf(PlayerButton.LIKE, PlayerButton.SLEEP, PlayerButton.QUEUE, PlayerButton.DJ), now.player.buttons)
+        assertEquals(listOf(PlayerButton.LIKE, PlayerButton.SLEEP, PlayerButton.QUEUE, PlayerButton.EQUALIZER), now.player.buttons)
         assertEquals(listOf(SessionButton.BACK_10, SessionButton.AHEAD_30), now.sessionButtons)
         assertEquals(listOf(DeckPart.TRANSPORT, DeckPart.SCRUBBER, DeckPart.STRIP, DeckPart.VOLUME, DeckPart.BUTTONS), now.player.deck)
         s.setGesture("cover_long_press", PlayerGesture.MENU)

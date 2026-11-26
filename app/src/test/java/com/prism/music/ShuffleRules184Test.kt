@@ -74,14 +74,13 @@ class ShuffleRules184Test {
 
     @Test fun whatANewQueueIs() {
         val list = (0 until 5).map { Song("s$it", "Song $it") }
-        fun kind(source: QueueSource, songs: List<Song> = list, start: Int = 0, video: Boolean = false, dj: Boolean = false) = startKind(source, songs, start, video, dj)
+        fun kind(source: QueueSource, songs: List<Song> = list, start: Int = 0, video: Boolean = false) = startKind(source, songs, start, video)
         for (k in listOf(QueueKind.PLAYLIST, QueueKind.ALBUM, QueueKind.LIBRARY, QueueKind.REPLAY, QueueKind.OTHER)) {
             assertEquals("$k", StartKind.LIST, kind(QueueSource(k, "x"), start = 3))
         }
         assertEquals(StartKind.RADIO, kind(QueueSource(QueueKind.RADIO, "x")))
         assertEquals(StartKind.SINGLE, kind(QueueSource(QueueKind.SINGLE, "x"), songs = list.take(1)))
         assertEquals("one song isn't a list", StartKind.SINGLE, kind(QueueSource(QueueKind.PLAYLIST, "x"), songs = list.take(1)))
-        assertEquals(StartKind.DJ_SET, kind(QueueSource(QueueKind.ALBUM, "x"), dj = true))
         assertEquals(StartKind.VIDEO, kind(QueueSource(QueueKind.PLAYLIST, "x"), video = true))
         val spoken = list.toMutableList().also { it[2] = it[2].copy(isEpisode = true) }
         assertEquals(StartKind.SPOKEN, kind(QueueSource(QueueKind.OTHER, "x"), songs = spoken, start = 2))

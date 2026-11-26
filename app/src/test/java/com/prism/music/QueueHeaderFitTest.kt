@@ -45,7 +45,7 @@ class QueueHeaderFitTest {
             val base = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(base.density * displaySize, fontScale)) {
                 Box(Modifier.width(widthDp.dp).background(Color.Black)) {
-                    QueueHeader(title, dj = false, onDj = {}, onSave = {}, onClear = {}, locked = false, onLock = {})
+                    QueueHeader(title, onSave = {}, onClear = {}, locked = false, onLock = {})
                 }
             }
         }
@@ -68,7 +68,7 @@ class QueueHeaderFitTest {
         val nodes = all(root)
         val texts = nodes.filter { textOf(it) != null }
         val lock = nodes.single { it.config.getOrNull(SemanticsProperties.ContentDescription) != null }
-        assertEquals("the title, DJ, Save and Clear", 4, texts.size)
+        assertEquals("the title, Save and Clear", 3, texts.size)
         for (t in texts) {
             val name = textOf(t)
             val layout = layoutOf(t)

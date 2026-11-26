@@ -92,12 +92,12 @@ class PlayerMergeTest {
         assertEquals(three + fourth, VideoControls.choices(fourth))
     }
 
-    @Test fun theQueueChipsAreTheFiveSwitches() {
-        val all = flags(5)
-        assertEquals(32, all.size)
+    @Test fun theQueueChipsAreTheFourSwitches() {
+        val all = flags(4)
+        assertEquals(16, all.size)
         for (stored in all) assertEquals("$stored", stored, QueueChip.toStored(QueueChip.toMerged(stored)))
-        assertEquals(32, all.map { QueueChip.toMerged(it) }.toSet().size)
-        assertEquals(setOf(QueueChip.HEADINGS, QueueChip.DJ), QueueChip.toMerged(listOf(true, true, false, false, false)))
+        assertEquals(16, all.map { QueueChip.toMerged(it) }.toSet().size)
+        assertEquals(setOf(QueueChip.HEADINGS, QueueChip.LENGTHS), QueueChip.toMerged(listOf(true, true, false, false)))
     }
 
     @Test fun theLyricsAndQueueChipsAreTheThreeSwitches() {

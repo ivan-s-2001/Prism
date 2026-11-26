@@ -121,7 +121,7 @@ class PlayerEditorTest {
         assertTrue(s.shows(PlayerPart.SHUFFLE_REPEAT))
         assertTrue(s.shows(PlayerPart.VOLUME))
         assertTrue("no new state for anyone yet", s.view.parts == PlayerParts())
-        assertEquals(listOf(PlayerButton.QUEUE, PlayerButton.SLEEP, PlayerButton.DJ), s.player.buttons)
+        assertEquals(listOf(PlayerButton.QUEUE, PlayerButton.SLEEP), s.player.buttons)
         // Their row had no lyrics button: the menu offers the lyrics (the video button wasn't on it either).
         assertEquals(listOf(MenuAction.OPEN_LYRICS, MenuAction.VIDEO_SWITCH), s.menuFromPlayer())
     }
@@ -214,9 +214,9 @@ class PlayerEditorTest {
     /** Hiding a part never takes a feature away: what it did shows in the menu. */
     @Test fun hiddenPartsBringTheirActionsToTheMenu() {
         val d = AppSettings()
-        val noRow = d.copy(view = ViewLook(parts = PlayerParts(hidden = setOf(PlayerPart.BUTTONS, PlayerPart.PREV_NEXT))), player = d.player.copy(buttons = listOf(PlayerButton.LYRICS, PlayerButton.DJ, PlayerButton.EQUALIZER)))
+        val noRow = d.copy(view = ViewLook(parts = PlayerParts(hidden = setOf(PlayerPart.BUTTONS, PlayerPart.PREV_NEXT))), player = d.player.copy(buttons = listOf(PlayerButton.LYRICS, PlayerButton.EQUALIZER)))
         assertEquals(
-            listOf(MenuAction.OPEN_LYRICS, MenuAction.OPEN_QUEUE, MenuAction.VIDEO_SWITCH, MenuAction.PREVIOUS, MenuAction.NEXT, MenuAction.DJ, MenuAction.EQUALIZER),
+            listOf(MenuAction.OPEN_LYRICS, MenuAction.OPEN_QUEUE, MenuAction.VIDEO_SWITCH, MenuAction.PREVIOUS, MenuAction.NEXT, MenuAction.EQUALIZER),
             noRow.menuFromPlayer(),
         )
         // Audio only (the old Song / Video switch off): no music video anywhere.
