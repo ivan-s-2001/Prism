@@ -290,7 +290,7 @@ fun TvPlayerPage(nav: TvNav) {
                 onLike = { c.player.currentSong.value?.let { c.library.toggleLike(it) } },
                 onDislike = song?.let { current -> { val on = !c.library.isDisliked(current.id); c.library.setDisliked(current, on); if (on && c.player.currentSong.value?.id == current.id && c.player.hasNext.value) c.player.next() } },
                 disliked = song?.id?.let { it in c.library.dislikedIds.collectAsState().value } == true,
-                onVibe = song?.takeIf { com.prism.music.ui.player.canStartTrackVibe(it) }?.let { current -> { c.player.playRadio(current, announce = true) } },
+                onVibe = song?.takeIf { com.prism.music.ui.player.canStartTrackVibe(it) }?.let { current -> { c.player.playTrackVibe(current, announce = true) } },
                 onMore = { panel = Panel.MORE },
                 accent = accent,
                 onSeek = { ms -> c.player.seekBy(ms) },
@@ -354,7 +354,7 @@ fun TvLyricsPage(nav: TvNav) = TvSongLyrics({ nav.back() })
  * check. [close] puts the panel away first.
  */
 internal fun songActions(c: AppContainer, nav: TvNav, s: com.prism.music.data.model.Song?, singReady: Boolean, close: () -> Unit): List<TvAction> = buildList {
-    if (s != null && !s.isLive && !s.isEpisode) add(TvAction(tr(R.string.prism_vibe_from_track), com.prism.music.ui.theme.PrismIcons.Stream) { close(); c.player.playRadio(s, announce = true) })
+    if (s != null && !s.isLive && !s.isEpisode) add(TvAction(tr(R.string.prism_vibe_from_track), com.prism.music.ui.theme.PrismIcons.Stream) { close(); c.player.playTrackVibe(s, announce = true) })
     s?.album?.id?.let { id -> add(TvAction(tr(R.string.go_to_album), com.prism.music.ui.theme.PrismIcons.Album) { close(); nav.go(TvRoute.Collection(AlbumItem(id, s.album.title, s.primaryArtist, s.thumbnail))) }) }
     s?.artists?.filter { it.id != null }?.forEach { a -> add(TvAction(a.name, com.prism.music.ui.theme.PrismIcons.Person) { close(); nav.go(TvRoute.Artist(a.id!!)) }) }
     // Sing, once this TV passed its speed check (Settings → Sing).

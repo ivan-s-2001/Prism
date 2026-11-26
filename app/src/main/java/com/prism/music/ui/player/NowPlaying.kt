@@ -1136,7 +1136,7 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                 )
                 val trackVibe = canStartTrackVibe(song)
                 if (trackVibe) com.prism.music.ui.screens.ContextVibePill(
-                    onClick = { pc.playRadio(song, announce = true) },
+                    onClick = { pc.playTrackVibe(song, announce = true) },
                     modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp).testTag("player:trackVibe"))
                 if (collapse.value < 0.999f && settings.showPlayingFrom && originAlbum != null) PlaybackOriginCaption(
                     // The song's own album, which needn't be what's playing (a playlist, a radio): not "Playing from".

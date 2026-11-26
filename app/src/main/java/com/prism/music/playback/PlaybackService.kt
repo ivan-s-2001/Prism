@@ -89,8 +89,11 @@ internal data class SavedQueue(
     val vibeOrigin: VibeOrigin? = null,
 ) {
     fun source(): QueueSource = QueueSource(
-        QueueKind.entries.firstOrNull { it.name == sourceKind } ?: QueueKind.OTHER, title, seedId, originId, vibeAnchors = vibeAnchors, vibeOrigin = vibeOrigin,
-    ).normalizedVibe()
+        QueueKind.restore(sourceKind, seedId != null || vibeAnchors.isNotEmpty() || vibeOrigin != null ||
+            com.prism.music.data.foryou.MyWave.isOrigin(originId)),
+        if (sourceKind == "RADIO") vibeOrigin?.name ?: title else title,
+        seedId, originId, vibeAnchors = vibeAnchors, vibeOrigin = vibeOrigin,
+    )
 }
 
 /**
@@ -164,12 +167,12 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
     private val shuffleCommand = SessionCommand("prism.SHUFFLE", Bundle.EMPTY)
     private val repeatCommand = SessionCommand("prism.REPEAT", Bundle.EMPTY)
     private val lyricsCommand = SessionCommand("prism.CAR_LYRICS", Bundle.EMPTY)
-    private val radioCommand = SessionCommand("prism.RADIO", Bundle.EMPTY)
+    private val vibeCommand = SessionCommand("prism.VIBE", Bundle.EMPTY)
     private val dislikeCommand = SessionCommand("prism.DISLIKE", Bundle.EMPTY)
     // 1.7.4: buttons the listener can put beside play (Settings → Player → Buttons → Notification and car).
     private val back10Command = SessionCommand("prism.BACK_10", Bundle.EMPTY)
     private val ahead30Command = SessionCommand("prism.AHEAD_30", Bundle.EMPTY)
-    private val customCommands get() = listOf(likeCommand, shuffleCommand, repeatCommand, lyricsCommand, radioCommand, dislikeCommand, back10Command, ahead30Command)
+    private val customCommands get() = listOf(likeCommand, shuffleCommand, repeatCommand, lyricsCommand, vibeCommand, dislikeCommand, back10Command, ahead30Command)
     /** What the media session (Android Auto, the notification) sees: the player, with lyrics laid over the title and cover. */
     private lateinit var sessionPlayer: LyricsOverlayPlayer
     private lateinit var carLyrics: CarLyrics
@@ -1938,7 +1941,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 if (!offline && c.settings.current.behavior.autoplayNoRepeats &&
                     accepted.any { com.prism.music.data.foryou.LocalRadio.sameSong(it) in pastKeys })
                     c.player.reportError(tr(R.string.no_repeats_ran_out))
-                else if (c.player.radioNotice.take(src, accepted.size)) c.player.reportError(tr(R.string.prism_vibe_started))
+                else if (c.player.vibeNotice.take(src, accepted.size)) c.player.reportError(tr(R.string.prism_vibe_started))
             }
         }
         autoplayJob = job
@@ -2817,7 +2820,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 }
                 SessionButton.CAR_LYRICS -> if (carLyrics.button.showing) button(CommandButton.ICON_SUBTITLES, tr(R.string.hide_lyrics), lyricsCommand)
                     else button(CommandButton.ICON_SUBTITLES_OFF, tr(R.string.show_lyrics), lyricsCommand)
-                SessionButton.RADIO -> button(CommandButton.ICON_RADIO, tr(R.string.prism_vibe_from_track), radioCommand)
+                SessionButton.RADIO -> button(CommandButton.ICON_RADIO, tr(R.string.prism_vibe_from_track), vibeCommand)
                 SessionButton.DISLIKE -> button(CommandButton.ICON_THUMB_DOWN_UNFILLED, tr(R.string.not_for_me), dislikeCommand)
                 SessionButton.BACK_10 -> button(CommandButton.ICON_SKIP_BACK_10, tr(R.string.back_10_seconds), back10Command)
                 SessionButton.AHEAD_30 -> button(CommandButton.ICON_SKIP_FORWARD_30, tr(R.string.ahead_30_seconds), ahead30Command)
@@ -2872,10 +2875,10 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
     }
 
     /** System, car and wearable controls use exactly the same entry point as the player UI. */
-    private fun startRadio() {
+    private fun startTrackVibe() {
         val song = player.currentMediaItem?.toSong() ?: return
         if (song.isLive || song.isEpisode) return
-        c.player.playRadio(song, announce = true)
+        c.player.playTrackVibe(song, announce = true)
     }
 
     private fun isCar(session: MediaSession, controller: MediaSession.ControllerInfo) =
@@ -3129,7 +3132,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                     else -> Player.REPEAT_MODE_OFF
                 }
                 lyricsCommand.customAction -> carLyrics.toggle()
-                radioCommand.customAction -> startRadio()
+                vibeCommand.customAction -> startTrackVibe()
                 dislikeCommand.customAction -> player.currentMediaItem?.toSong()?.let { song ->
                     c.library.setDisliked(song, true)
                     if (player.hasNextMediaItem()) player.seekToNextMediaItem()

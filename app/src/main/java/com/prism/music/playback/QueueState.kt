@@ -7,7 +7,17 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import java.util.concurrent.ConcurrentHashMap
 
-enum class QueueKind { SINGLE, ALBUM, PLAYLIST, RADIO, LIBRARY, REPLAY, OTHER, VIBE }
+enum class QueueKind { SINGLE, ALBUM, PLAYLIST, LIBRARY, REPLAY, OTHER, VIBE;
+    companion object {
+        /** Source compatibility only; not an enum entry or an independent session kind. */
+        @Deprecated("Use VIBE") val RADIO: QueueKind get() = VIBE
+
+        internal fun restore(name: String?, hasContext: Boolean): QueueKind =
+            if (name == "RADIO") {
+                if (hasContext) VIBE else OTHER
+            } else entries.firstOrNull { it.name == name } ?: OTHER
+    }
+}
 
 @kotlinx.serialization.Serializable
 enum class VibeOriginKind { TRACK, ALBUM, ARTIST, PLAYLIST, COLLECTION, MIX }
@@ -34,17 +44,12 @@ data class QueueSource(
     val vibeAnchors: List<com.prism.music.data.model.Song> = emptyList(),
     val vibeOrigin: VibeOrigin? = null,
 ) {
-    /** RADIO remains readable only to migrate previous releases. New sessions always use VIBE. */
-    val isVibe: Boolean get() = kind == QueueKind.VIBE ||
-        (kind == QueueKind.RADIO && (seedId != null || vibeAnchors.isNotEmpty() || com.prism.music.data.foryou.MyWave.isOrigin(originId)))
+    val isVibe: Boolean get() = kind == QueueKind.VIBE
     val isContextVibe: Boolean get() = isVibe && !isMyWave
     val isMyWave: Boolean get() = isVibe && com.prism.music.data.foryou.MyWave.isOrigin(originId)
-    /** Compatibility for old callers; no separate radio playback mode. */
+    @Deprecated("Use isContextVibe")
     val isSongRadio: Boolean get() = isContextVibe
     val continuousRecommendations: Boolean get() = isVibe
-    fun normalizedVibe(): QueueSource = if (kind != QueueKind.RADIO) this else
-        copy(kind = if (isVibe) QueueKind.VIBE else QueueKind.OTHER,
-            title = vibeOrigin?.name ?: title)
     /** Stream ordering is part of its tuning; shuffle and repeat would defeat that ordering. */
     val allowsOrderModes: Boolean get() = !continuousRecommendations
     /** The same seed in the same context is already running; another track is a new explicit request. */

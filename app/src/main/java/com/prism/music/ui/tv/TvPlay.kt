@@ -23,7 +23,7 @@ object TvPlay {
     fun song(c: AppContainer, row: List<BrowseItem>, index: Int, rowTitle: String, radio: Boolean) {
         val songs = row.filterIsInstance<SongItem>().map { it.song }
         val tapped = (row.getOrNull(index) as? SongItem)?.song ?: return
-        if (radio && !tapped.isEpisode && !tapped.isLive) c.player.playRadio(tapped)
+        if (radio && !tapped.isEpisode && !tapped.isLive) c.player.playTrackVibe(tapped)
         else if (songs.size < 2) c.player.playSingle(tapped)
         else c.player.playQueue(songs, songs.indexOf(tapped).coerceAtLeast(0), QueueSource(QueueKind.OTHER, rowTitle, seedId = tapped.id))
     }

@@ -1,11 +1,11 @@
 package com.prism.music.playback
 
 /**
- * "Radio started" (Reddit, 1.8.8: the Radio buttons gave only a small vibration). A Radio button asks for the notice
+ * "Vibe started" (Reddit, 1.8.8: the Vibe buttons gave only a small vibration). A Vibe button asks for the notice
  * ([asked]) with the radio's queue; it's said once that radio's first songs are in the queue ([take]), so a radio that
  * never gets going (no connection, the explicit filter, another queue started meanwhile) says nothing new.
  */
-class RadioNotice {
+class VibeNotice {
     @Volatile private var waiting: QueueSource? = null
 
     fun asked(source: QueueSource) { waiting = source }
@@ -17,3 +17,6 @@ class RadioNotice {
         return true
     }
 }
+
+@Deprecated("Use VibeNotice")
+typealias RadioNotice = VibeNotice

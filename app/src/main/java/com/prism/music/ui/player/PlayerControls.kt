@@ -1129,7 +1129,7 @@ private fun PlayerButtonGlyph(
                 { if (d != null) c.downloads.remove(s.id) else c.downloads.download(s) }, width, enabled = !s.isLocal && !s.isLive,
             )
         }
-        PlayerButton.RADIO -> BottomGlyph(PrismIcons.Stream, tr(R.string.prism_vibe_from_track), false, { pc.playRadio(s, announce = true) }, width, enabled = !s.isLocal)
+        PlayerButton.RADIO -> BottomGlyph(PrismIcons.Stream, tr(R.string.prism_vibe_from_track), false, { pc.playTrackVibe(s, announce = true) }, width, enabled = !s.isLocal)
         // Songs faster or slower (1.7.4), and higher or lower (1.7.8): a tap opens Speed & pitch; the speed shows while it isn't 1×.
         PlayerButton.SPEED -> {
             val speed by pc.musicSpeed.collectAsState()

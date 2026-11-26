@@ -189,7 +189,7 @@ internal fun WidePlayerContent(
             Column(Modifier.fillMaxSize()) {
                 Box(Modifier.fillMaxWidth().height(if (canStartTrackVibe(song)) 44.dp else if (short) 18.dp else 28.dp).then(dismissGesture)) {
                     if (canStartTrackVibe(song)) com.prism.music.ui.screens.ContextVibePill(
-                        onClick = { pc.playRadio(song, announce = true) },
+                        onClick = { pc.playTrackVibe(song, announce = true) },
                         modifier = Modifier.align(Alignment.CenterEnd))
                     if (com.prism.music.ui.theme.LocalAppSettings.current.player.handle) Box(
                         Modifier.align(Alignment.Center).size(38.dp, 5.dp).clip(RoundedCornerShape(3.dp))

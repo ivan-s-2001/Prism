@@ -491,7 +491,7 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
                             if (!online) { if (offlinePicks.isNotEmpty()) SongSection(cfg, cfg.titled(tr(R.string.quick_picks)), tr(R.string.ready_offline), offlinePicks, snap = true, firstAnchor = firstPick) }
                             else if (pickSongs.isNotEmpty()) SongSection(
                                 cfg, cfg.titled(tr(R.string.quick_picks)), picks?.strapline, pickSongs, snap = true, firstAnchor = firstPick,
-                                play = if (settings.quickPicksRadio) { list, i -> c.player.playRadio(list[i]) } else null,
+                                play = if (settings.quickPicksRadio) { list, i -> c.player.playTrackVibe(list[i]) } else null,
                             )
                         }
                         HomeSections.RECENT -> {

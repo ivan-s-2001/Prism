@@ -59,13 +59,17 @@ enum class StartKind {
     LIST,
     /** One song (Search, a card): Autoplay follows it. */
     SINGLE,
-    RADIO,
+    VIBE,
     /** "Play as a DJ set": DJ mode decides the order. */
     DJ_SET,
     /** Started as its music video. */
     VIDEO,
     /** A podcast episode or a live stream. */
-    SPOKEN,
+    SPOKEN;
+
+    companion object {
+        @Deprecated("Use VIBE") val RADIO: StartKind get() = VIBE
+    }
 }
 
 /** [StartKind] of the queue [songs] starting at [start]; [asVideo]: the first one plays as its video; [dj]: as a DJ set. */
@@ -73,7 +77,7 @@ fun startKind(source: QueueSource, songs: List<Song>, start: Int, asVideo: Boole
     val first = songs.getOrNull(start)
     return when {
         dj -> StartKind.DJ_SET
-        source.isVibe || source.kind == QueueKind.RADIO -> StartKind.RADIO
+        source.isVibe -> StartKind.VIBE
         asVideo -> StartKind.VIDEO
         first?.isEpisode == true || first?.isLive == true -> StartKind.SPOKEN
         source.kind == QueueKind.SINGLE || songs.size < 2 -> StartKind.SINGLE
@@ -395,7 +399,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     }
 
     /** A Radio button's "Radio started", said by the service when the radio's first songs are in. */
-    val radioNotice = RadioNotice()
+    val vibeNotice = VibeNotice()
 
     // ------------------------------------------------------------ Commands
 
@@ -412,7 +416,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
      * when there are no more. They join the queue behind the songs playing ([fillQueue]).
      */
     fun playQueue(songs: List<Song>, startIndex: Int = 0, source: QueueSource, shuffle: Boolean = false, rest: (suspend () -> List<Song>?)? = null) {
-        playQueueRequested(songs, startIndex, source.normalizedVibe(), shuffle, rest, dj = false)
+        playQueueRequested(songs, startIndex, source, shuffle, rest, dj = false)
     }
 
     // DJ belongs to this request, not a mutable flag that a rejected or superseded request can leave behind.
@@ -710,9 +714,9 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     /**
      * Plays [song] and then a radio of songs like it (YouTube Music's), whether or not Autoplay is on. The song playing
      * now carries on where it is, the radio lined up after it (#292: it started again from the top). [announce]: say
-     * "Radio started" once its songs are in ([radioNotice]; the Radio buttons, 1.8.8).
+     * "Radio started" once its songs are in ([vibeNotice]; the Radio buttons, 1.8.8).
      */
-    fun playRadio(song: Song, announce: Boolean = false, contextTitle: String = song.title) {
+    fun playTrackVibe(song: Song, announce: Boolean = false, contextTitle: String = song.title) {
         if (song.isLive || song.isEpisode || c.queue.followingHost) return
         val source = QueueSource(QueueKind.VIBE, contextTitle, seedId = song.id,
             vibeOrigin = VibeOrigin(VibeOriginKind.TRACK, contextTitle, com.prism.music.data.PlaylistCovers.artOf(song), song.artists.joinToString(", ") { it.name }.ifBlank { null }))
@@ -724,7 +728,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
             if (announce) _showVibe.tryEmit(Unit)
             return
         }
-        if (announce) radioNotice.asked(source)
+        if (announce) vibeNotice.asked(source)
         if (p == null || p.mediaItemCount == 0 || p.currentMediaItem?.mediaId != song.id) {
             playQueue(listOf(song), 0, source)
             if (announce && c.queue.source.value == source) _showVibe.tryEmit(Unit)
@@ -756,7 +760,12 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         if (announce) _showVibe.tryEmit(Unit)
     }
 
-    /** Start from the actual context immediately, as track radio does. The service generates subsequent music. */
+    /** Compatibility for callers compiled against the previous entry point; no radio engine. */
+    @Deprecated("Use playTrackVibe")
+    fun playRadio(song: Song, announce: Boolean = false, contextTitle: String = song.title) =
+        playTrackVibe(song, announce, contextTitle)
+
+    /** Start from the actual context immediately, as track Vibe does. The service generates subsequent music. */
     internal suspend fun playContextVibe(title: String, anchors: List<Song>,
         origin: VibeOrigin? = null,
         provider: suspend () -> List<Song> = { emptyList() }): Boolean = withContext(Dispatchers.Main) {
