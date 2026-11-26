@@ -275,8 +275,8 @@ private fun renderYamusicWave(
         val fi = i.toFloat()
         val phase = fi * 2.094f
         val ang = t * 0.12f + phase
-        Blob(0.09f * sin(t * 0.31f + phase), 0.085f * cos(t * 0.23f + phase * 1.3f),
-            cos(ang), sin(ang), (0.27f - fi * 0.025f) * (1f + 0.16f * beat),
+        Blob(0.105f * sin(t * 0.31f + phase), 0.095f * cos(t * 0.23f + phase * 1.3f),
+            cos(ang), sin(ang), (0.31f - fi * 0.028f) * (1f + 0.16f * beat),
             fi * 1.7f, 0.88f - fi * 0.14f)
     }
     // Reuse scratch storage and only calculate the column spectrum for ribbon mode.

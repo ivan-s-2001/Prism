@@ -329,15 +329,15 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         // yamusic-rs-inspired orbit: center snapping, continuous depth and real touch targets.
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val compact = settings.streamCompactScenarios
-            val slotWidth = 88.dp
-            val spacing = ui.gap(8.dp)
+            val slotWidth = 104.dp
+            val spacing = ui.gap(10.dp)
             val sidePadding = if (compact) ui.gap(12.dp) else ((maxWidth - slotWidth) / 2).coerceAtLeast(0.dp)
             LazyRow(Modifier.fillMaxWidth().scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward }),
                 state = scenarioScroll,
                 flingBehavior = rememberSnapFlingBehavior(lazyListState = scenarioScroll,
                     snapPosition = if (compact) SnapPosition.Start else SnapPosition.Center),
                 horizontalArrangement = Arrangement.spacedBy(spacing),
-                contentPadding = PaddingValues(horizontal = sidePadding, vertical = if (compact) 2.dp else 12.dp)) {
+                contentPadding = PaddingValues(horizontal = sidePadding, vertical = if (compact) 2.dp else 18.dp)) {
                 items(shortcuts, key = { it.key }) { shortcut ->
                     val density = androidx.compose.ui.platform.LocalDensity.current
                     val stride = with(density) { (slotWidth + spacing).toPx() }

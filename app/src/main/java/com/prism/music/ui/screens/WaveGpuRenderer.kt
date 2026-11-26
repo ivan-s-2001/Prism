@@ -110,7 +110,7 @@ float band(float p) {
 
 float lobe(float2 p, float i, float softness) {
     float phase = i * 2.094;
-    float2 c = float2(0.09*sin(uTime*0.31+phase), 0.085*cos(uTime*0.23+phase*1.3));
+    float2 c = float2(0.105*sin(uTime*0.31+phase), 0.095*cos(uTime*0.23+phase*1.3));
     float angle = uTime*0.12+phase;
     float2 d = p-c;
     float2 q = float2(cos(angle)*d.x+sin(angle)*d.y,
@@ -118,7 +118,7 @@ float lobe(float2 p, float i, float softness) {
     float a = atan(q.y, q.x+0.000001);
     float seed = i*1.7;
     float edge = 1.0+0.22*sin(a*3.0+uTime*0.8+seed)+0.10*sin(a*5.0-uTime*1.1+seed*2.3);
-    float radius = (0.27-i*0.025)*(1.0+0.16*uBeat);
+    float radius = (0.31-i*0.028)*(1.0+0.16*uBeat);
     return gauss(length(q)*1.55/(radius*edge*softness))*(0.88-i*0.14);
 }
 float3 wave(float2 p, float s) {

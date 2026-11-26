@@ -385,7 +385,7 @@ internal fun TvWavePlace(nav: TvNav) {
                     val padding = if (compactScenarios) 14.dp else ((maxWidth - slotWidth) / 2).coerceAtLeast(0.dp)
                     val stride = with(androidx.compose.ui.platform.LocalDensity.current) { (slotWidth + spacing).toPx() }.coerceAtLeast(1f)
                     Row(Modifier.fillMaxWidth().scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward })
-                        .horizontalScroll(scenarioScroll).padding(vertical = if (compactScenarios) 4.dp else 12.dp, horizontal = padding)
+                        .horizontalScroll(scenarioScroll).padding(vertical = if (compactScenarios) 4.dp else 18.dp, horizontal = padding)
                         .rememberedFocus().focusGroup(),
                         horizontalArrangement = Arrangement.spacedBy(ui.gap(16.dp)), verticalAlignment = Alignment.CenterVertically) {
                         vibeShortcuts(style, savedPresets, scenarioOrder, appSettings.streamScenarioStyles, activeSaved?.id, activeScenario?.id)

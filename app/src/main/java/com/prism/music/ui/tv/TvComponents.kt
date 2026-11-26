@@ -176,16 +176,16 @@ fun TvScenarioDisc(label: String, icon: ImageVector, selected: Boolean, onClick:
     val scheme = MaterialTheme.colorScheme
     Column(Modifier.width(112.dp), horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        IconButton(onClick = onClick, modifier = modifier.size(64.dp)
-            .then(if (selected) Modifier.border(TV_RING_THIN, tvRing(), CircleShape) else Modifier),
+        IconButton(onClick = onClick, modifier = modifier.size(76.dp)
+            .border(1.dp, if (selected) scheme.primary.copy(alpha = 0.85f) else scheme.onSurface.copy(alpha = 0.10f), CircleShape),
             scale = IconButtonDefaults.scale(focusedScale = 1.08f),
             colors = IconButtonDefaults.colors(
-                containerColor = TvGlassFill,
-                contentColor = if (selected) scheme.primary else scheme.onSurface,
+                containerColor = if (selected) scheme.primary.copy(alpha = 0.24f) else TvGlassFill,
+                contentColor = if (selected) scheme.onSurface else scheme.onSurfaceVariant,
                 focusedContainerColor = scheme.onSurface, focusedContentColor = scheme.surface,
             ),
             border = IconButtonDefaults.border(focusedBorder = tvFocusBorder(CircleShape, TV_RING_THIN))) {
-            Icon(icon, label, Modifier.size(28.dp))
+            Icon(icon, label, Modifier.size(30.dp))
         }
         val captionStyle = MaterialTheme.typography.labelMedium
         val captionHeight = with(LocalDensity.current) { captionStyle.lineHeight.toDp() * 2 }.coerceAtLeast(36.dp)

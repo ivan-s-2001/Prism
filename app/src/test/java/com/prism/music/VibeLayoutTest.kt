@@ -12,8 +12,8 @@ import org.junit.Test
 class VibeLayoutTest {
     @Test fun sharedOrbitPreservesCenterAndSoftensEdges() {
         assertEquals(1f, com.prism.music.ui.screens.vibeOrbitScale(0f), 0.001f)
-        assertEquals(0.87f, com.prism.music.ui.screens.vibeOrbitScale(1f), 0.001f)
-        assertEquals(0.77f, com.prism.music.ui.screens.vibeOrbitAlpha(1f), 0.001f)
+        assertEquals(0.80f, com.prism.music.ui.screens.vibeOrbitScale(1f), 0.001f)
+        assertEquals(0.82f, com.prism.music.ui.screens.vibeOrbitAlpha(1f), 0.001f)
         assertEquals(0.25f, com.prism.music.ui.screens.vibeOrbitDrop(0.5f), 0.001f)
         assertEquals(48.dp, com.prism.music.ui.screens.vibeActionDiameter(84.dp, 0.1f))
         assertEquals(88.dp, com.prism.music.ui.screens.vibeActionDiameter(84.dp, 2f))
