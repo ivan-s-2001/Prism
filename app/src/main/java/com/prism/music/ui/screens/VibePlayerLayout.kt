@@ -118,7 +118,7 @@ internal fun VibePageLayout(
     }
 }
 
-// The center tile is lifted and enlarged; distance changes continuously during scrolling.
+// The midpoint of the orbit lies between two tiles, neither implying selection.
 internal const val VIBE_ORBIT_COUNT = 1_000_000
 
 internal fun vibeOrbitIndex(virtualIndex: Int, count: Int): Int =
@@ -136,6 +136,10 @@ internal fun vibeOrbitNearest(current: Int, count: Int, target: Int): Int {
     val next = current.toLong() + delta
     return if (next < 0 || next >= VIBE_ORBIT_COUNT) vibeOrbitStart(count, target) else next.toInt()
 }
+
+/** Start-snapping a fixed-width slot with this padding puts the gap between adjacent tiles at center. */
+internal fun vibeOrbitPairPadding(width: Dp, slot: Dp, spacing: Dp, count: Int): Dp =
+    ((width - if (count > 1) slot * 2 + spacing else slot) / 2).coerceAtLeast(0.dp)
 
 internal fun vibeOrbitDepth(distanceInSlots: Float): Float =
     if (distanceInSlots.isFinite()) (abs(distanceInSlots) / 2f).coerceIn(0f, 1f) else 0f
@@ -255,11 +259,7 @@ internal fun VibeStationOverlay(
         val roomy = stage >= 320.dp && !compact
         val sideWidth = if (maxWidth < 300.dp) 48.dp else 52.dp
         @Composable fun StationTitle() {
-            Box(Modifier.fillMaxWidth().heightIn(min = if (compact) 40.dp else if (roomy) 66.dp else 54.dp),
-                contentAlignment = Alignment.Center) {
-                if (origin == null) VibeIdentity(title, compact, roomy)
-                else VibeOriginIdentity(origin, compact, roomy)
-            }
+            VibeIdentity(title, origin, compact, roomy)
         }
         @Composable fun Transport() {
             // The wave has one primary action; reactions belong to the global player.
@@ -341,45 +341,43 @@ internal fun VibeStationOverlay(
     }
 }
 
-/** Quiet context, strong source name, optional original artist. */
+/** A fixed, balanced typographic slot for every Vibe source. No icon, card or redundant type label. */
 @Composable
-private fun VibeOriginIdentity(origin: com.prism.music.playback.VibeOrigin, compact: Boolean, roomy: Boolean) {
+private fun VibeIdentity(source: String, origin: com.prism.music.playback.VibeOrigin?, compact: Boolean, roomy: Boolean) {
     val scheme = MaterialTheme.colorScheme
-    val artist = vibeOriginArtist(origin)
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp)) {
-        Text(tr(vibeOriginLabel(origin.kind)), style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
-            color = scheme.onSurfaceVariant, textAlign = TextAlign.Center,
-            maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(origin.name, modifier = Modifier.fillMaxWidth(),
-            style = (when {
-                compact -> MaterialTheme.typography.titleLarge
-                roomy -> MaterialTheme.typography.headlineMedium
-                else -> MaterialTheme.typography.headlineSmall
-            }).copy(fontWeight = FontWeight.SemiBold),
-            color = scheme.onSurface, textAlign = TextAlign.Center,
-            maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (artist != null) {
-            Text(artist, modifier = Modifier.fillMaxWidth(),
-                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Normal),
-                color = scheme.onSurfaceVariant, textAlign = TextAlign.Center,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
+    val name = origin?.name ?: source
+    val kind = origin?.kind?.let { tr(vibeOriginLabel(it)) }
+    val artist = origin?.let(::vibeOriginArtist)
+    val nameStyle = (when {
+        compact -> MaterialTheme.typography.titleLarge
+        roomy -> MaterialTheme.typography.headlineMedium
+        else -> MaterialTheme.typography.headlineSmall
+    }).copy(fontWeight = FontWeight.SemiBold)
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val line = with(density) { MaterialTheme.typography.labelLarge.lineHeight.toDp() }.coerceAtLeast(16.dp)
+    val nameLine = with(density) { nameStyle.lineHeight.toDp() }.coerceAtLeast(24.dp)
+    val gap = if (compact) 1.dp else 3.dp
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(gap)) {
+        Box(Modifier.fillMaxWidth().height(line), contentAlignment = Alignment.Center) {
+            androidx.compose.animation.Crossfade(targetState = kind, animationSpec = tween(180), label = "vibe source kind") { value ->
+                if (value != null) Text(value, style = MaterialTheme.typography.labelLarge,
+                    color = scheme.onSurfaceVariant, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(nameLine), contentAlignment = Alignment.Center) {
+            androidx.compose.animation.Crossfade(targetState = name, animationSpec = tween(220), label = "vibe source name") { value ->
+                Text(value, Modifier.fillMaxWidth(), style = nameStyle, color = scheme.onSurface,
+                    textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(line), contentAlignment = Alignment.Center) {
+            androidx.compose.animation.Crossfade(targetState = artist, animationSpec = tween(180), label = "vibe source artist") { value ->
+                if (value != null) Text(value, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
-}
-
-/** A station's identity stays stable across tracks, unlike the changing credits. */
-@Composable
-private fun VibeIdentity(source: String, compact: Boolean, roomy: Boolean) {
-    Text(source, modifier = Modifier.fillMaxWidth(),
-        style = (when {
-            compact -> MaterialTheme.typography.headlineSmall
-            roomy -> MaterialTheme.typography.displaySmall
-            else -> MaterialTheme.typography.headlineMedium
-        }).copy(fontWeight = FontWeight.Bold),
-        color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center,
-        maxLines = 2, overflow = TextOverflow.Ellipsis)
 }
 
 internal fun vibeActionDiameter(base: Dp, fraction: Float): Dp = (base * fraction).coerceIn(48.dp, 88.dp)

@@ -64,6 +64,11 @@ internal fun vibeOriginLabel(kind: VibeOriginKind): Int = when (kind) {
     VibeOriginKind.MIX -> R.string.prism_vibe_from_mix
 }
 
+/** The current identity is shown above the controls; the ring offers alternatives only.
+ * Context Vibes are not a scenario and must leave all the personal choices available. */
+internal fun vibeAlternatives(shortcuts: List<VibeShortcut>, contextual: Boolean): List<VibeShortcut> =
+    if (contextual) shortcuts else shortcuts.filterNot { it.selected }.ifEmpty { shortcuts }
+
 internal fun vibeShortcuts(
     style: MyWave.Style,
     saved: List<SavedWavePreset>,

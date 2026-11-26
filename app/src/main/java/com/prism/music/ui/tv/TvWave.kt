@@ -35,6 +35,10 @@ import com.prism.music.ui.screens.vibeOrbit
 import com.prism.music.ui.screens.vibeOrbitIndex
 import com.prism.music.ui.screens.vibeOrbitCount
 import com.prism.music.ui.screens.vibeOrbitStart
+import com.prism.music.ui.screens.vibeOrbitPairPadding
+import com.prism.music.ui.screens.vibeAlternatives
+import com.prism.music.ui.screens.vibeOrbitNearest
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import com.prism.music.ui.screens.vibeActionDiameter
@@ -390,31 +394,41 @@ internal fun TvWavePlace(nav: TvNav) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(16.dp)), verticalAlignment = Alignment.CenterVertically) {
                     BoxWithConstraints(Modifier.weight(1f)) {
                         val compactScenarios = appSettings.streamCompactScenarios
-                        val slotWidth = 112.dp
+                        val slotWidth = if (compactScenarios) 168.dp else 112.dp
                         val spacing = ui.gap(16.dp)
-                        val padding = if (compactScenarios) 14.dp else ((maxWidth - slotWidth) / 2).coerceAtLeast(0.dp)
                         val stride = with(androidx.compose.ui.platform.LocalDensity.current) { (slotWidth + spacing).toPx() }.coerceAtLeast(1f)
                         val shortcuts = remember(style, savedPresets, scenarioOrder, appSettings.streamScenarioStyles, activeSaved?.id, activeScenario?.id) {
                             vibeShortcuts(style, savedPresets, scenarioOrder, appSettings.streamScenarioStyles, activeSaved?.id, activeScenario?.id) { VibePresetIcons.vector(iconContext, it.iconId) }
                         }
-                        val keys = shortcuts.map { it.key }
-                        val scenarioScroll = key(keys) {
-                            rememberLazyListState(vibeOrbitStart(shortcuts.size, shortcuts.indexOfFirst { it.selected }.coerceAtLeast(0)))
+                        val alternatives = vibeAlternatives(shortcuts, contextual)
+                        val keys = alternatives.map { it.key }
+                        val padding = vibeOrbitPairPadding(maxWidth, slotWidth, spacing, alternatives.size)
+                        val scenarioScroll = rememberLazyListState(vibeOrbitStart(alternatives.size, 0))
+                        var previousKeys by remember { mutableStateOf(keys) }
+                        LaunchedEffect(keys) {
+                            if (previousKeys != keys && keys.isNotEmpty()) {
+                                val index = scenarioScroll.firstVisibleItemIndex
+                                val anchor = previousKeys.getOrNull(vibeOrbitIndex(index, previousKeys.size))
+                                val next = previousKeys.getOrNull(vibeOrbitIndex(index + 1, previousKeys.size))
+                                val target = keys.indexOf(anchor).takeIf { it >= 0 } ?: keys.indexOf(next).coerceAtLeast(0)
+                                scenarioScroll.scrollToItem(vibeOrbitNearest(index, keys.size, target))
+                            }
+                            previousKeys = keys
                         }
                         LazyRow(Modifier.fillMaxWidth().scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward })
                             .rememberedFocus().focusGroup(),
                             state = scenarioScroll,
                             contentPadding = PaddingValues(horizontal = padding, vertical = if (compactScenarios) 4.dp else 18.dp),
                             horizontalArrangement = Arrangement.spacedBy(spacing), verticalAlignment = Alignment.CenterVertically) {
-                            items(vibeOrbitCount(shortcuts.size), key = { index -> "orbit:$index:${shortcuts[vibeOrbitIndex(index, shortcuts.size)].key}" }) { index ->
-                                val shortcut = shortcuts[vibeOrbitIndex(index, shortcuts.size)]
+                            items(vibeOrbitCount(alternatives.size), key = { index -> "orbit:$index:${alternatives[vibeOrbitIndex(index, alternatives.size)].key}" }) { index ->
+                                val shortcut = alternatives[vibeOrbitIndex(index, alternatives.size)]
                                 val orbit = if (compactScenarios) Modifier else Modifier.vibeOrbit {
                                     val info = scenarioScroll.layoutInfo
                                     val item = info.visibleItemsInfo.firstOrNull { it.index == index }
                                     val center = (info.viewportStartOffset + info.viewportEndOffset) / 2f
                                     item?.let { (it.offset + it.size / 2f - center) / stride } ?: 0f
                                 }
-                                Box(orbit, contentAlignment = Alignment.Center) {
+                                Box(Modifier.width(slotWidth).then(orbit), contentAlignment = Alignment.Center) {
                                     ScenarioTile(shortcut.label, shortcut.icon, shortcut.selected && !contextual, onClick = {
                                         val target = shortcut.style
                                         if (target != null && (current == null || contextual || !shortcut.selected)) start(target, shortcut.scenarioId)
@@ -422,7 +436,9 @@ internal fun TvWavePlace(nav: TvNav) {
                                         shortcut.key.startsWith("scenario:") -> "quick/" + shortcut.scenarioId
                                         shortcut.key.startsWith("custom:") -> "custom/" + shortcut.scenarioId
                                         else -> shortcut.key
-                                    } + "/orbit/$index"))
+                                    } + "/orbit/$index").onFocusChanged { focus ->
+                                        if (focus.isFocused) scope.launch { scenarioScroll.animateScrollToItem(index) }
+                                    })
                                 }
                             }
                         }
