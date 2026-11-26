@@ -132,7 +132,7 @@ fun TvNowPlayingScreen(
                     TvIconButton(if (now.liked) PrismIcons.HeartFilled else PrismIcons.Heart, tr(if (now.liked) R.string.liked else R.string.widget_like), onLike, Modifier.tvItem("$TAG_PLAYER/like"), on = now.liked)
                     if (onDislike != null) TvIconButton(if (disliked) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown,
                         tr(R.string.not_for_me), onDislike, Modifier.tvItem("$TAG_PLAYER/dislike"), on = disliked)
-                    if (onVibe != null) TvButton(tr(R.string.stream), onVibe, Modifier.tvItem("$TAG_PLAYER/vibe"), icon = PrismIcons.Stream)
+                    if (onVibe != null) TvButton(tr(R.string.prism_vibe_from_track), onVibe, Modifier.tvItem("$TAG_PLAYER/vibe"), icon = PrismIcons.Stream)
                     TvIconButton(PrismIcons.More, tr(R.string.more), onMore, Modifier.tvItem("$TAG_PLAYER/more"))
                 }
                 if (now.next != null) {

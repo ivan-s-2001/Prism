@@ -568,7 +568,7 @@ private fun TopBar(
                 style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (hasMix) ContextVibePill(onClick = onMix, modifier = Modifier.testTag("artist:vibe"))
+                if (hasMix) ContextVibePill(onClick = onMix, modifier = Modifier.testTag("artist:vibe"), kind = com.prism.music.playback.VibeOriginKind.ARTIST)
                 Box {
                     com.prism.music.ui.components.RoundAction(PrismIcons.More, tr(R.string.more), glass = true) { menu = true }
                     DropdownMenu(menu, { menu = false }) {

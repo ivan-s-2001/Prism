@@ -20,7 +20,8 @@ import com.prism.music.ui.theme.PrismIcons
 
 /** Shared contextual recommendation action, visible in the top bar rather than only in the overflow. */
 @Composable
-internal fun ContextVibePill(onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun ContextVibePill(onClick: () -> Unit, modifier: Modifier = Modifier,
+    kind: com.prism.music.playback.VibeOriginKind = com.prism.music.playback.VibeOriginKind.TRACK) {
     PrismFilledTonalButton(
         onClick = onClick,
         modifier = modifier.heightIn(min = 44.dp),
@@ -29,7 +30,7 @@ internal fun ContextVibePill(onClick: () -> Unit, modifier: Modifier = Modifier)
     ) {
         Icon(PrismIcons.Stream, null, Modifier.size(20.dp))
         Spacer(Modifier.width(6.dp))
-        Text(tr(R.string.stream), style = MaterialTheme.typography.labelLarge,
+        Text(tr(vibeOriginLabel(kind)), style = MaterialTheme.typography.labelLarge,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

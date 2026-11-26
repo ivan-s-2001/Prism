@@ -354,7 +354,7 @@ fun TvLyricsPage(nav: TvNav) = TvSongLyrics({ nav.back() })
  * check. [close] puts the panel away first.
  */
 internal fun songActions(c: AppContainer, nav: TvNav, s: com.prism.music.data.model.Song?, singReady: Boolean, close: () -> Unit): List<TvAction> = buildList {
-    if (s != null && !s.isLive && !s.isEpisode) add(TvAction(tr(R.string.start_radio), com.prism.music.ui.theme.PrismIcons.Stream) { close(); c.player.playRadio(s, announce = true) })
+    if (s != null && !s.isLive && !s.isEpisode) add(TvAction(tr(R.string.prism_vibe_from_track), com.prism.music.ui.theme.PrismIcons.Stream) { close(); c.player.playRadio(s, announce = true) })
     s?.album?.id?.let { id -> add(TvAction(tr(R.string.go_to_album), com.prism.music.ui.theme.PrismIcons.Album) { close(); nav.go(TvRoute.Collection(AlbumItem(id, s.album.title, s.primaryArtist, s.thumbnail))) }) }
     s?.artists?.filter { it.id != null }?.forEach { a -> add(TvAction(a.name, com.prism.music.ui.theme.PrismIcons.Person) { close(); nav.go(TvRoute.Artist(a.id!!)) }) }
     // Sing, once this TV passed its speed check (Settings → Sing).
@@ -395,6 +395,7 @@ fun TvCollectionPage(item: BrowseItem, nav: TvNav) {
         songs.map { s -> TvSong(s.id, s.title, s.artistText, if (s.isLive || s.durationSec <= 0) null else tvTime(s.durationSec * 1000L)) },
         onPlay = { play(0, false) }, onShuffle = { play(0, true) }, onSong = { i -> play(i, false) },
         playing = songs.indexOfFirst { it.id == current?.id }, accent = accent,
+        vibeKind = if (item is AlbumItem) com.prism.music.playback.VibeOriginKind.ALBUM else com.prism.music.playback.VibeOriginKind.PLAYLIST,
         onVibe = if (songs.any { !it.isEpisode && !it.isLive && !it.isVideo }) ({
             scope.launch {
                 val ok = c.player.playContextVibe(p?.title ?: item.title, songs, origin = com.prism.music.playback.VibeOrigin(

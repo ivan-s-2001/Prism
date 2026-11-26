@@ -1239,7 +1239,7 @@ enum class DeckPart(val label: String) { STRIP(tr(R.string.current_lyric)), SCRU
 enum class PlayerButton(val label: String) {
     LYRICS(tr(R.string.lyrics)), VIDEO(tr(R.string.video)), QUEUE(tr(R.string.up_next)), OUTPUT(tr(R.string.play_on)), SLEEP(tr(R.string.sleep_timer)), LIKE(tr(R.string.widget_like)),
     DISLIKE(tr(R.string.not_for_me)), ADD_TO_PLAYLIST(tr(R.string.add_to_playlist)), SHARE(tr(R.string.share)), SING(tr(R.string.sing)), DJ(tr(R.string.dj_mode)),
-    EQUALIZER(tr(R.string.equalizer)), DOWNLOAD(tr(R.string.download)), RADIO(tr(R.string.start_radio)), SPEED(tr(R.string.speed));
+    EQUALIZER(tr(R.string.equalizer)), DOWNLOAD(tr(R.string.download)), RADIO(tr(R.string.prism_vibe_from_track)), SPEED(tr(R.string.speed));
 
     companion object {
         /** Reactions beside the credits are separate from the customizable deck. */
@@ -1254,7 +1254,7 @@ enum class PlayerButton(val label: String) {
  * show the first two, Android Auto and other controllers show them all.
  */
 enum class SessionButton(val label: String) {
-    LIKE(tr(R.string.widget_like)), SHUFFLE(tr(R.string.shuffle)), REPEAT(tr(R.string.repeat)), CAR_LYRICS(tr(R.string.lyrics)), RADIO(tr(R.string.start_radio)),
+    LIKE(tr(R.string.widget_like)), SHUFFLE(tr(R.string.shuffle)), REPEAT(tr(R.string.repeat)), CAR_LYRICS(tr(R.string.lyrics)), RADIO(tr(R.string.prism_vibe_from_track)),
     DISLIKE(tr(R.string.not_for_me)), BACK_10(tr(R.string.back_10_s)), AHEAD_30(tr(R.string.ahead_30_s));
 
     companion object {

@@ -1019,6 +1019,12 @@ internal fun CollectionContent(type: CollectionType, live: LiveCollection, initi
                 },
                 downloading = downloadingCount > 0,
                 onVibe = startRadio.takeIf { canVibe },
+                vibeKind = when (type) {
+                    CollectionType.ALBUM -> com.prism.music.playback.VibeOriginKind.ALBUM
+                    CollectionType.PLAYLIST, CollectionType.PRISM -> com.prism.music.playback.VibeOriginKind.PLAYLIST
+                    CollectionType.MIX -> com.prism.music.playback.VibeOriginKind.MIX
+                    else -> com.prism.music.playback.VibeOriginKind.COLLECTION
+                },
                 onDownload = toggleDownloads,
                 onShare = { sharing = true },
                 onMore = { pageMenu = true },
@@ -1262,6 +1268,7 @@ private fun CollectionTopBar(
     downloadIcon: androidx.compose.ui.graphics.vector.ImageVector?,
     downloading: Boolean,
     onVibe: (() -> Unit)?,
+    vibeKind: com.prism.music.playback.VibeOriginKind = com.prism.music.playback.VibeOriginKind.COLLECTION,
     onDownload: () -> Unit,
     onShare: () -> Unit,
     onMore: () -> Unit,
@@ -1275,7 +1282,7 @@ private fun CollectionTopBar(
                 style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (onVibe != null) ContextVibePill(onClick = onVibe, modifier = Modifier.testTag("collection:vibe"))
+                if (onVibe != null) ContextVibePill(onClick = onVibe, modifier = Modifier.testTag("collection:vibe"), kind = vibeKind)
                 if (downloadIcon != null) {
                     if (downloading) com.prism.music.ui.components.FloatingDisc { ink ->
                         Box(Modifier.fillMaxSize().clickable(onClickLabel = tr(R.string.downloading_2), onClick = onDownload), contentAlignment = Alignment.Center) {

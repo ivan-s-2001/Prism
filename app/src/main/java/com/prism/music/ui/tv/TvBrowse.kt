@@ -298,6 +298,7 @@ fun TvCollectionScreen(
     playing: Int = -1,
     accent: Color? = null,
     onVibe: (() -> Unit)? = null,
+    vibeKind: com.prism.music.playback.VibeOriginKind = com.prism.music.playback.VibeOriginKind.COLLECTION,
 ) {
     val scheme = MaterialTheme.colorScheme
     // Into the songs (Right, or Down from the buttons): the song last picked here, else the one playing, else the first,
@@ -336,7 +337,7 @@ fun TvCollectionScreen(
             }
             if (onVibe != null) {
                 Spacer(Modifier.height(10.dp))
-                TvButton(tr(R.string.stream), onVibe, down.tvItem("$TAG_COLLECTION/vibe"), icon = PrismIcons.Stream)
+                TvButton(tr(com.prism.music.ui.screens.vibeOriginLabel(vibeKind)), onVibe, down.tvItem("$TAG_COLLECTION/vibe"), icon = PrismIcons.Stream)
             }
         }
         Spacer(Modifier.width(48.dp))
@@ -403,7 +404,7 @@ fun TvArtistScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         TvButton(tr(R.string.widget_play), onPlay, Modifier.tvItem("$TAG_ARTIST/play", entry = true), icon = PrismIcons.Play, primary = true)
                         TvButton(tr(R.string.shuffle), onShuffle, Modifier.tvItem("$TAG_ARTIST/shuffle"), icon = PrismIcons.Shuffle)
-                        TvButton(tr(R.string.stream), onRadio, Modifier.tvItem("$TAG_ARTIST/radio"), icon = PrismIcons.Stream)
+                        TvButton(tr(R.string.prism_vibe_from_artist), onRadio, Modifier.tvItem("$TAG_ARTIST/radio"), icon = PrismIcons.Stream)
                     }
                 }
             }
