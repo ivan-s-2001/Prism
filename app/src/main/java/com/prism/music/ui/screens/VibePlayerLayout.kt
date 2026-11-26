@@ -212,8 +212,11 @@ internal fun VibeStationOverlay(
         val sideWidth = if (maxWidth < 300.dp) 48.dp else 52.dp
         val playGap = ui.gap(if (compact || maxWidth < 300.dp) 10.dp else 24.dp)
         @Composable fun StationTitle() {
-            if (origin == null) VibeIdentity(title, compact, roomy)
-            else VibeOriginIdentity(origin, compact, roomy)
+            Box(Modifier.fillMaxWidth().heightIn(min = if (compact) 58.dp else if (roomy) 88.dp else 72.dp),
+                contentAlignment = Alignment.Center) {
+                if (origin == null) VibeIdentity(title, compact, roomy)
+                else VibeOriginIdentity(origin, compact, roomy)
+            }
         }
         @Composable fun Transport() {
             Row(horizontalArrangement = Arrangement.spacedBy(playGap), verticalAlignment = Alignment.CenterVertically) {
@@ -255,7 +258,7 @@ internal fun VibeStationOverlay(
                         Spacer(Modifier.height(ui.gap(if (compact) 8.dp else 16.dp)))
                         Transport()
                         Spacer(Modifier.height(ui.gap(8.dp)))
-                        tune()
+                        Box(Modifier.heightIn(min = 44.dp), contentAlignment = Alignment.Center) { tune() }
                     }
                 }
                 if (hasTrack) {
@@ -284,7 +287,7 @@ internal fun VibeStationOverlay(
                             verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 6.dp else 12.dp))) {
                             StationTitle()
                             Transport()
-                            tune()
+                            Box(Modifier.heightIn(min = 44.dp), contentAlignment = Alignment.Center) { tune() }
                         }
                     }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally,
@@ -332,7 +335,7 @@ private fun VibeOriginIdentity(origin: com.prism.music.playback.VibeOrigin, comp
                 color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(origin.name, style = (if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall)
                 .copy(fontWeight = FontWeight.SemiBold), color = scheme.onSurface,
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
