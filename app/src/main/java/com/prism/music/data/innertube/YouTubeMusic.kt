@@ -1093,10 +1093,14 @@ class YouTubeMusic(
     suspend fun libraryAlbums(): List<BrowseItem> =
         libraryItems("FEmusic_liked_albums").filterIsInstance<com.prism.music.data.model.AlbumItem>()
 
+    /** Only actual channel subscriptions, never artists inferred from saved songs. */
+    suspend fun subscribedArtists(): List<BrowseItem> =
+        libraryItems("FEmusic_library_corpus_artists").filterIsInstance<com.prism.music.data.model.ArtistItem>()
+
     /** Artists of songs in the library, then artists the account subscribes to. */
     suspend fun libraryArtists(): List<BrowseItem> {
         val tracks = runCatching { libraryItems("FEmusic_library_corpus_track_artists") }.getOrDefault(emptyList())
-        val subs = runCatching { libraryItems("FEmusic_library_corpus_artists") }.getOrDefault(emptyList())
+        val subs = runCatching { subscribedArtists() }.getOrDefault(emptyList())
         return (tracks + subs).filterIsInstance<com.prism.music.data.model.ArtistItem>().distinctBy { it.id }
     }
 
