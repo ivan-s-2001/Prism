@@ -423,7 +423,6 @@ internal fun menuIcon(a: MenuAction): ImageVector = when (a) {
     MenuAction.VIDEO_SWITCH -> PrismIcons.Video
     MenuAction.PREVIOUS -> PrismIcons.Previous
     MenuAction.NEXT -> PrismIcons.Next
-    MenuAction.DJ -> PrismIcons.Turntable
     MenuAction.EQUALIZER -> PrismIcons.Equalizer
     MenuAction.SLEEP -> PrismIcons.Moon
     MenuAction.SPEED_PITCH -> PrismIcons.Speed
@@ -468,7 +467,6 @@ internal fun menuLabel(a: MenuAction): String = when (a) {
     MenuAction.VIDEO_SWITCH -> tr(R.string.music_video_3)
     MenuAction.PREVIOUS -> tr(R.string.previous_song)
     MenuAction.NEXT -> tr(R.string.next_song)
-    MenuAction.DJ -> tr(R.string.dj_mode)
     MenuAction.EQUALIZER -> tr(R.string.equalizer)
     MenuAction.SLEEP -> tr(R.string.sleep_timer)
     MenuAction.SPEED_PITCH -> tr(R.string.speed_pitch_2)

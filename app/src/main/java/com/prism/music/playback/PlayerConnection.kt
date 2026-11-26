@@ -60,8 +60,6 @@ enum class StartKind {
     /** One song (Search, a card): Autoplay follows it. */
     SINGLE,
     VIBE,
-    /** "Play as a DJ set": DJ mode decides the order. */
-    DJ_SET,
     /** Started as its music video. */
     VIDEO,
     /** A podcast episode or a live stream. */
@@ -72,11 +70,10 @@ enum class StartKind {
     }
 }
 
-/** [StartKind] of the queue [songs] starting at [start]; [asVideo]: the first one plays as its video; [dj]: as a DJ set. */
-fun startKind(source: QueueSource, songs: List<Song>, start: Int, asVideo: Boolean, dj: Boolean): StartKind {
+/** [StartKind] of the queue [songs] starting at [start]; [asVideo]: the first one plays as its video. */
+fun startKind(source: QueueSource, songs: List<Song>, start: Int, asVideo: Boolean): StartKind {
     val first = songs.getOrNull(start)
     return when {
-        dj -> StartKind.DJ_SET
         source.isVibe -> StartKind.VIBE
         asVideo -> StartKind.VIDEO
         first?.isEpisode == true || first?.isLive == true -> StartKind.SPOKEN
@@ -90,7 +87,7 @@ fun startKind(source: QueueSource, songs: List<Song>, start: Int, asVideo: Boole
  * Settings → Playback → "Keep shuffle on for the next list" ([keep]; 1.8.4, #416) a [StartKind.LIST] keeps what the
  * last queue had ([was]): the song it starts on plays first and the rest is shuffled. Smart Shuffle stays Smart Shuffle
  * where the new queue allows it ([smartAllowed]) and the button still offers it ([button]), plain shuffle otherwise.
- * Radios, single songs, DJ sets, videos and episodes are left alone.
+ * Vibe, single songs, videos and episodes are left alone.
  */
 fun carryShuffle(
     was: ShuffleMode, keep: Boolean, kind: StartKind, asked: Boolean,
@@ -420,29 +417,24 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
      * when there are no more. They join the queue behind the songs playing ([fillQueue]).
      */
     fun playQueue(songs: List<Song>, startIndex: Int = 0, source: QueueSource, shuffle: Boolean = false, rest: (suspend () -> List<Song>?)? = null) {
-        playQueueRequested(songs, startIndex, source, shuffle, rest, dj = false)
-    }
 
-    // DJ belongs to this request, not a mutable flag that a rejected or superseded request can leave behind.
-    private fun playQueueRequested(songs: List<Song>, startIndex: Int, source: QueueSource, shuffle: Boolean,
-        rest: (suspend () -> List<Song>?)?, dj: Boolean) {
         if (songs.isEmpty()) return
-        val requestedShuffle = shuffle && source.allowsOrderModes && !dj
+        val requestedShuffle = shuffle && source.allowsOrderModes
         // "No repeats this session" (#159): a radio starts without what's been heard, on the song it starts on.
         if (source.isVibe && c.settings.current.behavior.autoplayNoRepeats) {
             val (kept, at) = c.sessionHeard.radioStart(songs, startIndex)
-            if (kept.size < songs.size) { startFiltered(kept, at, source, requestedShuffle, rest, dj); return }
+            if (kept.size < songs.size) { startFiltered(kept, at, source, requestedShuffle, rest); return }
         }
-        startFiltered(songs, startIndex, source, requestedShuffle, rest, dj)
+        startFiltered(songs, startIndex, source, requestedShuffle, rest)
     }
 
-    private fun startFiltered(songs: List<Song>, startIndex: Int, source: QueueSource, shuffle: Boolean, rest: (suspend () -> List<Song>?)?, dj: Boolean) {
+    private fun startFiltered(songs: List<Song>, startIndex: Int, source: QueueSource, shuffle: Boolean, rest: (suspend () -> List<Song>?)?) {
         // #216: with the explicit filter on, explicit songs don't go in (a tapped one gives way to the next that may play).
         val mode = c.settings.current.behavior.explicitContent
         if (mode != com.prism.music.data.prefs.ExplicitContent.SHOW && songs.any { it.explicit }) {
             val (kept, at) = com.prism.music.data.ExplicitFilter.queue(mode, songs, startIndex) ?: run { reportError(tr(R.string.explicit_none_left)); return }
             if (!shuffle && songs.getOrNull(startIndex)?.explicit == true) reportError(tr(R.string.explicit_skipped))
-            startFiltered(kept, at, source, shuffle, rest, dj)
+            startFiltered(kept, at, source, shuffle, rest)
             return
         }
         source.page?.let { c.recentCollections.played(it) }
@@ -455,14 +447,14 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         // Live streams play as they are: they have no "song version" to swap in.
         if ((shuffle && !everywhere) || !tapped.isVideo || tapped.isLive || tapped.isEpisode) {
             if (pairsFrom != null) scope.launch { pairPlaylist(pairsFrom, tapped.id, source.title) }
-            startQueue(songs, first, source, shuffle, null, rest = rest, requestedDj = dj)
+            startQueue(songs, first, source, shuffle, null, rest = rest)
             return
         }
         // With the Song / Video switch off the player is audio only (#48): a music video plays as its song, or as
         // the video's sound when it has no song, never with its picture (there'd be no switch to turn it off).
         // "Songs, not videos" everywhere (#80) plays it as its song too, and so does a shuffled start.
         // On mobile data with "No videos on mobile data" (#281) too, unless the picture's kept on the phone.
-        val audioOnly = dj || !c.settings.current.showVideoSwitch || everywhere || shuffle || (VideoOnData.off(c) && !c.downloads.videoSaved(tapped.id))
+        val audioOnly = !c.settings.current.showVideoSwitch || everywhere || shuffle || (VideoOnData.off(c) && !c.downloads.videoSaved(tapped.id))
         // A music video or live performance opens as the song it's of, already showing the video
         // (the Song button then plays the track itself). With no song to match, the video plays as it is.
         if (!audioOnly) _showPlayer.tryEmit(Unit)
@@ -473,7 +465,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
             val song = songFor(tapped, (4_000 - (android.os.SystemClock.elapsedRealtime() - started)).coerceAtLeast(500))
             if (token != playToken) return@launch
             val list = if (song == null) songs else songs.toMutableList().also { it[first] = song }
-            startQueue(list, first, source, shuffle, tapped.id.takeUnless { audioOnly }, rest = rest, requestedDj = dj)
+            startQueue(list, first, source, shuffle, tapped.id.takeUnless { audioOnly }, rest = rest)
         }
     }
 
@@ -592,13 +584,11 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
             }
         }?.also { c.queue.counterparts[it.id] = video.id }
 
-    private fun startQueue(songs: List<Song>, startIndex: Int, source: QueueSource, shuffle: Boolean, startVideo: String?, startMs: Long = 0, rest: (suspend () -> List<Song>?)? = null, requestedDj: Boolean = false) {
+    private fun startQueue(songs: List<Song>, startIndex: Int, source: QueueSource, shuffle: Boolean, startVideo: String?, startMs: Long = 0, rest: (suspend () -> List<Song>?)? = null) {
         stopFill()
         // Before the player starts: autoplay would otherwise see a short first page as a queue nearly over.
         c.queue.filling = true
         val token = playToken
-        // DJ mode is for the queue it was turned on in; "Play as a DJ set" turns it on for the new one.
-        val dj = false
         // A new queue starts as plain shuffle (or none); Smart Shuffle is turned on per queue. With "Keep shuffle on for
         // the next list" (#416) a list takes over what the queue before it had, Smart Shuffle too ([carryShuffle], below).
         val wasSmart = c.queue.smartShuffle.value
@@ -606,7 +596,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         ensureStarted()
         // 1.8.8: with "Blend when I skip" on, the song playing fades out over 200 ms before the new queue takes over.
         // Whatever is asked after this (a seek into the new queue, say) waits for it to start, and then runs in order.
-        startOrHold { p -> startNow(p, songs, startIndex, source, shuffle, startVideo, startMs, rest, dj, wasSmart, token) }
+        startOrHold { p -> startNow(p, songs, startIndex, source, shuffle, startVideo, startMs, rest, wasSmart, token) }
     }
 
     /** [start] on the player, after the service's fade-out when it makes one; later commands are held until it has run. */
@@ -644,7 +634,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     /** [startQueue]'s change of queue on the player itself (kept apart so a fade-out can come first). */
     private fun startNow(
         p: ExoPlayer, songs: List<Song>, startIndex: Int, source: QueueSource, shuffle: Boolean, startVideo: String?, startMs: Long,
-        rest: (suspend () -> List<Song>?)?, dj: Boolean, wasSmart: Boolean, token: Int,
+        rest: (suspend () -> List<Song>?)?, wasSmart: Boolean, token: Int,
     ) {
         run {
             // Whatever Autoplay was still finding was for the queue going now: this one asks for its own, below.
@@ -662,7 +652,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
             val was = when { !p.shuffleModeEnabled -> ShuffleMode.OFF; wasSmart -> ShuffleMode.SMART; else -> ShuffleMode.SHUFFLE }
             val prefs = c.settings.current.behavior
             val mode = carryShuffle(
-                was, prefs.keepShuffle, startKind(source, songs, start, asVideo = startVideo != null, dj = dj), asked = shuffle,
+                was, prefs.keepShuffle, startKind(source, songs, start, asVideo = startVideo != null), asked = shuffle,
                 prefs.shuffleButton, c.queue.smartAllowed(),
             )
             val shuffled = source.allowsOrderModes && mode != ShuffleMode.OFF
@@ -684,15 +674,6 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
             if (rest != null && token == playToken) fillQueue(rest, source, songs)
         }
     }
-
-    /** Plays [songs] as a DJ set (DJ mode on): from the first, then in the order that blends best (album/playlist menus). */
-    fun playDjSet(songs: List<Song>, source: QueueSource) {
-        playQueue(songs, 0, source)
-    }
-
-    /** DJ mode on or off for the queue playing (the queue's switch). */
-    @Deprecated("DJ mode has been removed")
-    fun setDjMode(on: Boolean) = Unit
 
     /** Plays a lone song; autoplay then continues with similar music. */
     fun playSingle(song: Song) = playQueue(listOf(song), 0, QueueSource(QueueKind.SINGLE, tr(R.string.autoplay), seedId = song.id))

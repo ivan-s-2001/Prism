@@ -177,7 +177,7 @@ class PrismApp : Application(), coil3.SingletonImageLoader.Factory {
             // The monthly recap's notice (1.8.5), posted only if its switch is on when the 1st comes.
             runCatching { com.prism.music.data.Recaps.schedule(this@PrismApp) }
             // DJ is retired. Cancel periodic work left behind by older installations.
-            runCatching { com.prism.music.playback.DjPrescanWorker.cancel(this@PrismApp) }
+            runCatching { androidx.work.WorkManager.getInstance(this@PrismApp).cancelUniqueWork("dj_prescan") }
             // Bring your history: the daily look at whether a fresh Spotify or Takeout download is due (only once one
             // was imported; a restored backup brings the dates with it).
             runCatching { com.prism.music.data.imports.ImportReminders.schedule(this@PrismApp) }
@@ -728,7 +728,6 @@ class AppContainer(val app: Application) {
 
     /** Sing: karaoke with the song's own backing (vocals separated on the phone). */
     val sing by lazy { com.prism.music.playback.sing.Sing(this) }
-    val dj = com.prism.music.playback.DjMode()
     val exclusions: com.prism.music.data.foryou.Exclusions by lazy {
         com.prism.music.data.foryou.Exclusions(app, ::musicPreferenceAccount) { blocked ->
             artistPrefs.unstar(artistPrefs.favorites.value.filter { it.id == blocked.id || it.name.equals(blocked.name, true) }.map { it.id }.toSet())

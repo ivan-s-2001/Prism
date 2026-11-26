@@ -184,19 +184,18 @@ enum class VideoControls(val controlsHide: Boolean, val buttonsHide: Boolean) {
 
 /** The five queue switches as "In the queue" show-chips: each chip is its own stored switch. */
 enum class QueueChip {
-    HEADINGS, DJ, LENGTHS, MOVE_PLAYED, TIDIER;
+    HEADINGS, LENGTHS, MOVE_PLAYED, TIDIER;
 
     val label: String
         get() = when (this) {
             HEADINGS -> tr(R.string.settings_player_queue_headings)
-            DJ -> tr(R.string.settings_player_queue_dj)
             LENGTHS -> tr(R.string.settings_player_queue_lengths)
             MOVE_PLAYED -> tr(R.string.settings_player_queue_move_played)
             TIDIER -> tr(R.string.settings_player_queue_tidier)
         }
 
     companion object {
-        /** Stored: headings, DJ chip, lengths, played moves, tidy, in [entries]' order. */
+        /** Stored: headings, lengths, played moves, tidy, in [entries]' order. */
         fun toMerged(stored: List<Boolean>): Set<QueueChip> = entries.filterIndexed { i, _ -> stored[i] }.toSet()
         fun toStored(merged: Set<QueueChip>): List<Boolean> = entries.map { it in merged }
     }
@@ -394,10 +393,10 @@ internal val playerSettings: List<PlayerSetting<*>> by lazy {
             { v -> PanelChip.toMerged(v).joinToString(" · ") { it.label }.ifEmpty { tr(R.string.none) } },
         ) { p, v -> p.setScrollShowsControls(v[0]); p.setPlayerRemembersPage(v[1]); p.setLyricsSteady(v[2]) },
         ps(
-            listOf("queue_headings", "queue_dj_chip", "queue_lengths", "queue_played_moves", "queue_tidy"), g.onIt, R.string.settings_player_in_the_queue,
-            { listOf(it.view.queueHeadings, it.view.queueDjChip, it.view.queueLengths, it.view.queuePlayedMoves, it.view.queueTidy) },
-            { v -> QueueChip.toMerged(v).filterNot { it == QueueChip.DJ }.joinToString(" · ") { it.label }.ifEmpty { tr(R.string.none) } },
-        ) { p, v -> p.setQueueHeadings(v[0]); p.setQueueDjChip(v[1]); p.setQueueLengths(v[2]); p.setQueuePlayedMoves(v[3]); p.setQueueTidy(v[4]) },
+            listOf("queue_headings", "queue_lengths", "queue_played_moves", "queue_tidy"), g.onIt, R.string.settings_player_in_the_queue,
+            { listOf(it.view.queueHeadings, it.view.queueLengths, it.view.queuePlayedMoves, it.view.queueTidy) },
+            { v -> QueueChip.toMerged(v).joinToString(" · ") { it.label }.ifEmpty { tr(R.string.none) } },
+        ) { p, v -> p.setQueueHeadings(v[0]); p.setQueueLengths(v[1]); p.setQueuePlayedMoves(v[2]); p.setQueueTidy(v[3]) },
         // Modes
         ps(listOf("visualizer"), g.modes, R.string.visualizer, { it.visualizer }, { it.label }) { p, v -> p.setVisualizer(v) },
         ps(listOf("visualizer_color"), g.modes, R.string.visualizer_color, { it.visualizerColor }, { it.label }) { p, v -> p.setVisualizerColor(v) },

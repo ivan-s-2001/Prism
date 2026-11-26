@@ -177,7 +177,6 @@ fun InlineQueue(onRevealPlayer: () -> Unit, onHidePlayer: () -> Unit, modifier: 
             }
         } else QueueHeader(
             title = tr(R.string.queue),
-            dj = null, onDj = {},
             onSave = if (queue.size > 1) ({ saving = true }) else null,
             onClear = if (order.isNotEmpty()) ({ pc.clearUpcoming() }) else null,
             locked = locked, onLock = { c.settings.setQueueLocked(!locked) },
@@ -352,14 +351,11 @@ private fun LazyListScope.queueSection(
 }
 
 /**
- * The queue's top row: its title, then DJ ([dj] null: no button), Save and Clear (null: not offered) and the lock.
+ * The queue's top row: title, Save, Clear and the lock.
  */
 @Composable
 internal fun QueueHeader(
     title: String,
-    dj: Boolean?, onDj: () -> Unit,
-    /** #493: "Last time: …", behind an ⓘ by the DJ chip (null: no ⓘ). */
-    djWhy: String? = null,
     onSave: (() -> Unit)?,
     onClear: (() -> Unit)?,
     locked: Boolean, onLock: () -> Unit,
@@ -376,8 +372,6 @@ internal fun QueueHeader(
                 Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (dj != null) QueueChip("DJ", selected = dj, onClick = onDj)
-                if (dj != null && djWhy != null) QueueWhy(djWhy)
                 if (onSave != null) QueueChip(tr(R.string.save), onClick = onSave)
                 if (onClear != null) QueueChip(tr(R.string.clear), onClick = onClear)
             }
@@ -417,28 +411,6 @@ internal fun QueueHeader(
     }
 }
 
-/** The DJ chip's ⓘ line (#493): why the last two songs didn't blend, while DJ mode or Crossfade is on and there's a reason. */
-internal fun queueDjWhy(why: com.prism.music.playback.MixWhy?, mixing: Boolean): String? =
-    if (why == null || !mixing) null else com.prism.music.ui.screens.settings.mixWhyLine(why)
-
-/** Test tag of the DJ chip's ⓘ. */
-internal const val QUEUE_DJ_WHY = "queue/dj-why"
-
-/** The small ⓘ by the DJ chip: [text] opens under it (#493). */
-@Composable
-private fun QueueWhy(text: String) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        Icon(
-            PrismIcons.Info, tr(R.string.mix_why_last_blend), tint = Color.White.copy(alpha = if (open) 1f else 0.7f),
-            modifier = Modifier.testTag(QUEUE_DJ_WHY).size(30.dp).clip(CircleShape).clickable { open = !open }.padding(6.dp),
-        )
-        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).width(240.dp))
-        }
-    }
-}
-
 /** A small action at the top of the queue ("Save", "Clear"; [selected] for a switch like "DJ"). */
 @Composable
 private fun QueueChip(label: String, selected: Boolean = false, onClick: () -> Unit) {
@@ -449,13 +421,6 @@ private fun QueueChip(label: String, selected: Boolean = false, onClick: () -> U
         modifier = Modifier.clip(RoundedCornerShape(50)).background(if (selected) Color.White else Color.White.copy(alpha = 0.12f))
             .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 7.dp),
     )
-}
-
-/** A scanned song's key on the Camelot wheel and its tempo ("8A · 124"), as DJ mode sees them (what's clear of them). */
-private fun djBadge(key: com.prism.music.playback.MusicKey?, bpmValue: Double?): String? {
-    val k = key?.takeIf { it.sure }?.camelot
-    val bpm = bpmValue?.roundToInt()?.toString()
-    return listOfNotNull(k, bpm).joinToString(" · ").ifEmpty { null }
 }
 
 @Composable

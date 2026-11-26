@@ -771,8 +771,6 @@ data class ViewLook(
     val panelPlayer: PanelPlayer = PanelPlayer.AUTO_HIDE,
     /** The queue's "Played" and "Up next" headings (#197). */
     val queueHeadings: Boolean = true,
-    /** #275 (1.8.1.1): the DJ button in the queue's header (off: more room there; DJ can be one of the player's buttons). */
-    val queueDjChip: Boolean = false,
     /** The cast mark after the output's name under the player (#149, R13). */
     val castMark: Boolean = true,
     /** Immersive mode shows the playing video behind the lyrics instead of the cover (#170). */
@@ -909,7 +907,7 @@ enum class MenuAction(val group: MenuGroup, val fromPlayer: Boolean = false, val
     ROMANIZE(MenuGroup.LYRICS), LYRICS_AGAIN(MenuGroup.LYRICS), LYRICS_INTO_FILE(MenuGroup.LYRICS),
     /** #345: "Show lyrics" can be folded away while the current lyric (or a cover gesture) opens them too. */
     OPEN_LYRICS(MenuGroup.PLAYING, true, foldable = true), OPEN_QUEUE(MenuGroup.PLAYING, true), VIDEO_SWITCH(MenuGroup.PLAYING, true),
-    PREVIOUS(MenuGroup.PLAYING, true), NEXT(MenuGroup.PLAYING, true), DJ(MenuGroup.PLAYING, true), EQUALIZER(MenuGroup.PLAYING, true),
+    PREVIOUS(MenuGroup.PLAYING, true), NEXT(MenuGroup.PLAYING, true), EQUALIZER(MenuGroup.PLAYING, true),
     SLEEP(MenuGroup.PLAYING), SPEED_PITCH(MenuGroup.PLAYING), OUTPUT(MenuGroup.PLAYING), IMMERSIVE(MenuGroup.PLAYING),
     VIDEO_DOWNLOAD(MenuGroup.PLAYING), LISTEN_TOGETHER(MenuGroup.PLAYING), BEST_PART(MenuGroup.PLAYING),
     /** 1.8.7.6: "Spotify canvas" for this song, on or off: Spotify's own loop, apart from the animated cover and Prism Canvas. */
@@ -988,7 +986,7 @@ fun AppSettings.episodeMenuFromPlayer(): List<MenuAction> = listOfNotNull(MenuAc
 
 /** The bottom row's buttons as they show on the player (none while the row is hidden). */
 fun AppSettings.rowButtons(): List<PlayerButton> =
-    if (!shows(PlayerPart.BUTTONS)) emptyList() else player.buttons.filter { it != PlayerButton.DJ && (it != PlayerButton.VIDEO || showVideoSwitch) }
+    if (!shows(PlayerPart.BUTTONS)) emptyList() else player.buttons.filter { it != PlayerButton.VIDEO || showVideoSwitch }
 
 /**
  * The ⋯ menu's [MenuAction.fromPlayer] actions: what the player no longer shows, so hiding never takes a feature away.
@@ -1238,7 +1236,7 @@ enum class DeckPart(val label: String) { STRIP(tr(R.string.current_lyric)), SCRU
 /** What a button in the player's bottom row does: the listener picks three to six, in order. */
 enum class PlayerButton(val label: String) {
     LYRICS(tr(R.string.lyrics)), VIDEO(tr(R.string.video)), QUEUE(tr(R.string.up_next)), OUTPUT(tr(R.string.play_on)), SLEEP(tr(R.string.sleep_timer)), LIKE(tr(R.string.widget_like)),
-    DISLIKE(tr(R.string.not_for_me)), ADD_TO_PLAYLIST(tr(R.string.add_to_playlist)), SHARE(tr(R.string.share)), SING(tr(R.string.sing)), DJ(tr(R.string.dj_mode)),
+    DISLIKE(tr(R.string.not_for_me)), ADD_TO_PLAYLIST(tr(R.string.add_to_playlist)), SHARE(tr(R.string.share)), SING(tr(R.string.sing)),
     EQUALIZER(tr(R.string.equalizer)), DOWNLOAD(tr(R.string.download)), RADIO(tr(R.string.prism_vibe_from_track)), SPEED(tr(R.string.speed));
 
     companion object {
@@ -1695,8 +1693,6 @@ data class AppSettings(
     val singAlwaysReady: Boolean = false,
     /** How much room Sing's separated vocals may take, in MB; [SING_ROOM_UNLIMITED] for no limit (#238). */
     val singCacheMb: Int = 1024,
-    /** DJ mode's energy curve (picked in the queue, where DJ mode is switched on for the queue playing). */
-    val djFlow: com.prism.music.playback.DjFlow = com.prism.music.playback.DjFlow.STEADY,
     /** A notification when an artist the listener starred puts something out (Release Radar). */
     val releaseNotifications: Boolean = true,
     /** A notification on 1 December when the year's Rewind is ready. */
@@ -2127,7 +2123,6 @@ class SettingsRepository(
         val singOnCellular = booleanPreferencesKey("sing_cellular")
         val singAlwaysReady = booleanPreferencesKey("sing_always_ready")
         val singCacheMb = intPreferencesKey("sing_cache_mb")
-        val djFlow = stringPreferencesKey("dj_flow")
         val releaseNotifications = booleanPreferencesKey("release_notifications")
         val rewindNotification = booleanPreferencesKey("rewind_notification")
         val webRemote = booleanPreferencesKey("web_remote")
@@ -2379,7 +2374,6 @@ class SettingsRepository(
         // 1.7.8: the player's look ([ViewLook]) and Prism's behaviour ([BehaviorPrefs]).
         val panelPlayer = stringPreferencesKey("panel_player")
         val queueHeadings = booleanPreferencesKey("queue_headings")
-        val queueDjChip = booleanPreferencesKey("queue_dj_chip")
         val castMark = booleanPreferencesKey("cast_mark")
         val immersiveVideo = booleanPreferencesKey("immersive_video")
         val bleedFit = stringPreferencesKey("bleed_fit")
@@ -2526,7 +2520,7 @@ class SettingsRepository(
                 homeHeader, homeHeaderHeight,
                 cornerScale, songShape, albumShape, artistShape, playerShape, buttonShape, playOutlined,
                 typeWeight, typeSpacing, titleFont, tabTint, playerTitleWeight, typeClassic, controlsClassic,
-                panelPlayer, queueHeadings, queueDjChip, castMark, immersiveVideo, bleedFit, coverFlight, videoControlsHide,
+                panelPlayer, queueHeadings, castMark, immersiveVideo, bleedFit, coverFlight, videoControlsHide,
                 coverFlightBack, videoButtonsHide, bleedRoomy, queueLengths, queuePlayedMoves, queueTidy,
                 crossfadeMark, blendCovers, buttonsPill, playerHiddenParts, crossfadeShape,
                 downloadsAlbums, artistLinks, backdropFade,
@@ -2566,7 +2560,7 @@ class SettingsRepository(
                 streamVisualStyle to 's', streamLayout to 's', streamVisualSize to 's', streamMotion to 'f', streamActionStyle to 's', streamActionSize to 's', streamOpacity to 'f', streamSensitivity to 'f', streamShowCover to 'b', streamCoverSize to 's', streamGlassPanel to 'b', streamReverseLayout to 'b', streamScenarioOrder to 's', streamShowProgress to 'b', streamShowReactions to 'b', streamShowStatus to 'b', streamCompactScenarios to 'b', replayCard to 's', hideStatusBar to 'b',
                 cornerScale to 'f', songShape to 's', albumShape to 's', artistShape to 's', playerShape to 's', buttonShape to 's', playOutlined to 'b',
                 typeWeight to 's', typeSpacing to 's', titleFont to 's', tabTint to 's', playerTitleWeight to 's', typeClassic to 'b', controlsClassic to 'b',
-                panelPlayer to 's', queueHeadings to 'b', queueDjChip to 'b', castMark to 'b', immersiveVideo to 'b', bleedFit to 's', coverFlight to 'b',
+                panelPlayer to 's', queueHeadings to 'b', castMark to 'b', immersiveVideo to 'b', bleedFit to 's', coverFlight to 'b',
                 videoControlsHide to 'b', crossfadeMark to 'b', blendCovers to 'b', buttonsPill to 'b', playerHiddenParts to 's',
                 crossfadeShape to 'b',
                 coverFlightBack to 'b', videoButtonsHide to 'b', bleedRoomy to 'b', queueLengths to 'b', queuePlayedMoves to 'b', queueTidy to 'b',
@@ -2589,7 +2583,7 @@ class SettingsRepository(
                 "account_avatar", "haptics", "immersive_player", "preload", "preload_cellular", "canvas_enabled", "canvas_on_cellular",
                 "soft_spatial", "soft_spatial_amount", "lyrics_on_player", "lyrics_order", "lyrics_off", "prefer_synced", "skip_censored",
                 "lyrics_translate", "lyrics_translate_to", "romanize_lyrics", "romanize_all", "sing_cellular", "sing_always_ready",
-                "sing_cache_mb", "dj_flow", "release_notifications", "rewind_notification", "web_remote", "handoff_available",
+                "sing_cache_mb", "release_notifications", "rewind_notification", "web_remote", "handoff_available",
                 "car_lyrics", "car_lyrics_style", "car_lyrics_on_phone", "car_lyrics_keep_title", "auto_grid", "nerd_stats",
                 "show_quality", "square_video_covers", "lyrics_on_mobile_data", "best_part_button", "show_video_switch",
                 "hold_seek_seconds", "canvas_with_downloads", "canvas_with_downloads_cellular", "audio_quality", "cellular_quality",
@@ -2768,7 +2762,6 @@ class SettingsRepository(
             singOnCellular = p[K.singOnCellular] ?: d.singOnCellular,
             singAlwaysReady = p[K.singAlwaysReady] ?: d.singAlwaysReady,
             singCacheMb = p[K.singCacheMb] ?: d.singCacheMb,
-            djFlow = p.enum(K.djFlow, d.djFlow),
             releaseNotifications = p[K.releaseNotifications] ?: d.releaseNotifications,
             rewindNotification = p[K.rewindNotification] ?: d.rewindNotification,
             webRemote = p[K.webRemote] ?: d.webRemote,
@@ -2852,7 +2845,6 @@ class SettingsRepository(
             view = ViewLook(
                 panelPlayer = p.enum(K.panelPlayer, d.view.panelPlayer),
                 queueHeadings = p[K.queueHeadings] ?: d.view.queueHeadings,
-                queueDjChip = false,
                 castMark = p[K.castMark] ?: d.view.castMark,
                 immersiveVideo = p[K.immersiveVideo] ?: d.view.immersiveVideo,
                 bleedFit = p.enum(K.bleedFit, d.view.bleedFit),
@@ -3064,7 +3056,7 @@ class SettingsRepository(
                 artCorners = p[K.playerArtCorners] ?: d.player.artCorners,
                 layout = p.enum(K.playerLayout, d.player.layout),
                 deck = p.enumList(K.playerDeck, d.player.deck).let { it + (DeckPart.entries - it.toSet()) },
-                buttons = p.enumList(K.playerButtons, d.player.buttons).filterNot { it == PlayerButton.DJ }.ifEmpty { PlayerButton.DEFAULT },
+                buttons = p.enumList(K.playerButtons, d.player.buttons).ifEmpty { PlayerButton.DEFAULT },
                 titleAlign = p.enum(K.playerTitleAlign, d.player.titleAlign),
                 titleSize = p.enum(K.playerTitleSize, d.player.titleSize),
                 titleScroll = p[K.playerTitleScroll] ?: d.player.titleScroll,
@@ -3584,7 +3576,6 @@ class SettingsRepository(
     fun setSingOnCellular(v: Boolean) = edit { it[K.singOnCellular] = v }
     fun setSingAlwaysReady(v: Boolean) = edit { it[K.singAlwaysReady] = v }
     fun setSingCacheMb(v: Int) = edit { it[K.singCacheMb] = v }
-    fun setDjFlow(v: com.prism.music.playback.DjFlow) = edit { it[K.djFlow] = v.name }
     fun setReleaseNotifications(v: Boolean) = edit { it[K.releaseNotifications] = v }
     fun setRewindNotification(v: Boolean) = edit { it[K.rewindNotification] = v }
     fun setWebRemote(v: Boolean) = edit { it[K.webRemote] = v }
@@ -3729,7 +3720,7 @@ class SettingsRepository(
     fun setPlayerLayout(v: PlayerLayout) = edit { it[K.playerLayout] = v.name }
     fun setVinylTonearm(v: Boolean) = edit { it[K.vinylTonearm] = v }
     fun setPlayerDeck(v: List<DeckPart>) = edit { it[K.playerDeck] = v.joinToString(",") { p -> p.name } }
-    fun setPlayerButtons(v: List<PlayerButton>) = edit { it[K.playerButtons] = v.filterNot { b -> b == PlayerButton.DJ }.joinToString(",") { b -> b.name } }
+    fun setPlayerButtons(v: List<PlayerButton>) = edit { it[K.playerButtons] = v.joinToString(",") { b -> b.name } }
     fun setSessionButtons(v: List<SessionButton>) = edit { it[K.sessionButtons] = v.joinToString(",") { b -> b.name } }
     fun setScrubberColor(v: ScrubberColor) = edit { it[K.scrubberColor] = v.name }
     fun setPlayerTitleAlign(v: PlayerTitleAlign) = edit { it[K.playerTitleAlign] = v.name }
@@ -3788,7 +3779,6 @@ class SettingsRepository(
     // 1.7.8
     fun setPanelPlayer(v: PanelPlayer) = edit { it[K.panelPlayer] = v.name }
     fun setQueueHeadings(v: Boolean) = edit { it[K.queueHeadings] = v }
-    fun setQueueDjChip(v: Boolean) = edit { it[K.queueDjChip] = v }
     fun setCastMark(v: Boolean) = edit { it[K.castMark] = v }
     fun setImmersiveVideo(v: Boolean) = edit { it[K.immersiveVideo] = v }
     fun setBleedFit(v: BleedFit) = edit { it[K.bleedFit] = v.name }

@@ -202,7 +202,7 @@ internal fun RowButtons() {
             modifier = mod, grip = Modifier.dragHandle(),
         )
     }
-    val rest = PlayerButton.entries.filter { it != PlayerButton.DJ && it !in chosen }
+    val rest = PlayerButton.entries.filter { it !in chosen }
     if (rest.isNotEmpty() && chosen.size < PlayerButton.MAX) {
         Label(tr(R.string.add_a_button))
         androidx.compose.foundation.layout.FlowRow(
@@ -407,7 +407,6 @@ fun buttonIcon(b: PlayerButton): ImageVector = when (b) {
     PlayerButton.ADD_TO_PLAYLIST -> PrismIcons.PlaylistAdd
     PlayerButton.SHARE -> PrismIcons.Share
     PlayerButton.SING -> PrismIcons.Mic
-    PlayerButton.DJ -> PrismIcons.Turntable
     PlayerButton.EQUALIZER -> PrismIcons.Equalizer
     PlayerButton.DOWNLOAD -> PrismIcons.Download
     PlayerButton.RADIO -> PrismIcons.Radio
