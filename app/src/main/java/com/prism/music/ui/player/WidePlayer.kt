@@ -336,7 +336,7 @@ internal fun PlayerCredits(song: Song, onMore: () -> Unit, onCollapse: () -> Uni
     val nav = LocalNavigator.current
     val liked by c.library.likedIds.collectAsState()
     val settings by c.settings.flow.collectAsState()
-    val heart = (com.prism.music.data.prefs.PlayerButton.LIKE !in settings.player.buttons || !settings.shows(PlayerPart.BUTTONS)) && settings.shows(PlayerPart.LIKE)
+    val heart = (!deckOwnsPlayerReactions(settings.player.buttons, settings.shows(PlayerPart.LIKE)) || !settings.shows(PlayerPart.BUTTONS)) && settings.shows(PlayerPart.LIKE)
     // With the ⋯ button hidden (1.8.0), a long press on the title or the artist opens the menu.
     val menuHeld: (() -> Unit)? = if (settings.shows(PlayerPart.MENU)) null else onMore
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
