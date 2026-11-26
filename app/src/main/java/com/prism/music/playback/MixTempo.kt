@@ -10,7 +10,6 @@ import com.prism.music.data.stream.StreamResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -299,7 +298,7 @@ class MixTempo(
     private val local: (id: String, scratch: File) -> android.net.Uri? = { _, _ -> null },
     /** Blocks while the playing song is still loading (a scan starting then competed with it); off the main thread. */
     private val yieldToPlaying: () -> Unit = {},
-    /** Music is playing right now (DJ mode's quick scans then go one at a time). */
+    /** Legacy constructor parameter retained for source compatibility. */
     private val playing: () -> Boolean = { false },
     /** Where each scanned song's outline goes, for the waveform progress bar (1.7.4). */
     private val waves: com.prism.music.data.SongWaves? = null,
@@ -311,7 +310,7 @@ class MixTempo(
     private val loudPrefs = context.getSharedPreferences("song_loudness", Context.MODE_PRIVATE)
     /** Song id -> its loudest sample (dBFS), measured with its loudness since 1.8.0: how far Normalize may lift it. */
     private val peakPrefs = context.getSharedPreferences("song_peak", Context.MODE_PRIVATE)
-    /** Song id -> its key ([MusicKey.encode], or "none" when it has no clear one); DJ mode's harmonic ordering. */
+    /** Song id -> its key ([MusicKey.encode], or "none" when it has no clear one); used by musical-key filters and metadata. */
     private val keyPrefs = context.getSharedPreferences("song_key", Context.MODE_PRIVATE)
     private val failed = ConcurrentHashMap.newKeySet<String>()
     /** One song at a time: decoding a whole song is the heaviest thing Prism does in the background. */
@@ -319,12 +318,12 @@ class MixTempo(
 
     /** Forgets what was measured of [id] (another version of it plays now), so it's measured again. */
     fun forget(id: String) {
-        for (p in listOf(prefs, loudPrefs, peakPrefs, keyPrefs, quickPrefs)) p.edit().remove(id).apply()
+        for (p in listOf(prefs, loudPrefs, peakPrefs, keyPrefs, legacyScanPrefs)) p.edit().remove(id).apply()
         traits?.forget(id)
     }
 
     /** Every song measured so far, whole or by a quick scan (what [measuredCount] counts). */
-    fun measuredIds(): Set<String> = loudPrefs.all.keys + quickPrefs.all.keys
+    fun measuredIds(): Set<String> = loudPrefs.all.keys + legacyScanPrefs.all.keys
 
     /**
      * What the prefs hold of [id], as a `song_traits` row (1.8.3's one-time copy). Its energy goes without brightness,
@@ -336,7 +335,7 @@ class MixTempo(
             val lufs = loudness(id)
             return com.prism.music.data.SongTraits(id, tempo, key(id), lufs, Energy.of(lufs, tempo?.confidence, null), whole = true)
         }
-        val (bpm, confidence, lufs) = quick(id) ?: return null
+        val (bpm, confidence, lufs) = legacyScan(id) ?: return null
         val tempo = if (bpm > 0) Tempo(bpm, confidence, 0, 0, 0, 0) else null
         return com.prism.music.data.SongTraits(id, tempo, key(id), lufs, Energy.of(lufs, tempo?.confidence, null), whole = false)
     }
@@ -344,7 +343,7 @@ class MixTempo(
     fun cached(id: String): Tempo? = prefs.getString(id, null)?.let(Tempo::decode)
 
     /** How many songs have been measured so far, whole or by a quick scan: what a calm ↔ energetic radio has to go by. */
-    fun measuredCount(): Int = (loudPrefs.all.keys + quickPrefs.all.keys).size
+    fun measuredCount(): Int = (loudPrefs.all.keys + legacyScanPrefs.all.keys).size
 
     /** The song's measured loudness (integrated LUFS), once it's been scanned. */
     fun loudness(id: String): Float? = loudPrefs.getFloat(id, Float.NaN).takeIf { !it.isNaN() }
@@ -369,119 +368,19 @@ class MixTempo(
     /** [shape]: energy and bass a second at a time, for Automix (1.8.8), kept beside the waveform outline. */
     internal class Scan(val tempo: Tempo?, val lufs: Float?, val key: MusicKey?, val peakDb: Float?, val brightness: Double?, val shape: SongShape? = null)
 
-    // ---------------------------------------------------------------- DJ mode's quick scan
-
-    /** Song id -> "bpm|confidence|lufs" from a [QuickScan] (the full scan's figures win when there are both). */
-    private val quickPrefs = context.getSharedPreferences("dj_quick", Context.MODE_PRIVATE)
-    /** A few quick scans at once (each is a third of a song, at background priority); separate from the full scans. */
-    private val quickGate = kotlinx.coroutines.sync.Semaphore(QUICK_AT_ONCE)
-
-    enum class QuickResult { KEYED, NEEDS_NETWORK, FAILED }
-
-    /** The tempo DJ mode goes by: the full scan's when it's steady, else the quick scan's when that's steady. */
-    fun djBpm(id: String): Double? = cached(id)?.takeIf { it.steady }?.bpm ?: quick(id)?.takeIf { it.second >= Tempo.MIN_CONFIDENCE }?.first
-
-    /** The loudness DJ mode goes by (its energy): measured whole, else from the quick scan. */
-    fun djLoudness(id: String): Float? = loudness(id) ?: quick(id)?.third
-
-    private fun quick(id: String): Triple<Double, Double, Float?>? = quickPrefs.getString(id, null)?.split('|')?.let { p ->
+    // Read-only migration of measurements made by retired versions. Never schedule or execute a quick scan.
+    private val legacyScanPrefs = context.getSharedPreferences("dj_quick", Context.MODE_PRIVATE)
+    private fun legacyScan(id: String): Triple<Double, Double, Float?>? = legacyScanPrefs.getString(id, null)?.split('|')?.let { p ->
         val bpm = p.getOrNull(0)?.toDoubleOrNull() ?: return null
         Triple(bpm, p.getOrNull(1)?.toDoubleOrNull() ?: 0.0, p.getOrNull(2)?.toFloatOrNull()?.takeIf { !it.isNaN() })
     }
 
-    /**
-     * DJ mode's look at a song: its key, tempo and loudness from three stretches of it ([QuickScan]), fetched by range
-     * when it isn't on the phone ([network] allowing). A song already scanned for its key is [QuickResult.KEYED] at once.
-     */
-    suspend fun quickScan(
-        id: String, network: Boolean, priority: Int = android.os.Process.THREAD_PRIORITY_BACKGROUND,
-        /** A job Android scheduled (charging, screen off), which has limits of its own rather than [BackgroundBudget]'s. */
-        scheduled: Boolean = false,
-    ): QuickResult {
-        if (keyed(id)) return QuickResult.KEYED
-        if (id in failed) return QuickResult.FAILED
-        // While music plays, one at a time (Reddit 1.7: "DJ mode is so laggy": three decodes beside playback were too
-        // much for mid-range phones); while paused, a few at once.
-        // A scheduled job does one at a time, with music off, and doesn't wait behind scans held while the listener's away.
-        if (scheduled) return quickScanNow(id, network, priority, scheduled = true)
-        return quickGate.withPermit { if (playing()) playingGate.withLock { quickScanNow(id, network, priority, scheduled) } else quickScanNow(id, network, priority, scheduled) }
-    }
-
-    /** One quick scan at a time while music plays ([quickScan]). */
-    private val playingGate = kotlinx.coroutines.sync.Mutex()
-
-    private suspend fun quickScanNow(id: String, network: Boolean, priority: Int, scheduled: Boolean): QuickResult {
-        if (keyed(id)) return QuickResult.KEYED
-        return run {
-            withContext(Dispatchers.IO) {
-                val started = System.nanoTime()
-                val before = android.os.Process.getThreadPriority(android.os.Process.myTid())
-                android.os.Process.setThreadPriority(priority)
-                runCatching { yieldToPlaying() }
-                AudioDiagnostics.log("background", "DJ quick scan of $id started")
-                try {
-                    val (r, bytes) = BackgroundBudget.asJob(scheduled) { quickRead(id, network) } ?: return@withContext QuickResult.NEEDS_NETWORK
-                    keyPrefs.edit().putString(id, r.key?.encode() ?: "none:${MusicKey.VERSION}").apply()
-                    quickPrefs.edit().putString(id, "${r.tempo?.bpm ?: 0.0}|${r.tempo?.confidence ?: 0.0}|${r.lufs ?: Float.NaN}").apply()
-                    traits?.record(com.prism.music.data.SongTraits(id, r.tempo, r.key, r.lufs, Energy.of(r.lufs, r.tempo?.confidence, r.brightness), whole = false))
-                    Log.i(
-                        TAG, "quick-scanned $id in ${(System.nanoTime() - started) / 1_000_000} ms (${bytes / 1024} KB): key " +
-                            (r.key?.let { "${it.name} (${it.camelot})" } ?: "unclear") + ", " +
-                            (r.tempo?.let { "%.1f BPM (confidence %.1f)".format(it.bpm, it.confidence) } ?: "no clear beat"),
-                    )
-                    QuickResult.KEYED
-                } catch (e: Exception) {
-                    Log.w(TAG, "quick scan of $id failed: $e")
-                    failed += id
-                    QuickResult.FAILED
-                } finally {
-                    android.os.Process.setThreadPriority(before)
-                    AudioDiagnostics.log("background", "DJ quick scan of $id ended after ${(System.nanoTime() - started) / 1_000_000} ms")
-                }
-            }
-        }
-    }
-
-    /** The quick scan's result and the bytes it downloaded; null when the song isn't on the phone and [network] says no. */
-    private fun quickRead(id: String, network: Boolean): Pair<QuickScan.Result, Long>? {
-        val scratch = File(context.cacheDir, "djq_$id.part")
-        val ex = MediaExtractor()
-        var ranged: RangedSource? = null
-        try {
-            var durationMs = 0L
-            val uri = local(id, scratch)
-            if (uri != null) ex.setDataSource(context, uri, null)
-            else {
-                if (!network || id.startsWith(com.prism.music.data.model.Song.LOCAL_PREFIX)) return null
-                val a = streams.analysisAudio(id)
-                if (a.contentLength <= 0) throw java.io.IOException("the stream's length is unknown")
-                ranged = RangedSource(http, a.url, a.contentLength)
-                ex.setDataSource(ranged)
-                durationMs = a.durationSec * 1000
-            }
-            val track = (0 until ex.trackCount).firstOrNull { ex.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true }
-                ?: throw java.io.IOException("no audio track")
-            ex.selectTrack(track)
-            val fmt = ex.getTrackFormat(track)
-            if (fmt.containsKey(MediaFormat.KEY_DURATION)) durationMs = fmt.getLong(MediaFormat.KEY_DURATION) / 1000
-            if (durationMs <= 0) throw java.io.IOException("the song's length is unknown")
-            val (pieces, sr) = QuickScan.decode(ex, track, QuickScan.windows(durationMs)) ?: throw java.io.IOException("couldn't decode its audio")
-            // The extractor takes a failed read for the end of the song. A key from part of one isn't kept (a link that
-            // ran out while the scan waited for the listener to come back, say); it's asked again another time.
-            ranged?.failure?.let { throw it }
-            return QuickScan.analyse(pieces, sr) to (ranged?.fetched ?: 0L)
-        } finally {
-            ex.release()
-            ranged?.close()
-            scratch.delete()
-        }
-    }
 
     /**
      * Scans the song now if it hasn't been ([network]: whether its audio may be downloaded when it isn't on the phone),
      * and returns its tempo; null when it has none that's clear, or it can't be scanned yet. [edges]: a song scanned
      * before its fade-out and intro were measured is scanned again (only Crossfade's automatic length needs them), and
-     * with [key], one scanned before its key was (DJ mode), with [wave], one with no outline for the waveform bar, and
+     * with [key], one scanned before its key was, with [wave], one with no outline for the waveform bar, and
      * with [peak], one scanned before its peak was (Normalize).
      */
     suspend fun measure(
@@ -498,7 +397,7 @@ class MixTempo(
                 val before = android.os.Process.getThreadPriority(android.os.Process.myTid())
                 android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
                 runCatching { yieldToPlaying() }
-                AudioDiagnostics.log("background", "song scan of $id started (Normalize/Crossfade/DJ)")
+                AudioDiagnostics.log("background", "song scan of $id started (Normalize/Crossfade)")
                 val r = try {
                     runCatching { scan(id, network) }.onFailure { Log.w(TAG, "scan of $id failed: $it") }
                 } finally {
@@ -643,7 +542,6 @@ class MixTempo(
     companion object {
         private const val TAG = "PrismMix"
         /** DJ mode's quick scans running at once. */
-        private const val QUICK_AT_ONCE = 3
 
         /** Room for a song of [lengthMs] at [rate], with a little over; a song whose length isn't known starts at 3 minutes. */
         internal fun decodedSize(lengthMs: Long, rate: Int): Int {

@@ -6,7 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** GitHub #343: background song scans make way for the listener on slow phones, and DJ mode's pre-scan waits for an idle phone. */
+/** GitHub #343: background song scans make way for the listener on slow phones. */
 class ScanMannersTest {
     private val slow = { true }
     private val fast = { false }
@@ -47,11 +47,4 @@ class ScanMannersTest {
         assertFalse(MixTempo.isSlowPhone(cores = 8, mayBeSlow = false, performanceMode = false))
     }
 
-    @Test
-    fun djPreScanOnlyWhileThePhoneIsLeftAlone() {
-        assertTrue(DjPrescanWorker.mayRun(screenOn = false, playing = false))
-        assertFalse(DjPrescanWorker.mayRun(screenOn = true, playing = false))
-        assertFalse(DjPrescanWorker.mayRun(screenOn = false, playing = true))
-        assertEquals(false, DjPrescanWorker.mayRun(screenOn = true, playing = true))
-    }
 }
