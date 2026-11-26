@@ -720,7 +720,8 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
      */
     fun playRadio(song: Song, announce: Boolean = false, contextTitle: String = song.title) {
         if (song.isLive || song.isEpisode || c.queue.followingHost) return
-        val source = QueueSource(QueueKind.RADIO, tr(R.string.radio, contextTitle), seedId = song.id)
+        val source = QueueSource(QueueKind.RADIO, tr(R.string.radio, contextTitle), seedId = song.id,
+            vibeOrigin = VibeOrigin(VibeOriginKind.TRACK, contextTitle, com.prism.music.data.PlaylistCovers.artOf(song)))
         val p = player
         if (p?.currentMediaItem?.mediaId == song.id && c.queue.source.value.matchesTrackStream(song.id, source.title)) {
             ++playToken
@@ -757,6 +758,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
 
     /** Collection/artist recommendations use original context, not the first generated track. */
     internal suspend fun playContextVibe(title: String, anchors: List<Song>,
+         origin: VibeOrigin? = null,
         provider: suspend () -> List<Song> = { emptyList() }): Boolean = withContext(Dispatchers.Main) {
         if (c.queue.followingHost) return@withContext false
         val token = queueStarting()
@@ -766,7 +768,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         if (context.isEmpty() || !stillStarting(token) || c.queue.source.value !== old) return@withContext false
         val picks = c.yourMusic.contextBatch(context, emptyList(), 0, explicitContext = true, provided = supplied + context)
         if (picks.isEmpty() || !stillStarting(token) || c.queue.followingHost || c.queue.source.value !== old) return@withContext false
-        val source = QueueSource(QueueKind.RADIO, tr(R.string.radio, title), vibeAnchors = context)
+        val source = QueueSource(QueueKind.RADIO, tr(R.string.radio, title), vibeAnchors = context, vibeOrigin = origin)
         playQueue(picks, 0, source)
         c.recFeedback.served(picks.map { it.id })
         true
