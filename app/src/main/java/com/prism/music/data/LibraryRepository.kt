@@ -41,6 +41,13 @@ internal fun mergeProfileArtists(
         .distinctBy { it.id }
         .filterNot { favorite -> blocked.any { it.id == favorite.id || it.name.equals(favorite.name, true) } }
 
+/** More recent local changes override both the pre-fetch snapshot and recently acknowledged edits. */
+internal fun mergeReactionEdits(
+    beforeFetch: Map<String, SongReaction>,
+    acknowledged: Map<String, SongReaction>,
+    pending: Map<String, SongReaction>,
+): Map<String, SongReaction> = beforeFetch + acknowledged + pending
+
 internal fun reactionAfterLike(current: SongReaction): SongReaction =
     if (current == SongReaction.LIKE) SongReaction.NONE else SongReaction.LIKE
 
@@ -416,7 +423,7 @@ class LibraryRepository(private val c: AppContainer) {
             val nowElapsed = android.os.SystemClock.elapsedRealtime()
             val acknowledged = acknowledgedReactions[key]
             acknowledged?.entries?.removeAll { nowElapsed - it.value.at >= 60_000L }
-            val localEdits = beforeFetch + acknowledged.orEmpty().mapValues { it.value.target } + pendingRemote(key)
+            val localEdits = mergeReactionEdits(beforeFetch, acknowledged.orEmpty().mapValues { it.value.target }, pendingRemote(key))
             val remote = fetched.filterNot { it.id in dislikedIds.value || localEdits[it.id]?.let { reaction -> reaction != SongReaction.LIKE } == true }
             if (remoteReactionKey() != key || !c.settings.current.isLoggedIn) { syncState.value = SyncState.IDLE; return@withContext }
             val fetchedIds = fetched.mapTo(hashSetOf()) { it.id }
