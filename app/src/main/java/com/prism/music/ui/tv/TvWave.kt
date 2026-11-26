@@ -62,8 +62,9 @@ internal fun TvWavePlace(nav: TvNav) {
     val scenarioOrder = remember(automaticScenarioOrder, appSettings.streamScenarioOrder) { WaveScenarios.visibleOrder(automaticScenarioOrder, appSettings.streamScenarioOrder) }
     val song by c.player.currentSong.collectAsState()
     val disliked by c.library.dislikedIds.collectAsState()
-    val now = rememberTvNow(c).takeIf { source.isMyWave }
-    val current = song.takeIf { source.isMyWave }
+    val now = rememberTvNow(c).takeIf { source.continuousRecommendations }
+    val current = song.takeIf { source.continuousRecommendations }
+    val contextual = current != null && source.isSongRadio
     val djOn by c.dj.on.collectAsState()
 
     val title = tr(R.string.stream)
@@ -333,11 +334,11 @@ internal fun TvWavePlace(nav: TvNav) {
                     val status = tr(if (starting) R.string.prism_stream_finding_music else if (now?.playing == true) R.string.prism_stream_playing else if (now != null) R.string.prism_stream_paused else R.string.prism_stream_personal_stream)
                     val subtitle = status.takeIf { appSettings.streamShowStatus }.orEmpty()
                     if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (current != null) TvIconButton(PrismIcons.Shuffle, tr(R.string.prism_stream_refresh), { if (!starting) { if (djOn) c.player.toggleShuffle() else start() } }, Modifier.tvItem("tv_wave/refresh"))
+                    if (current != null && !contextual) TvIconButton(PrismIcons.Shuffle, tr(R.string.prism_stream_refresh), { if (!starting) { if (djOn) c.player.toggleShuffle() else start() } }, Modifier.tvItem("tv_wave/refresh"))
                 }
                 Box(Modifier.weight(1f, fill = true).fillMaxWidth(), propagateMinConstraints = true) {
                     com.prism.music.ui.screens.VibeStationOverlay(appSettings,
-                        vibeStationTitle(activeSaved, activeScenario), hasTrack = current != null,
+                        com.prism.music.ui.screens.activeVibeTitle(source, activeSaved, activeScenario), hasTrack = current != null,
                         artist = now?.artist ?: current?.primaryArtist,
                         play = {
                             TvIconButton(if (now?.playing == true) PrismIcons.Pause else PrismIcons.Play, tr(when {
@@ -348,7 +349,7 @@ internal fun TvWavePlace(nav: TvNav) {
                             }), { if (current != null) c.player.togglePlay() else if (!starting) start() },
                                 Modifier.tvItem("tv_wave/play", entry = true), big = true)
                         }, tune = {
-                            WaveTvButton(tr(R.string.prism_stream_tune), { toggleTuning(true) },
+                            if (!contextual) WaveTvButton(tr(R.string.prism_stream_tune), { toggleTuning(true) },
                                 Modifier.tvItem("tv_wave/tune"), icon = PrismIcons.Customize)
                         }, credits = {
                             if (current != null) com.prism.music.ui.screens.VibeCredits(appSettings,
@@ -382,9 +383,9 @@ internal fun TvWavePlace(nav: TvNav) {
                         vibeShortcuts(style, savedPresets, scenarioOrder, appSettings.streamScenarioStyles, activeSaved?.id, activeScenario?.id)
                             .forEach { shortcut ->
                                 key(shortcut.key) {
-                                    ScenarioTile(shortcut.label, shortcut.icon, shortcut.selected, onClick = {
+                                    ScenarioTile(shortcut.label, shortcut.icon, shortcut.selected && !contextual, onClick = {
                                         val target = shortcut.style
-                                        if (target != null && (current == null || !shortcut.selected)) start(target, shortcut.scenarioId)
+                                        if (target != null && (current == null || contextual || !shortcut.selected)) start(target, shortcut.scenarioId)
                                     }, modifier = Modifier.tvItem("tv_wave/" + when {
                                         shortcut.key.startsWith("scenario:") -> "quick/" + shortcut.scenarioId
                                         shortcut.key.startsWith("custom:") -> "custom/" + shortcut.scenarioId
