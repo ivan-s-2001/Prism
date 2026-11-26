@@ -541,18 +541,6 @@ const val V1_8_8 = 68
             topic = TourTopic.PLAYING,
         ),
         TourStep(
-            V1_8_0, PrismIcons.Tv, tr(R.string.tour_180_tv),
-            tr(R.string.tour_180_tv_body),
-            listOf(
-                tr(R.string.tour_180_tv_phone),
-                tr(R.string.tour_180_tv_get, com.prism.music.connect.TvInstall.DOWNLOADER_CODE),
-                tr(R.string.tour_180_tv_big),
-            ),
-            listOf(PrismIcons.Tv, PrismIcons.Handoff),
-            showMe = Routes.settings("connect"),
-            topic = TourTopic.DEVICES,
-        ),
-        TourStep(
             V1_8_0, PrismIcons.Settings, tr(R.string.tour_180_settings),
             tr(R.string.tour_180_settings_body),
             listOf(
@@ -651,9 +639,8 @@ const val V1_8_8 = 68
                 tr(R.string.tour_181_files),
                 tr(R.string.tour_181_crossfade),
                 tr(R.string.tour_181_auto),
-                tr(R.string.tour_181_tv),
             ),
-            listOf(PrismIcons.Car, PrismIcons.Tv),
+            listOf(PrismIcons.Car),
             topic = TourTopic.DEVICES,
         ),
         TourStep(
@@ -965,9 +952,8 @@ const val V1_8_8 = 68
                 tr(R.string.tour_188_also_guide),
                 tr(R.string.tour_188_also_sing, tr(R.string.ls_sing_button)),
                 tr(R.string.tour_188_also_radio, tr(R.string.radio_started)),
-                tr(R.string.tour_188_also_tv, tr(R.string.clear_cache)),
             ),
-            listOf(PrismIcons.Mic, PrismIcons.Tv),
+            listOf(PrismIcons.Mic),
             support = true,
             topic = TourTopic.PLAYING,
         ),

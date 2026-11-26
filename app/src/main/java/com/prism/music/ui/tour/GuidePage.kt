@@ -47,7 +47,7 @@ import com.prism.music.ui.theme.PrismTokens
  * The Guide (1.8.8, plan-tour.md §3 D, D6): where the tour's cards live now. Settings → Backup & about → Guide opens a
  * page of the eight topics ([TourTopic]) with a search line and, at the top, "Take First steps again"; a topic shows its
  * cards, newest first, and the four most used topics a "Show me how": a short coach tour done for real ([GuideTours]).
- * No card was rewritten: they are the tour's own ([Tour.steps]). TV keeps its own welcome: no "Show me how" there.
+ * The cards are the tour's own ([Tour.steps]).
  */
 
 object GuideTags {
@@ -181,11 +181,9 @@ fun GuideContent(bottomPadding: Dp, onFirstSteps: (() -> Unit)?, onTopic: (TourT
 fun GuideTopicScreen(bottomPadding: Dp, name: String?) {
     val topic = TourTopic.entries.firstOrNull { it.name.lowercase() == name } ?: return
     val nav = LocalNavigator.current
-    val context = LocalContext.current
-    val tv = remember { com.prism.music.ui.tv.TvDevice.isTv(context) }
     GuideTopicContent(
         bottomPadding, topic,
-        onShowMeHow = if (tv || topic !in GuideTours.topics) null else ({ GuideTours.start(topic) { nav.go(it) } }),
+        onShowMeHow = if (topic !in GuideTours.topics) null else ({ GuideTours.start(topic) { nav.go(it) } }),
         onShowMe = { nav.go(it) },
     )
 }

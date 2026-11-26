@@ -217,16 +217,12 @@ const val COACH_SKIP_TAG = "coach:skip"
 
 /**
  * The coach in the app: over everything in MainActivity, drawn only while a tour runs (one state read otherwise). It
- * gathers the app's state for the steps' checks. TV gets no coach: a tour started there ends at once, as skipped.
+ * gathers the app's state for the steps' checks.
  */
 @Composable
 fun CoachHost(route: String?, playerOpen: Boolean, actions: CoachActions) {
     val run = Coach.run ?: return
     val context = LocalContext.current
-    if (remember { com.prism.music.ui.tv.TvDevice.isTv(context) }) {
-        LaunchedEffect(run) { Coach.end(CoachEnd.SKIPPED, run) }
-        return
-    }
     val c = LocalContainer.current
     val song by c.player.currentSong.collectAsStateWithLifecycle()
     val playing by c.player.isPlaying.collectAsStateWithLifecycle()

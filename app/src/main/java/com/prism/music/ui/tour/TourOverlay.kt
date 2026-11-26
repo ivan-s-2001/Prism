@@ -188,7 +188,6 @@ fun TourOverlay(plan: TourPlan, onOpen: (String) -> Unit, onDone: () -> Unit) {
     val pager = rememberPagerState(initialPage = plan.start) { pages }
     val scope = rememberCoroutineScope()
     val nav = com.prism.music.ui.LocalNavigator.current
-    val tv = remember { com.prism.music.ui.tv.TvDevice.isTv(context) }
     fun finish() { Tour.markSeen(context); onDone() }
     BackHandler { if (pager.currentPage > 0) scope.launch { pager.animateScrollToPage(pager.currentPage - 1) } else finish() }
     val shown by animateFloatAsState(1f, tween(320), label = "tourIn")
@@ -227,7 +226,7 @@ fun TourOverlay(plan: TourPlan, onOpen: (String) -> Unit, onDone: () -> Unit) {
                             val step = plan.steps[page - 1]
                             val here = nav.nav.currentBackStackEntry?.id
                             finish()
-                            whatsNewShowMe(plan, page, step, here, tv, onOpen)
+                            whatsNewShowMe(plan, page, step, here, false, onOpen)
                         },
                         onMore = { finish(); onOpen(com.prism.music.ui.Routes.GUIDE) },
                     )
