@@ -92,11 +92,17 @@ internal fun VibeSphere(
                     if (listening) spectrum.update(seconds * 1000f)
                     val gain = sensitivity.value
                     val target = if (listening) spectrum.level * gain else 0f
-                    level.floatValue = smoothVibe(level.floatValue, target, seconds)
-                    for (i in bands.indices) bands[i] = smoothVibe(bands[i], if (listening) spectrum.bands[i] * gain else 0f, seconds)
+                    level.floatValue = smoothVibe(level.floatValue, target, seconds).let { if (!listening && it < 0.0005f) 0f else it }
+                    for (i in bands.indices) {
+                        val value = smoothVibe(bands[i], if (listening) spectrum.bands[i] * gain else 0f, seconds)
+                        bands[i] = if (!listening && value < 0.0005f) 0f else value
+                    }
                     // A separate clock tick keeps draw invalidation alive at zero motion speed, for the FFT.
                     time.floatValue = advanceVibeTime(time.floatValue, seconds, speed.value, playing.value)
-                    signal.value = VibeWaveSignal(time.floatValue, level.floatValue, bands.copyOf())
+                    val previous = signal.value
+                    if (previous.phase != time.floatValue || previous.beat != level.floatValue || !previous.bands.contentEquals(bands)) {
+                        signal.value = VibeWaveSignal(time.floatValue, level.floatValue, bands.copyOf())
+                    }
                     last = now
                 }
             }
