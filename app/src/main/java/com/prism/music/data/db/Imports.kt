@@ -105,9 +105,6 @@ data class StatusCount(val status: String, val n: Int)
 /** A Prism play with its song's name, to tell an imported play that is really one of Prism's own. */
 data class PrismPlayName(val songId: String, val timestamp: Long, val title: String, val primaryArtist: String, val artistName: String)
 
-/** Small projection for a batched censorship audit; source ID remains namespaced. */
-data class LinkedYandexSource(val matchedId: String, val sourceId: String)
-
 @Dao
 interface ImportDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -115,13 +112,6 @@ interface ImportDao {
 
     @Query("SELECT * FROM import_matches WHERE songKey IN (:keys)")
     suspend fun matches(keys: List<String>): List<ImportMatchEntity>
-
-    /** Source identities only: never treat a Yandex ID as a YouTube ID. */
-    @Query("SELECT DISTINCT sourceId FROM import_matches WHERE matchedId = :songId AND sourceId LIKE 'yandex:%' AND status IN ('SURE', 'FIXED')")
-    suspend fun yandexSourceIds(songId: String): List<String>
-
-    @Query("SELECT DISTINCT matchedId, sourceId FROM import_matches WHERE matchedId IN (:songIds) AND sourceId LIKE 'yandex:%' AND status IN ('SURE', 'FIXED')")
-    suspend fun linkedYandexSources(songIds: List<String>): List<LinkedYandexSource>
 
     @Query("SELECT * FROM import_matches WHERE songKey = :key")
     suspend fun match(key: String): ImportMatchEntity?

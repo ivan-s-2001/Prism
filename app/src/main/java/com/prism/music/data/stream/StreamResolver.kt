@@ -481,17 +481,6 @@ class StreamResolver(
      * ([NetFamily.Tag]) for the diagnostics, and the same over IPv4 only, for the step after a refused link.
      */
     private val apiHttp: OkHttpClient = http.newBuilder().addNetworkInterceptor(NetFamily.Tag).build()
-    private val zaycev = ZaycevVersions()
-    fun zaycevVersions(song: com.prism.music.data.model.Song) = zaycev.search(song)
-    fun zaycevVersionFromLink(song: com.prism.music.data.model.Song, url: String): com.prism.music.data.model.Song? {
-        val key = ZaycevVersions.id(url.trim()) ?: return null
-        val recording = zaycev.track(key) ?: return null
-        return recording.song.takeIf { com.prism.music.data.SongVersions.compatibleRecording(song, it) }
-    }
-
-    private val audius = AudiusVersions()
-    fun audiusVersions(song: com.prism.music.data.model.Song) = audius.search(song)
-
     private val apiHttp4: OkHttpClient = apiHttp.newBuilder().dns(ipv4Dns).build()
     private fun api(ipv4: Boolean) = if (ipv4) apiHttp4 else apiHttp
 
@@ -598,8 +587,6 @@ class StreamResolver(
         val videoId = versionOf(songId) ?: songId
         refusedSongs.forget(videoId)
         val was = cache.remove(videoId)
-        // A SoundCloud refusal must never change YouTube client/account retry state.
-        if (PublicRecording.url(videoId) != null) return
         if (unavailable) {
             // Told by the stream already, as a rule ([fetched]): the same way noted twice is noted once.
             was?.let { busyWays.note(videoId, it.way.name) }
@@ -705,7 +692,6 @@ class StreamResolver(
 
     /** [url], one of [f]'s links for [videoId], as it's handed out: marked when it was asked over IPv4 only, and noted. */
     private fun handOut(videoId: String, f: Formats, url: String): String {
-        if (PublicRecording.url(videoId) != null) return url
         if (links.note(url, LinkBook.Entry(videoId, f.way, f.asked, remember = f.afterRefusal || f.ipv4, formats = f))) {
             diag("$videoId: link from ${f.way}: ${NetFamily.linkLine(f.asked, NetFamily.ofLink(url))}")
         }
@@ -768,20 +754,7 @@ class StreamResolver(
             val started = System.nanoTime()
             NetFamily.clearLast()
             // The family the (last) player request went out by, for the diagnostics (#408).
-            val publicUrl = PublicRecording.url(videoId)
-            val f = (if (publicUrl != null) {
-                if (forVideo) throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
-                if (ZaycevVersions.url(videoId) != null) {
-                    val recording = zaycev.track(videoId) ?: throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
-                    Formats(listOf(Fmt(-400, "audio/mpeg", null, 0, 0, 2, -1) { recording.audioUrl }),
-                        emptyList(), emptyList(), recording.song.durationSec.toLong(),
-                        System.currentTimeMillis() + 2 * 60_000, via = "Zaycev.net")
-                } else if (AudiusVersions.url(videoId) != null) {
-                    val track = audius.track(videoId) ?: throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
-                    Formats(listOf(Fmt(-300, "audio/mpeg", null, 0, 0, 2, -1) { publicUrl }),
-                        emptyList(), emptyList(), track.durationSec.toLong(), System.currentTimeMillis() + 5 * 60_000, via = "Audius")
-                } else publicAudioFormats(publicUrl, BandcampVersion.url(videoId) != null)
-            } else load(videoId, forVideo)).let { it.copy(asked = NetFamily.last()) }
+            val f = load(videoId, forVideo).let { it.copy(asked = NetFamily.last()) }
             NetFamily.clearLast()
             refusedNow -= videoId
             val took = (System.nanoTime() - started) / 1_000_000
@@ -1088,109 +1061,6 @@ class StreamResolver(
         return f.takeIf { it.audio.isNotEmpty() }?.also { Log.i("PrismStream", "$videoId resolved directly (visionOS)") }
     }
 
-    /** Public, non-DRM SoundCloud audio. NewPipe rejects snippets and blocked tracks. */
-    private fun publicAudioFormats(url: String, bandcamp: Boolean): Formats {
-        val info = StreamInfo.getInfo(if (bandcamp) ServiceList.Bandcamp else ServiceList.SoundCloud, url)
-        val audio = info.audioStreams.filter {
-            it.isUrl && it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP &&
-                it.content.startsWith("https://")
-        }.mapIndexed { index, a ->
-            Fmt(
-                itag = -100 - index, mime = a.format?.mimeType ?: "audio/mpeg", codec = a.codec,
-                kbps = a.averageBitrate.takeIf { it > 0 } ?: 128,
-                sampleRate = 0, channels = 2, contentLength = -1,
-            ) { a.content }
-        }
-        val hls = info.audioStreams.filter {
-            it.isUrl && it.deliveryMethod == DeliveryMethod.HLS && it.content.startsWith("https://")
-        }.maxByOrNull { it.averageBitrate }?.content
-        if ((audio.isEmpty() && hls == null) || info.duration <= 0) throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
-        return Formats(audio, emptyList(), emptyList(), info.duration, System.currentTimeMillis() + 5 * 60_000, hlsUrl = hls, via = if (bandcamp) "Bandcamp" else "SoundCloud")
-    }
-
-    /** Candidates only: the listener must select a recording. No automatic replacement or claim of uncensored audio. */
-    fun soundCloudVersions(song: com.prism.music.data.model.Song): List<com.prism.music.data.model.Song> {
-        if (song.isLocal || song.isEpisode || song.isLive || song.isUpload || song.durationSec <= 0) return emptyList()
-        val service = ServiceList.SoundCloud
-        val queries = com.prism.music.data.SongVersions.searchQueries(song, true).take(4)
-        val results = queries.flatMap { query ->
-            runCatching { org.schabi.newpipe.extractor.search.SearchInfo.getInfo(service.getSearchExtractor(query)).relatedItems }
-                .getOrDefault(emptyList())
-        }
-        return results.filterIsInstance<org.schabi.newpipe.extractor.stream.StreamInfoItem>()
-            .filter { it.contentAvailability == org.schabi.newpipe.extractor.stream.ContentAvailability.AVAILABLE }
-            .sortedByDescending { it.isUploaderVerified }
-            .mapNotNull { item ->
-                val id = SoundCloudVersion.id(item.url) ?: return@mapNotNull null
-                if (!SoundCloudVersion.matches(song, item.name, item.uploaderName.orEmpty(), item.duration)) return@mapNotNull null
-                com.prism.music.data.model.Song(
-                    id, item.name, listOf(com.prism.music.data.model.ArtistRef(item.uploaderName.orEmpty())),
-                    durationSec = item.duration.toInt(), thumbnail = item.thumbnails.firstOrNull()?.url,
-                )
-            }.distinctBy { it.id }.take(6)
-            .mapNotNull { candidate ->
-                // Select the transport before ExoPlayer creates a media source.
-                runCatching {
-                    val f = formats(candidate.id)
-                    if (kotlin.math.abs(f.durationSec - song.durationSec) > 3) null
-                    else if (f.audio.isNotEmpty()) candidate
-                    else if (f.hlsUrl != null) SoundCloudVersion.hlsId(candidate.id)?.let { id ->
-                        cache[id] = f
-                        candidate.copy(id = id)
-                    } else null
-                }.getOrNull()
-            }
-    }
-
-    /** Bandcamp's own public artist/label pages. Validate the track page, not just its search snippet. */
-    fun bandcampVersions(song: com.prism.music.data.model.Song): List<com.prism.music.data.model.Song> {
-        if (song.isLocal || song.isEpisode || song.isLive || song.isUpload || song.durationSec <= 0 ||
-            song.artists.size != 1) return emptyList()
-        val service = ServiceList.Bandcamp
-        val album = song.album?.title?.takeIf { it.isNotBlank() }
-        val queries = (listOfNotNull(album?.let { "${song.primaryArtist} $it" }) +
-            com.prism.music.data.SongVersions.searchQueries(song, false)).distinct().take(4)
-        val results = queries.mapNotNull { query ->
-            runCatching { org.schabi.newpipe.extractor.search.SearchInfo.getInfo(service.getSearchExtractor(query)).relatedItems }
-                .getOrNull()
-        }
-        if (results.isEmpty()) throw java.io.IOException("Bandcamp search unavailable")
-        val items = results.flatten()
-        val albumHits = items.filterIsInstance<org.schabi.newpipe.extractor.playlist.PlaylistInfoItem>()
-            .filter { album != null && com.prism.music.data.imports.ImportKeys.norm(it.name) ==
-                com.prism.music.data.imports.ImportKeys.norm(album) }
-            .mapNotNull { BandcampVersion.albumUrl(it.url) }.distinct().take(4)
-        val albumTracks = albumHits.flatMap { url ->
-            runCatching {
-                val release = org.schabi.newpipe.extractor.playlist.PlaylistInfo.getInfo(service, url)
-                if (!release.uploaderName.trim().equals(song.primaryArtist.trim(), ignoreCase = true)) emptyList()
-                else release.relatedItems
-            }.getOrDefault(emptyList())
-        }
-        val hits = (albumTracks + items.filterIsInstance<org.schabi.newpipe.extractor.stream.StreamInfoItem>())
-            .filter { com.prism.music.data.SongVersions.recordingTitle(it.name) ==
-                com.prism.music.data.SongVersions.recordingTitle(song.title) }
-            .distinctBy { it.url }.take(12)
-        return hits.mapNotNull { item ->
-            runCatching { bandcampVersionFromLink(song, item.url) }.getOrNull()
-        }.take(6)
-    }
-
-    /** Explicitly supplied public track link: validate full metadata and available audio before offering a pick. */
-    fun bandcampVersionFromLink(song: com.prism.music.data.model.Song, url: String): com.prism.music.data.model.Song? {
-        val id = BandcampVersion.id(url.trim()) ?: return null
-        val canonical = BandcampVersion.url(id) ?: return null
-        val info = StreamInfo.getInfo(ServiceList.Bandcamp, canonical)
-        val candidate = com.prism.music.data.model.Song(
-            id, info.name, listOf(com.prism.music.data.model.ArtistRef(info.uploaderName.orEmpty())),
-            durationSec = info.duration.takeIf { it in 1..Int.MAX_VALUE.toLong() }?.toInt() ?: 0,
-            thumbnail = info.thumbnails.firstOrNull()?.url,
-        )
-        if (!com.prism.music.data.SongVersions.compatibleRecording(song, candidate)) return null
-        val f = formats(id)
-        return candidate.takeIf { f.audio.isNotEmpty() && kotlin.math.abs(f.durationSec - song.durationSec) <= 3 }
-    }
-
     private fun anonymousFormats(videoId: String, ipv4: Boolean = false): Formats {
         val info = NewPipeDownloader.ipv4Only(ipv4) { StreamInfo.getInfo(ServiceList.YouTube, "https://www.youtube.com/watch?v=$videoId") }
         fun clen(s: org.schabi.newpipe.extractor.stream.Stream) =
@@ -1487,12 +1357,6 @@ class StreamResolver(
 
     /** Whether [videoId] is a live stream (resolving it if it hasn't been). Blocking. */
     fun isLive(videoId: String): Boolean = formats(videoId).live
-
-    /** On-demand HLS from a selected public recording; never treated as a live radio. */
-    fun externalHlsManifest(id: String): String {
-        if (!SoundCloudVersion.isHls(id)) throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
-        return formats(id).hlsUrl ?: throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
-    }
 
     /** A live stream's HLS manifest, fresh enough to play. Blocking; called from ExoPlayer loader threads. */
     fun liveManifest(videoId: String): String {

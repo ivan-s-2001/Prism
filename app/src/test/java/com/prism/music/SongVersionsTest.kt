@@ -36,11 +36,11 @@ class SongVersionsTest {
             song("c", "Night Drive - Remastered 2011", "The Band", album = "Roads (Deluxe)"),
         )
         // Not the song itself, nor another title; one of each; its own artist first, songs before videos.
-        assertEquals(listOf("c", "d"), SongVersions.candidates(mine, results).map { it.id })
+        assertEquals(listOf("c", "d", "b"), SongVersions.candidates(mine, results).map { it.id })
     }
 
     @Test
-    fun editsAndUnrelatedArtistsAreExcluded() {
+    fun editsComeLastAndReuploadsAreNamed() {
         val mine = song("a", "Night Drive", "The Band", album = "Roads")
         val results = listOf(
             song("s", "Night Drive (Slowed + Reverb)", "The Band", video = true),
@@ -48,7 +48,7 @@ class SongVersionsTest {
             song("x", "Night Drive", "Another Band"),
             song("r", "Night Drive", "The Band", album = "Roads"),
         )
-        assertEquals(listOf("r"), SongVersions.candidates(mine, results).map { it.id })
+        assertEquals(listOf("r", "x", "s", "n"), SongVersions.candidates(mine, results).map { it.id })
         assertTrue(SongVersions.sameRecording(mine, results[3]))
         assertFalse(SongVersions.sameRecording(mine, results[2]))
     }

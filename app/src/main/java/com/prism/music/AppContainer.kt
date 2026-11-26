@@ -798,9 +798,6 @@ class AppContainer(val app: Application) {
      * plays through [com.prism.music.data.imports.HistoryImports.replay], the mixes through its `taste`.
      */
     val imports by lazy { com.prism.music.data.imports.HistoryImports(this) }
-    internal val censorshipReports by lazy {
-        com.prism.music.data.censorship.CensorshipReports(File(app.filesDir, "censorship_reports"), http)
-    }
 
     /**
      * The optional Spotify connection (1.8.1): Spotify's official Web API through the listener's own developer app.
@@ -893,10 +890,7 @@ class AppContainer(val app: Application) {
                     mixTempo.forget(song.id)
                     waves.forget(song.id)
                     // A file on the phone (1.8.3) is there already: a download stays the song's own.
-                    if (pick?.id?.startsWith(com.prism.music.data.model.Song.LOCAL_PREFIX) != true &&
-                        pick?.id?.let(com.prism.music.data.stream.PublicRecording::url) == null) {
-                        downloads.redownload(song.id, unfinished = true)
-                    }
+                    if (pick?.id?.startsWith(com.prism.music.data.model.Song.LOCAL_PREFIX) != true) downloads.redownload(song.id, unfinished = true)
                 }
             }
         }
@@ -910,16 +904,13 @@ class AppContainer(val app: Application) {
         // the song's own key, so they aren't swapped.
         // A download refused every way comes down as its music video's sound (1.8.7, [downloadSoundOf]), under the song's
         // own key still.
-        val external = versions.streamedOf(song)?.let(com.prism.music.data.stream.PublicRecording::url) != null
-        // Public alternate sources are streaming-only. Never read or overwrite the original download as that version.
-        if (external && !useCaches) throw com.prism.music.data.stream.SongStreamException(song, tr(R.string.prism_sc_stream_only), java.io.IOException())
-        val sound = if (external) null else if (useCaches) soundFrom[song] else downloadSoundOf(song)
+        val sound = if (useCaches) soundFrom[song] else downloadSoundOf(song)
         // A picked version is cached under its own id too ([songCacheKey]); its download is the song's (fetched again
         // as the version when it was picked).
         val id = if (useCaches) sound ?: songCacheKey(song) else song
         if (useCaches) {
             val saved = sound ?: song
-            if (!external && downloadCache.fullyCached(saved, spec.position, spec.length)) {
+            if (downloadCache.fullyCached(saved, spec.position, spec.length)) {
                 savedCopyPlays(song, "Downloaded", readFormat(downloadFormats, saved))
                 return spec.buildUpon().setKey(saved).build()
             }
@@ -1222,19 +1213,6 @@ class AppContainer(val app: Application) {
                 val url = try { streams.liveManifest(id) } catch (e: Exception) { throw IOException(e.message ?: tr(R.string.couldn_t_load_the_live_stream), e) }
                 streamDetails[id] = "Live" to streamDetails[id]?.second
                 onStreamResolved?.invoke(id)
-                spec.buildUpon().setUri(url).build()
-            }
-        }
-
-    /** Separate transport for on-demand public HLS. Do not reuse live-radio parsing, caching or YouTube cookies. */
-    fun externalHlsDataSourceFactory(): DataSource.Factory =
-        ResolvingDataSource.Factory(OkHttpDataSource.Factory(http)) { spec ->
-            val id = spec.uri.lastPathSegment
-            if (spec.uri.scheme != "prism") spec
-            else if (spec.uri.authority != "external-hls" || id == null) throw IOException("Invalid external HLS request")
-            else {
-                val url = try { streams.externalHlsManifest(id) }
-                    catch (e: Exception) { throw IOException(e.message ?: tr(R.string.no_playable_audio_stream_was_found), e) }
                 spec.buildUpon().setUri(url).build()
             }
         }

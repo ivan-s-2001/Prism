@@ -270,8 +270,6 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                     localFiles(),
                     localAudio = { item -> losslessFileFor(item) },
                     liveDsf = c.liveDataSourceFactory(),
-                    externalHlsDsf = c.externalHlsDataSourceFactory(),
-                    externalHlsId = { id -> c.versions.streamedOf(id)?.takeIf(com.prism.music.data.stream.SoundCloudVersion::isHls) },
                 )
             )
             .setAudioAttributes(
@@ -809,8 +807,6 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                     localFiles(),
                     localAudio = { item -> losslessFileFor(item) },
                     liveDsf = c.liveDataSourceFactory(),
-                    externalHlsDsf = c.externalHlsDataSourceFactory(),
-                    externalHlsId = { id -> c.versions.streamedOf(id)?.takeIf(com.prism.music.data.stream.SoundCloudVersion::isHls) },
                 )
             )
             // The whole ending (a blend plus its lead-in is at most 35 s, #351) is loaded as soon as the tail is made, seconds
@@ -2865,8 +2861,6 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 return uri
             }
         }
-        // An explicitly selected public source wins over automatic local matching.
-        if (c.versions.streamedOf(item.mediaId)?.let(com.prism.music.data.stream.PublicRecording::url) != null) return null
         // Lossless files need lossless playback, as in 1.8.0; your own MP3/AAC/Ogg files (#314) need only their switch,
         // and give way to a lossless file of the same song ([com.prism.music.data.local.PlaySourceRule]).
         val kinds = com.prism.music.data.local.OwnFiles.kinds(c.settings.current)

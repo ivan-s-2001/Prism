@@ -46,12 +46,6 @@ object ImportKeys {
         return MARKS.filter { (_, words) -> words.any { t.contains(" $it ") } }.keys
     }
 
-    /** A declared edited/clean release, not a guess from the explicit flag (many catalogs omit it). */
-    fun cleanRelease(title: String, album: String? = null): Boolean =
-        "clean" in versionMarks(title) || album?.let {
-            "clean" in versionMarks(it) || MARKS.getValue("clean").contains(norm(it))
-        } == true
-
     /** Version marks that are never the song itself: a candidate with one the track hasn't is a knock-off. */
     val KNOCKOFFS = setOf("karaoke", "cover", "instrumental", "sped up", "slowed", "tribute", "8d")
 
@@ -76,6 +70,5 @@ object ImportKeys {
         "tribute" to listOf("tribute"),
         "8d" to listOf("8d"),
         "mono" to listOf("mono"),
-        "clean" to listOf("clean", "censored", "цензура", "с цензурой", "цензурированная версия", "цензурная версия", "без мата", "без ненормативной лексики", "без нецензурной лексики"),
     )
 }
