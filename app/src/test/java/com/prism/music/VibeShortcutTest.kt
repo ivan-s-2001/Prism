@@ -6,6 +6,21 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class VibeShortcutTest {
+    @Test fun contextOriginSurvivesSeedTrackChange() {
+        val source = com.prism.music.playback.QueueSource(
+            com.prism.music.playback.QueueKind.RADIO, "Vibe · Original track", seedId = "seed")
+        val origin = com.prism.music.ui.screens.activeVibeOrigin(source, null)
+        assertEquals(com.prism.music.playback.VibeOriginKind.TRACK, origin?.kind)
+        assertEquals("Original track", origin?.name)
+    }
+
+    @Test fun contextKindsHaveDistinctLabels() {
+        val labels = com.prism.music.playback.VibeOriginKind.entries.map {
+            com.prism.music.ui.screens.vibeOriginLabel(it)
+        }
+        assertEquals(6, labels.distinct().size)
+    }
+
     @Test fun contextStreamKeepsItsOriginalTitle() {
         val source = com.prism.music.playback.QueueSource(
             com.prism.music.playback.QueueKind.RADIO, "Vibe · Original track", seedId = "seed")

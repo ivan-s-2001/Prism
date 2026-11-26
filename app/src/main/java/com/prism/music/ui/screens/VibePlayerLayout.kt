@@ -323,40 +323,22 @@ internal fun VibeStationOverlay(
     }
 }
 
-/** Source artwork is distinct from the changing now-playing cover. */
+/** Context identity is two centered lines, never the changing now-playing song. */
 @Composable
 private fun VibeOriginIdentity(origin: com.prism.music.playback.VibeOrigin, compact: Boolean, roomy: Boolean) {
-    val ui = LocalUi.current
     val scheme = MaterialTheme.colorScheme
-    val artist = origin.kind == com.prism.music.playback.VibeOriginKind.ARTIST
-    val type = tr(when (origin.kind) {
-        com.prism.music.playback.VibeOriginKind.TRACK -> R.string.song
-        com.prism.music.playback.VibeOriginKind.ALBUM -> R.string.album
-        com.prism.music.playback.VibeOriginKind.ARTIST -> R.string.artist
-        com.prism.music.playback.VibeOriginKind.PLAYLIST -> R.string.playlist
-        else -> R.string.stream
-    })
-    val shape = if (artist) CircleShape else ui.albumArt
-    val artSize = if (compact) 40.dp else if (roomy) 56.dp else 48.dp
-    Row(Modifier.widthIn(max = 400.dp).padding(horizontal = ui.gap(8.dp)),
-        horizontalArrangement = Arrangement.spacedBy(ui.gap(14.dp), Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(artSize).clip(shape).background(scheme.surfaceVariant.copy(alpha = 0.45f))
-            .border(1.dp, scheme.onSurface.copy(alpha = 0.12f), shape), contentAlignment = Alignment.Center) {
-            if (!origin.artwork.isNullOrBlank()) {
-                com.prism.music.ui.components.Artwork(origin.artwork, Modifier.fillMaxSize(), shape, size = 320)
-            } else {
-                Icon(if (artist) PrismIcons.Person else PrismIcons.Stream, null, Modifier.size(artSize * 0.42f),
-                    tint = scheme.primary)
-            }
-        }
-        Column(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(tr(R.string.stream) + " · " + type, style = MaterialTheme.typography.labelMedium,
-                color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(origin.name, style = (if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall)
-                .copy(fontWeight = FontWeight.SemiBold), color = scheme.onSurface,
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(tr(vibeOriginLabel(origin.kind)), style = MaterialTheme.typography.labelLarge,
+            color = scheme.onSurfaceVariant, textAlign = TextAlign.Center,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(origin.name, style = (when {
+            compact -> MaterialTheme.typography.titleLarge
+            roomy -> MaterialTheme.typography.headlineMedium
+            else -> MaterialTheme.typography.headlineSmall
+        }).copy(fontWeight = FontWeight.Bold), color = scheme.onSurface,
+            textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

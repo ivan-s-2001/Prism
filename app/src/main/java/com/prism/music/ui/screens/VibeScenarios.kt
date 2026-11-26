@@ -7,6 +7,7 @@ import com.prism.music.data.foryou.MyWave
 import com.prism.music.data.foryou.WaveScenarios
 import com.prism.music.data.prefs.SavedWavePreset
 import com.prism.music.ui.theme.PrismIcons
+import com.prism.music.playback.VibeOriginKind
 
 /** Single ordered shelf model used by phone, TV and Looks. Stable keys are separate from stored scenario IDs. */
 internal data class VibeShortcut(
@@ -33,8 +34,23 @@ internal fun activeVibeOrigin(source: com.prism.music.playback.QueueSource,
     if (!source.isSongRadio) return null
     source.vibeOrigin?.let { return it }
     val seed = current?.takeIf { it.id == source.seedId }
-    return if (seed != null) com.prism.music.playback.VibeOrigin(
-        com.prism.music.playback.VibeOriginKind.TRACK, seed.title, seed.thumbnail) else null
+    // Old saved queues may lack an explicit origin. A single-track radio still has a stable
+    // source title after the seed stops playing; never replace it with the next recommendation.
+    if (source.vibeAnchors.isEmpty() && source.seedId != null) {
+        val name = seed?.title ?: source.title.substringAfter(" · ", source.title)
+        if (name.isNotBlank()) return com.prism.music.playback.VibeOrigin(
+            com.prism.music.playback.VibeOriginKind.TRACK, name, seed?.thumbnail)
+    }
+    return null
+}
+
+internal fun vibeOriginLabel(kind: VibeOriginKind): Int = when (kind) {
+    VibeOriginKind.TRACK -> R.string.prism_vibe_from_track
+    VibeOriginKind.ALBUM -> R.string.prism_vibe_from_album
+    VibeOriginKind.ARTIST -> R.string.prism_vibe_from_artist
+    VibeOriginKind.PLAYLIST -> R.string.prism_vibe_from_playlist
+    VibeOriginKind.COLLECTION -> R.string.prism_vibe_from_collection
+    VibeOriginKind.MIX -> R.string.prism_vibe_from_mix
 }
 
 internal fun vibeShortcuts(

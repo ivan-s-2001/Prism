@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="prism_vibe_from_track">From track</string>
+    <string name="prism_vibe_from_album">From album</string>
+    <string name="prism_vibe_from_artist">From artist</string>
+    <string name="prism_vibe_from_playlist">From playlist</string>
+    <string name="prism_vibe_from_collection">From collection</string>
+    <string name="prism_vibe_from_mix">From mix</string>
+</resources>

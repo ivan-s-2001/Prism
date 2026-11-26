@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="prism_vibe_from_track">По треку</string>
+    <string name="prism_vibe_from_album">По альбому</string>
+    <string name="prism_vibe_from_artist">По исполнителю</string>
+    <string name="prism_vibe_from_playlist">По плейлисту</string>
+    <string name="prism_vibe_from_collection">По подборке</string>
+    <string name="prism_vibe_from_mix">По миксу</string>
+</resources>
