@@ -35,8 +35,6 @@ import com.prism.music.ui.screens.vibeOrbit
 import com.prism.music.ui.screens.vibeOrbitIndex
 import com.prism.music.ui.screens.vibeOrbitCount
 import com.prism.music.ui.screens.vibeOrbitStart
-import com.prism.music.ui.screens.vibeOrbitPairPadding
-import com.prism.music.ui.screens.vibeAlternatives
 import com.prism.music.ui.screens.vibeOrbitNearest
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.lazy.LazyRow
@@ -400,10 +398,10 @@ internal fun TvWavePlace(nav: TvNav) {
                         val shortcuts = remember(style, savedPresets, scenarioOrder, appSettings.streamScenarioStyles, activeSaved?.id, activeScenario?.id) {
                             vibeShortcuts(style, savedPresets, scenarioOrder, appSettings.streamScenarioStyles, activeSaved?.id, activeScenario?.id) { VibePresetIcons.vector(iconContext, it.iconId) }
                         }
-                        val alternatives = vibeAlternatives(shortcuts, contextual)
-                        val keys = alternatives.map { it.key }
-                        val padding = vibeOrbitPairPadding(maxWidth, slotWidth, spacing, alternatives.size)
-                        val scenarioScroll = rememberLazyListState(vibeOrbitStart(alternatives.size, 0))
+                        val keys = shortcuts.map { it.key }
+                        val padding = ((maxWidth - slotWidth) / 2).coerceAtLeast(0.dp)
+                        val initialScenario = shortcuts.indexOfFirst { it.selected && !contextual }.coerceAtLeast(0)
+                        val scenarioScroll = rememberLazyListState(vibeOrbitStart(shortcuts.size, initialScenario))
                         var previousKeys by remember { mutableStateOf(keys) }
                         LaunchedEffect(keys) {
                             if (previousKeys != keys && keys.isNotEmpty()) {
@@ -420,8 +418,8 @@ internal fun TvWavePlace(nav: TvNav) {
                             state = scenarioScroll,
                             contentPadding = PaddingValues(horizontal = padding, vertical = if (compactScenarios) 4.dp else 18.dp),
                             horizontalArrangement = Arrangement.spacedBy(spacing), verticalAlignment = Alignment.CenterVertically) {
-                            items(vibeOrbitCount(alternatives.size), key = { index -> "orbit:$index:${alternatives[vibeOrbitIndex(index, alternatives.size)].key}" }) { index ->
-                                val shortcut = alternatives[vibeOrbitIndex(index, alternatives.size)]
+                            items(vibeOrbitCount(shortcuts.size), key = { index -> "orbit:$index:${shortcuts[vibeOrbitIndex(index, shortcuts.size)].key}" }) { index ->
+                                val shortcut = shortcuts[vibeOrbitIndex(index, shortcuts.size)]
                                 val orbit = if (compactScenarios) Modifier else Modifier.vibeOrbit {
                                     val info = scenarioScroll.layoutInfo
                                     val item = info.visibleItemsInfo.firstOrNull { it.index == index }

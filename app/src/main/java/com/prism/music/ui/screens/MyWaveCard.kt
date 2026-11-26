@@ -165,9 +165,9 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val shortcuts = remember(style, savedPresets, scenarioOrder, settings.streamScenarioStyles, activeSaved?.id, activeScenario?.id) {
         vibeShortcuts(style, savedPresets, scenarioOrder, settings.streamScenarioStyles, activeSaved?.id, activeScenario?.id) { VibePresetIcons.vector(iconContext, it.iconId) }
     }
-    val alternatives = vibeAlternatives(shortcuts, contextual)
-    val orbitKeys = alternatives.map { it.key }
-    val scenarioScroll = androidx.compose.foundation.lazy.rememberLazyListState(vibeOrbitStart(alternatives.size, 0))
+    val orbitKeys = shortcuts.map { it.key }
+    val initialScenario = shortcuts.indexOfFirst { it.selected && !contextual }.coerceAtLeast(0)
+    val scenarioScroll = androidx.compose.foundation.lazy.rememberLazyListState(vibeOrbitStart(shortcuts.size, initialScenario))
     var previousOrbitKeys by remember { mutableStateOf(orbitKeys) }
     LaunchedEffect(orbitKeys) {
         if (previousOrbitKeys != orbitKeys && orbitKeys.isNotEmpty()) {
@@ -182,8 +182,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
     LaunchedEffect(orbitKeys, revealPresetId) {
         val id = revealPresetId
-        val index = if (id == null) -1 else alternatives.indexOfFirst { it.key == "custom:$id" }
-        if (index >= 0) scenarioScroll.scrollToItem(vibeOrbitNearest(scenarioScroll.firstVisibleItemIndex, alternatives.size, index))
+        val index = if (id == null) -1 else shortcuts.indexOfFirst { it.key == "custom:$id" }
+        if (index >= 0) scenarioScroll.scrollToItem(vibeOrbitNearest(scenarioScroll.firstVisibleItemIndex, shortcuts.size, index))
         if (id != null && shortcuts.any { it.key == "custom:$id" }) revealPresetId = null
     }
     var selectionJob by remember { mutableStateOf<Job?>(null) }
@@ -309,20 +309,20 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
 
     @Composable fun Controls() {
-        // A pair of equally weighted tiles frames the center; no position is a selection.
+        // Center one tile visually; actual selection comes only from playback state.
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val compact = settings.streamCompactScenarios
             val slotWidth = if (compact) 144.dp else 104.dp
             val spacing = ui.gap(10.dp)
-            val sidePadding = vibeOrbitPairPadding(maxWidth, slotWidth, spacing, alternatives.size)
+            val sidePadding = ((maxWidth - slotWidth) / 2).coerceAtLeast(0.dp)
             LazyRow(Modifier.fillMaxWidth().scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward }),
                 state = scenarioScroll,
                 flingBehavior = rememberSnapFlingBehavior(lazyListState = scenarioScroll,
-                    snapPosition = SnapPosition.Start),
+                    snapPosition = SnapPosition.Center),
                 horizontalArrangement = Arrangement.spacedBy(spacing),
                 contentPadding = PaddingValues(horizontal = sidePadding, vertical = if (compact) 2.dp else 18.dp)) {
-                items(vibeOrbitCount(alternatives.size), key = { index -> "orbit:$index:${alternatives[vibeOrbitIndex(index, alternatives.size)].key}" }) { index ->
-                    val shortcut = alternatives[vibeOrbitIndex(index, alternatives.size)]
+                items(vibeOrbitCount(shortcuts.size), key = { index -> "orbit:$index:${shortcuts[vibeOrbitIndex(index, shortcuts.size)].key}" }) { index ->
+                    val shortcut = shortcuts[vibeOrbitIndex(index, shortcuts.size)]
                     val density = androidx.compose.ui.platform.LocalDensity.current
                     val stride = with(density) { (slotWidth + spacing).toPx() }
                     val orbit = if (compact) Modifier else Modifier.vibeOrbit {

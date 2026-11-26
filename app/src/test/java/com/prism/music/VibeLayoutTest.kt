@@ -10,13 +10,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class VibeLayoutTest {
-    @Test fun twoEqualTilesFrameCenter() {
-        val padding = com.prism.music.ui.screens.vibeOrbitPairPadding(
-            androidx.compose.ui.unit.Dp(360f), androidx.compose.ui.unit.Dp(104f), androidx.compose.ui.unit.Dp(10f), 8)
-        assertEquals(71f, padding.value, 0.001f)
-        assertEquals(0.25f, com.prism.music.ui.screens.vibeOrbitDepth(-0.5f), 0.001f)
-        assertEquals(0.25f, com.prism.music.ui.screens.vibeOrbitDepth(0.5f), 0.001f)
-    }
+
 
     @Test fun scenarioOrbitWrapsBothDirections() {
         val n = 7

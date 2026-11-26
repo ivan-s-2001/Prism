@@ -118,7 +118,7 @@ internal fun VibePageLayout(
     }
 }
 
-// The midpoint of the orbit lies between two tiles, neither implying selection.
+// The center tile is lifted and enlarged; selection is independent of its position.
 internal const val VIBE_ORBIT_COUNT = 1_000_000
 
 internal fun vibeOrbitIndex(virtualIndex: Int, count: Int): Int =
@@ -136,10 +136,6 @@ internal fun vibeOrbitNearest(current: Int, count: Int, target: Int): Int {
     val next = current.toLong() + delta
     return if (next < 0 || next >= VIBE_ORBIT_COUNT) vibeOrbitStart(count, target) else next.toInt()
 }
-
-/** Start-snapping a fixed-width slot with this padding puts the gap between adjacent tiles at center. */
-internal fun vibeOrbitPairPadding(width: Dp, slot: Dp, spacing: Dp, count: Int): Dp =
-    ((width - if (count > 1) slot * 2 + spacing else slot) / 2).coerceAtLeast(0.dp)
 
 internal fun vibeOrbitDepth(distanceInSlots: Float): Float =
     if (distanceInSlots.isFinite()) (abs(distanceInSlots) / 2f).coerceIn(0f, 1f) else 0f
