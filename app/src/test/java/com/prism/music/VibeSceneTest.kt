@@ -12,6 +12,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VibeSceneTest {
+    @Test fun gpuModesAreDistinctAndStable() {
+        val styles = com.prism.music.data.prefs.StreamVisualStyle.entries
+        val modes = styles.map { com.prism.music.ui.screens.waveShaderMode(it) }
+        assertEquals(styles.size, modes.distinct().size)
+        assertEquals(0, com.prism.music.ui.screens.waveShaderMode(com.prism.music.data.prefs.StreamVisualStyle.WAVE))
+        assertEquals(4, com.prism.music.ui.screens.waveShaderMode(com.prism.music.data.prefs.StreamVisualStyle.OFF))
+    }
+
     @Test fun sharedBlurSpreadsHighlightsAndPreservesConstantLight() {
         val w = 7
         val h = 7

@@ -4,7 +4,7 @@
  * https://github.com/SpolzerMod/yamusic-rs/blob/bb98fa9af70f817732ef0d653629302edac94f57/android/src/wave.frag
  * Three soft, rotating, sinusoidally deformed Gaussian blobs, with the original tone mapping.
  * Prism changes: transparent compositing, theme palette, PCM envelope, viewport scale,
- * and low-resolution software rendering off the UI thread on every supported Android version.
+ * and AGSL rendering with a low-resolution software fallback.
  */
 package com.prism.music.ui.screens
 
@@ -26,6 +26,8 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.geometry.Offset
@@ -46,6 +48,9 @@ internal data class VibeWaveSignal(val phase: Float, val beat: Float, val bands:
 private data class WaveViewport(val size: IntSize = IntSize.Zero, val origin: Offset = Offset.Zero)
 internal data class WaveColors(val palette: List<Color>, val opacity: Float)
 private data class WaveInput(val sample: VibeWaveSignal, val anchor: Offset?, val colors: WaveColors)
+internal data class WaveRenderFrame(val sample: VibeWaveSignal, val colors: WaveColors, val center: Offset,
+    val scale: Float, val style: StreamVisualStyle, val energy: Float)
+private data class WaveOutput(val gpu: WaveRenderFrame? = null, val bitmap: ImageBitmap? = null)
 
 /** Retarget from the interpolated color, not the previous target: rapid theme changes never flash. */
 internal class WaveColorTransition(initial: WaveColors) {
@@ -111,7 +116,10 @@ internal fun YamusicWaveBackdrop(
     val targetColors = rememberUpdatedState(WaveColors(palette, opacity))
     val transition = remember { WaveColorTransition(targetColors.value) }
     val duration = rememberUpdatedState(colorDurationMs)
-    val frame by produceState<ImageBitmap?>(null, viewport, scale, style, energy, moving, scene) {
+    val gpu = remember { createWaveGpuRenderer() }
+    var gpuFailed by remember { mutableStateOf(false) }
+    val useGpu = gpu != null && !gpuFailed
+    val frame by produceState<WaveOutput?>(null, viewport, scale, style, energy, moving, scene, useGpu) {
         val view = viewport.size
         if (view.width <= 0 || view.height <= 0) {
             value = null
@@ -120,7 +128,7 @@ internal fun YamusicWaveBackdrop(
         val aspect = view.width.toFloat() / view.height
         val w = if (aspect >= 1f) 192 else (192 * aspect).roundToInt().coerceAtLeast(1)
         val h = if (aspect <= 1f) 192 else (192 / aspect).roundToInt().coerceAtLeast(1)
-        val buffers = WaveLightBuffers(w, h)
+        val buffers = if (useGpu) null else WaveLightBuffers(w, h)
         snapshotFlow {
             WaveInput(if (moving) signal.value else VibeWaveSignal(7f, 0f, EMPTY_BANDS),
                 scene?.anchor, targetColors.value)
@@ -131,17 +139,26 @@ internal fun YamusicWaveBackdrop(
                 val at = if (anchor == null) Offset(view.width * 0.5f, view.height * 0.38f) else anchor - viewport.origin
                 val center = Offset(((at.x + drift.x) / view.width).coerceIn(0f, 1f),
                     ((at.y + drift.y) / view.height).coerceIn(0f, 1f))
-                val bitmap = withContext(Dispatchers.Default) {
-                    renderYamusicWave(w, h, framePalette, sample, blended.opacity, scale, style, energy, center, buffers)
+                // Both backends consume the same published signal, theme and stationary scene anchor.
+                value = if (useGpu) {
+                    WaveOutput(gpu = WaveRenderFrame(sample, WaveColors(framePalette, blended.opacity), center, scale, style, energy))
+                } else {
+                    WaveOutput(bitmap = withContext(Dispatchers.Default) {
+                        renderYamusicWave(w, h, framePalette, sample, blended.opacity, scale, style, energy, center, checkNotNull(buffers))
+                    })
                 }
-                // Only the ambient field moves. The anchor and its touch targets remain stationary.
-                value = bitmap
             }
     }
     Canvas(modifier.onGloballyPositioned {
         viewport = WaveViewport(it.size, it.positionInRoot())
     }) {
-        frame?.let {
+        val current = frame
+        val gpuFrame = current?.gpu
+        if (gpuFrame != null && gpu != null && !gpuFailed) {
+            drawIntoCanvas { canvas ->
+                if (!gpu.draw(canvas.nativeCanvas, size.width, size.height, gpuFrame)) gpuFailed = true
+            }
+        } else current?.bitmap?.let {
             drawImage(it, dstSize = IntSize(size.width.roundToInt().coerceAtLeast(1),
                 size.height.roundToInt().coerceAtLeast(1)), filterQuality = FilterQuality.Medium)
         }
