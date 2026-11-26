@@ -1,3 +1,4 @@
+import java.util.Base64
 import java.security.MessageDigest
 import java.awt.geom.Path2D
 import java.math.BigDecimal
@@ -783,7 +784,7 @@ abstract class GenerateVibeIconCatalog : DefaultTask() {
             dir.resolve("catalog.tsv").bufferedWriter().use { out ->
                 entries.forEach { (key, entry, _) ->
                     val bytes = zip.getInputStream(entry).use { it.readBytes() }
-                    out.append(key).append('\t').append(java.util.Base64.getEncoder().encodeToString(bytes)).append('\n')
+                    out.append(key).append('\t').append(Base64.getEncoder().encodeToString(bytes)).append('\n')
                 }
             }
         }
