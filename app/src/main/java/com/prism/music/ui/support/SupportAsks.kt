@@ -116,7 +116,7 @@ class SupportMarks(context: Context) {
     /** The state for [SupportAsks.due], with this phone's marks, clock and install date. */
     fun state(
         onboarded: Boolean, supported: Boolean, listenedMs: Long = 0L, otherHomeOffer: Boolean = false,
-        tv: Boolean = com.prism.music.ui.tv.TvDevice.isTv(app),
+        tv: Boolean = false, // Mobile build: the former TV module is no longer included.
     ) = SupportAsks.State(
         now = now(), installedAt = installedAt(), onboarded = onboarded, supported = supported, shown = shown(),
         lastAskKey = prefs.getString(LAST_KEY, null), lastAskAt = prefs.getLong(LAST_AT, 0L),
