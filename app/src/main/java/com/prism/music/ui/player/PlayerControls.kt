@@ -1008,6 +1008,7 @@ fun PlayerActionRow(
     onVideoMode: (Boolean) -> Unit,
     episode: Boolean = false,
     onButton: (PlayerButton) -> Unit = {},
+    primaryVibeVisible: Boolean = false,
 ) {
     val c = LocalContainer.current
     val pc = c.player
@@ -1023,8 +1024,8 @@ fun PlayerActionRow(
     val currentSong by pc.currentSong.collectAsState()
     val chosen = pairedPlayerReactions(settings.player.buttons, settings.shows(PlayerPart.LIKE)).filter {
         (it != PlayerButton.VIDEO || settings.showVideoSwitch) &&
-            (it != PlayerButton.RADIO || (!source.isMyWave && currentSong?.let { song -> !song.isLive && !song.isEpisode &&
-                !song.isLocal && !source.matchesTrackStream(song.id, tr(R.string.radio, song.title)) } == true))
+            (it != PlayerButton.RADIO || (!primaryVibeVisible && currentSong?.let { song -> canStartTrackVibe(song) &&
+                !source.matchesTrackStream(song.id, tr(R.string.radio, song.title)) } == true))
     }
     // Six to a row still fits a small phone: the buttons narrow a little past four.
     val glyph = when { chosen.size >= 6 -> 46.dp; chosen.size == 5 -> 50.dp; else -> 56.dp }
@@ -1128,7 +1129,7 @@ private fun PlayerButtonGlyph(
                 { if (d != null) c.downloads.remove(s.id) else c.downloads.download(s) }, width, enabled = !s.isLocal && !s.isLive,
             )
         }
-        PlayerButton.RADIO -> BottomGlyph(PrismIcons.Stream, tr(R.string.start_radio), false, { pc.playRadio(s, announce = true) }, width, enabled = !s.isLocal)
+        PlayerButton.RADIO -> BottomGlyph(PrismIcons.Stream, tr(R.string.stream), false, { pc.playRadio(s, announce = true) }, width, enabled = !s.isLocal)
         // Songs faster or slower (1.7.4), and higher or lower (1.7.8): a tap opens Speed & pitch; the speed shows while it isn't 1×.
         PlayerButton.SPEED -> {
             val speed by pc.musicSpeed.collectAsState()
