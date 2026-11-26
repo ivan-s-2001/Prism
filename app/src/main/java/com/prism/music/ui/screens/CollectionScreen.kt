@@ -554,7 +554,12 @@ internal fun CollectionContent(type: CollectionType, live: LiveCollection, initi
     val canVibe = playable.any { !it.isEpisode && !it.isLive && !it.isVideo }
     val startRadio: () -> Unit = {
         scope.launch {
-            val ok = c.player.playContextVibe(page.title, playable) {
+            val ok = c.player.playContextVibe(page.title, playable, origin = com.prism.music.playback.VibeOrigin(when (type) {
+                CollectionType.ALBUM -> com.prism.music.playback.VibeOriginKind.ALBUM
+                CollectionType.PLAYLIST, CollectionType.PRISM -> com.prism.music.playback.VibeOriginKind.PLAYLIST
+                CollectionType.MIX -> com.prism.music.playback.VibeOriginKind.MIX
+                else -> com.prism.music.playback.VibeOriginKind.COLLECTION
+            }, page.title, art)) {
                 if (!c.network.isOnline()) emptyList() else radioId?.let { c.radio(null, it).songs }.orEmpty()
             }
             if (!ok) Toast.makeText(context, tr(R.string.couldn_t_start_the_radio), Toast.LENGTH_SHORT).show()
