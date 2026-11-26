@@ -275,12 +275,71 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             }
         }
     }
-    // One discovery surface; Prism's global mini player handles the song, reactions and transport.
+    // The mini player stays global; the Vibe stage also owns its stationary transport.
+    val liked by c.library.likedIds.collectAsState()
+    val disliked by c.library.dislikedIds.collectAsState()
+    val hasPrevious by c.player.hasPrevious.collectAsState()
+    val hasNext by c.player.hasNext.collectAsState()
     @Composable fun Hero(modifier: Modifier) {
-        VibeDiscoveryStage(settings, vibeStationTitle(activeSaved, activeScenario),
-            active = wave, playing = wave && playing, starting = starting && !wave,
-            onStart = { if (wave) c.player.togglePlay() else if (!starting) start() },
-            onTune = { openSettings() }, modifier = modifier.testTag("home:my_wave").customizable(CustomizeTarget.VIBE))
+        val current = song.takeIf { wave }
+        VibeStationOverlay(settings, vibeStationTitle(activeSaved, activeScenario),
+            hasTrack = current != null,
+            modifier = modifier.testTag("home:my_wave").customizable(CustomizeTarget.VIBE),
+            play = {
+                VibeStationAction(wave && playing, starting && !wave, wave,
+                    onPlay = { if (wave) c.player.togglePlay() else if (!starting) start() })
+            },
+            tune = { VibeTunePill({ openSettings() }) },
+            credits = {
+                if (current != null) VibeCredits(settings, current.title, current.primaryArtist,
+                    artwork = { com.prism.music.ui.components.Artwork(com.prism.music.data.PlaylistCovers.artOf(current), it,
+                        shape = com.prism.music.ui.theme.CoverShapes.of(settings.shapes.player, settings.player.artCorners.dp), size = 180) },
+                    onOpen = onOpenPlayer)
+            },
+            previous = {
+                VibeTrackAction(PrismIcons.Previous, tr(R.string.widget_previous),
+                    { if (hasPrevious) c.player.previous() }, enabled = hasPrevious)
+            },
+            next = {
+                VibeTrackAction(PrismIcons.Next, tr(R.string.prism_stream_next),
+                    { if (hasNext) c.player.next() }, enabled = hasNext)
+            },
+            dislike = {
+                if (current != null) {
+                    val on = current.id in disliked
+                    VibeTrackAction(if (on) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown,
+                        tr(R.string.prism_stream_not_for_me), {
+                            val set = !c.library.isDisliked(current.id)
+                            c.library.setDisliked(current, set)
+                            if (set && c.player.currentSong.value?.id == current.id && c.player.hasNext.value) c.player.next()
+                        }, selected = on)
+                }
+            },
+            like = {
+                if (current != null) {
+                    val on = current.id in liked && current.id !in disliked
+                    VibeTrackAction(if (on) PrismIcons.HeartFilled else PrismIcons.Heart,
+                        tr(R.string.prism_stream_like), {
+                            if (c.library.isDisliked(current.id)) {
+                                c.library.setDisliked(current, false)
+                                c.library.setLiked(current, true)
+                            } else c.library.toggleLike(current)
+                        }, selected = on)
+                }
+            },
+            progress = {
+                if (current != null) {
+                    var fraction by remember(current.id) { mutableFloatStateOf(0f) }
+                    LaunchedEffect(current.id) {
+                        while (true) {
+                            val total = c.player.duration
+                            fraction = if (total > 0) (c.player.position.toFloat() / total).coerceIn(0f, 1f) else 0f
+                            kotlinx.coroutines.delay(250)
+                        }
+                    }
+                    LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+                }
+            })
     }
 
     @Composable fun ScenarioTile(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
