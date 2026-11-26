@@ -9,6 +9,12 @@ import java.util.concurrent.ConcurrentHashMap
 
 enum class QueueKind { SINGLE, ALBUM, PLAYLIST, RADIO, LIBRARY, REPLAY, OTHER }
 
+@kotlinx.serialization.Serializable
+enum class VibeOriginKind { TRACK, ALBUM, ARTIST, PLAYLIST, COLLECTION, MIX }
+
+@kotlinx.serialization.Serializable
+data class VibeOrigin(val kind: VibeOriginKind, val name: String, val artwork: String? = null)
+
 data class QueueSource(
     val kind: QueueKind,
     val title: String,
@@ -20,6 +26,7 @@ data class QueueSource(
     val page: com.prism.music.data.model.BrowseItem? = null,
     /** Representative tracks of the original artist, album or playlist; never derived from generated results. */
     val vibeAnchors: List<com.prism.music.data.model.Song> = emptyList(),
+    val vibeOrigin: VibeOrigin? = null,
 ) {
     /** A radio started from one song: it keeps going with similar music, Autoplay or not. */
     val isSongRadio: Boolean get() = kind == QueueKind.RADIO && !isMyWave && (seedId != null || vibeAnchors.isNotEmpty())
