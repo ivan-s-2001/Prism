@@ -32,6 +32,11 @@ import com.prism.music.ui.components.Artwork
 import com.prism.music.ui.screens.vibeShortcuts
 import com.prism.music.ui.screens.vibeStationTitle
 import com.prism.music.ui.screens.vibeOrbit
+import com.prism.music.ui.screens.vibeOrbitIndex
+import com.prism.music.ui.screens.vibeOrbitCount
+import com.prism.music.ui.screens.vibeOrbitStart
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import com.prism.music.ui.screens.vibeActionDiameter
 import com.prism.music.data.prefs.TransportStyle
 import com.prism.music.ui.components.scenarioEdgeFade
@@ -55,7 +60,6 @@ internal fun TvWavePlace(nav: TvNav) {
     val c = LocalContainer.current
     val scope = rememberCoroutineScope()
     val source by c.queue.source.collectAsState()
-    val scenarioScroll = rememberScrollState()
     val appSettings by c.settings.flow.collectAsState()
     val savedPresets = appSettings.streamPresets
     val iconContext = LocalContext.current
@@ -385,20 +389,32 @@ internal fun TvWavePlace(nav: TvNav) {
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(16.dp)), verticalAlignment = Alignment.CenterVertically) {
                     BoxWithConstraints(Modifier.weight(1f)) {
-                    val compactScenarios = appSettings.streamCompactScenarios
-                    val slotWidth = 112.dp
-                    val spacing = ui.gap(16.dp)
-                    val padding = if (compactScenarios) 14.dp else ((maxWidth - slotWidth) / 2).coerceAtLeast(0.dp)
-                    val stride = with(androidx.compose.ui.platform.LocalDensity.current) { (slotWidth + spacing).toPx() }.coerceAtLeast(1f)
-                    Row(Modifier.fillMaxWidth().scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward })
-                        .horizontalScroll(scenarioScroll).padding(vertical = if (compactScenarios) 4.dp else 18.dp, horizontal = padding)
-                        .rememberedFocus().focusGroup(),
-                        horizontalArrangement = Arrangement.spacedBy(ui.gap(16.dp)), verticalAlignment = Alignment.CenterVertically) {
-                        vibeShortcuts(style, savedPresets, scenarioOrder, appSettings.streamScenarioStyles, activeSaved?.id, activeScenario?.id) { VibePresetIcons.vector(iconContext, it.iconId) }
-                            .forEachIndexed { index, shortcut ->
-                                key(shortcut.key) {
-                                    val orbit = if (compactScenarios) Modifier else Modifier.vibeOrbit { index - scenarioScroll.value / stride }
-                                    Box(orbit, contentAlignment = Alignment.Center) {
+                        val compactScenarios = appSettings.streamCompactScenarios
+                        val slotWidth = 112.dp
+                        val spacing = ui.gap(16.dp)
+                        val padding = if (compactScenarios) 14.dp else ((maxWidth - slotWidth) / 2).coerceAtLeast(0.dp)
+                        val stride = with(androidx.compose.ui.platform.LocalDensity.current) { (slotWidth + spacing).toPx() }.coerceAtLeast(1f)
+                        val shortcuts = remember(style, savedPresets, scenarioOrder, appSettings.streamScenarioStyles, activeSaved?.id, activeScenario?.id) {
+                            vibeShortcuts(style, savedPresets, scenarioOrder, appSettings.streamScenarioStyles, activeSaved?.id, activeScenario?.id) { VibePresetIcons.vector(iconContext, it.iconId) }
+                        }
+                        val keys = shortcuts.map { it.key }
+                        val scenarioScroll = key(keys) {
+                            rememberLazyListState(vibeOrbitStart(shortcuts.size, shortcuts.indexOfFirst { it.selected }.coerceAtLeast(0)))
+                        }
+                        LazyRow(Modifier.fillMaxWidth().scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward })
+                            .rememberedFocus().focusGroup(),
+                            state = scenarioScroll,
+                            contentPadding = PaddingValues(horizontal = padding, vertical = if (compactScenarios) 4.dp else 18.dp),
+                            horizontalArrangement = Arrangement.spacedBy(spacing), verticalAlignment = Alignment.CenterVertically) {
+                            items(vibeOrbitCount(shortcuts.size), key = { index -> "orbit:$index:${shortcuts[vibeOrbitIndex(index, shortcuts.size)].key}" }) { index ->
+                                val shortcut = shortcuts[vibeOrbitIndex(index, shortcuts.size)]
+                                val orbit = if (compactScenarios) Modifier else Modifier.vibeOrbit {
+                                    val info = scenarioScroll.layoutInfo
+                                    val item = info.visibleItemsInfo.firstOrNull { it.index == index }
+                                    val center = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+                                    item?.let { (it.offset + it.size / 2f - center) / stride } ?: 0f
+                                }
+                                Box(orbit, contentAlignment = Alignment.Center) {
                                     ScenarioTile(shortcut.label, shortcut.icon, shortcut.selected && !contextual, onClick = {
                                         val target = shortcut.style
                                         if (target != null && (current == null || contextual || !shortcut.selected)) start(target, shortcut.scenarioId)
@@ -406,11 +422,10 @@ internal fun TvWavePlace(nav: TvNav) {
                                         shortcut.key.startsWith("scenario:") -> "quick/" + shortcut.scenarioId
                                         shortcut.key.startsWith("custom:") -> "custom/" + shortcut.scenarioId
                                         else -> shortcut.key
-                                    }))
-                                    }
+                                    } + "/orbit/$index"))
                                 }
                             }
-                    }
+                        }
                     }
                 }
             }

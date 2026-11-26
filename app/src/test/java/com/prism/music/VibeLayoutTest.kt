@@ -10,6 +10,18 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class VibeLayoutTest {
+    @Test fun scenarioOrbitWrapsBothDirections() {
+        val n = 7
+        val start = com.prism.music.ui.screens.vibeOrbitStart(n, 0)
+        assertEquals(0, com.prism.music.ui.screens.vibeOrbitIndex(start, n))
+        assertEquals(6, com.prism.music.ui.screens.vibeOrbitIndex(start - 1, n))
+        assertEquals(0, com.prism.music.ui.screens.vibeOrbitIndex(start + n, n))
+        assertEquals(start - 1, com.prism.music.ui.screens.vibeOrbitNearest(start, n, 6))
+        assertEquals(start + 1, com.prism.music.ui.screens.vibeOrbitNearest(start, n, 1))
+        assertEquals(1, com.prism.music.ui.screens.vibeOrbitCount(1))
+        assertEquals(0, com.prism.music.ui.screens.vibeOrbitCount(0))
+    }
+
     @Test fun sharedOrbitPreservesCenterAndSoftensEdges() {
         assertEquals(1f, com.prism.music.ui.screens.vibeOrbitScale(0f), 0.001f)
         assertEquals(0.80f, com.prism.music.ui.screens.vibeOrbitScale(1f), 0.001f)

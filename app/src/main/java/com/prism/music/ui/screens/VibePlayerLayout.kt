@@ -119,6 +119,24 @@ internal fun VibePageLayout(
 }
 
 // The center tile is lifted and enlarged; distance changes continuously during scrolling.
+internal const val VIBE_ORBIT_COUNT = 1_000_000
+
+internal fun vibeOrbitIndex(virtualIndex: Int, count: Int): Int =
+    if (count <= 0) 0 else Math.floorMod(virtualIndex, count)
+
+internal fun vibeOrbitCount(count: Int): Int = if (count > 1) VIBE_ORBIT_COUNT else count.coerceAtLeast(0)
+
+internal fun vibeOrbitStart(count: Int, index: Int): Int =
+    if (count <= 1) 0 else (VIBE_ORBIT_COUNT / 2 / count) * count + index.coerceIn(0, count - 1)
+
+internal fun vibeOrbitNearest(current: Int, count: Int, target: Int): Int {
+    if (count <= 1) return 0
+    val forward = Math.floorMod(target - vibeOrbitIndex(current, count), count)
+    val delta = if (forward > count / 2) forward - count else forward
+    val next = current.toLong() + delta
+    return if (next < 0 || next >= VIBE_ORBIT_COUNT) vibeOrbitStart(count, target) else next.toInt()
+}
+
 internal fun vibeOrbitDepth(distanceInSlots: Float): Float =
     if (distanceInSlots.isFinite()) (abs(distanceInSlots) / 2f).coerceIn(0f, 1f) else 0f
 
