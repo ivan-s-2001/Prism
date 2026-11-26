@@ -167,7 +167,7 @@ class Discover(private val c: AppContainer) {
         return RadioSignals(
             heard = { s -> known?.has(s) },
             onTopList = { s -> s.artists.firstOrNull()?.id?.let { tops[it] }?.let { t -> s.id in t || Heard.key(s.title, s.primaryArtist) in t } },
-            energy = { s -> RadioTuner.energyOf(c.mixTempo.djBpm(s.id), c.mixTempo.djLoudness(s.id)) },
+            energy = { s -> RadioTuner.energyOf(c.mixTempo.recommendationBpm(s.id), c.mixTempo.recommendationLoudness(s.id)) },
         )
     }
 

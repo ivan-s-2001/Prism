@@ -342,6 +342,15 @@ class MixTempo(
 
     fun cached(id: String): Tempo? = prefs.getString(id, null)?.let(Tempo::decode)
 
+    /** Read existing measurements for recommendation ranking; never starts an audio scan. */
+    fun recommendationBpm(id: String): Double? =
+        cached(id)?.takeIf { it.steady }?.bpm
+            ?: legacyScan(id)?.takeIf { it.second >= Tempo.MIN_CONFIDENCE }?.first
+
+    /** Prefer the full loudness measurement, with old imported measurements as a fallback. */
+    fun recommendationLoudness(id: String): Float? = loudness(id) ?: legacyScan(id)?.third
+
+
     /** How many songs have been measured so far, whole or by a quick scan: what a calm ↔ energetic radio has to go by. */
     fun measuredCount(): Int = (loudPrefs.all.keys + legacyScanPrefs.all.keys).size
 

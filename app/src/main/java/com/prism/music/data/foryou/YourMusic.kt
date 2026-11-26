@@ -574,7 +574,7 @@ class YourMusic(private val c: AppContainer) {
             affinity = { s.model.score(it) * rest(s, it.id) * recommendationScore(profile, it) * evidence(it.primaryArtist).weight(0.0) },
             genreOf = { s.genres[it] ?: seedGenres[it] },
             keyFit = { a, b -> keyFit(a, b) },
-            bpmOf = { c.mixTempo.djBpm(it) },
+            bpmOf = { c.mixTempo.recommendationBpm(it) },
             graphAffinity = { a, b -> graphAffinity(s, a, b) },
         )
         val day = LocalDate.now().toString()
