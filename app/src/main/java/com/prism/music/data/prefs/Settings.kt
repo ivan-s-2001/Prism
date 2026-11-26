@@ -1183,7 +1183,7 @@ enum class TransportStyle(val label: String) { GLYPHS(tr(R.string.classic)), BUT
 /** How wide the player's cover is: [extra] is how far it reaches into each side margin. */
 /** A Flow-only visual effect; global reduced motion and performance preferences still apply. */
 enum class StreamVisualStyle(val label: String) {
-    WAVE(tr(R.string.wave)), RING(tr(R.string.ring)), EQUALIZER(tr(R.string.equalizer)), GLOW(tr(R.string.glow)), OFF(tr(R.string.off))
+    WAVE(tr(R.string.wave)), RING(tr(R.string.vibe_liquid_ring)), EQUALIZER(tr(R.string.vibe_spectral_wave)), GLOW(tr(R.string.vibe_soft_glow)), OFF(tr(R.string.off))
 }
 enum class StreamLayout(val label: String) {
     CENTERED(tr(R.string.centered)), SEPARATE(tr(R.string.classic)), COMPACT(tr(R.string.compact))

@@ -102,17 +102,17 @@ internal fun MyWaveScreen(bottomPadding: Dp, onOpenPlayer: () -> Unit = {}) {
         catch (_: Exception) { failed = value.isEmpty() }
         finally { loading = false }
     }
-    Box(Modifier.fillMaxSize().padding(bottom = bottomPadding)) {
+    Box(Modifier.fillMaxSize()) {
         MyWaveCard(recommendations, favorites, recent, online, loading = loading,
             onRetry = if (failed && recommendations.isEmpty() && !source.isMyWave && online) ({ retry++ }) else null,
-            onOpenPlayer = onOpenPlayer)
+            onOpenPlayer = onOpenPlayer, bottomPadding = bottomPadding)
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, recent: List<Song>, online: Boolean,
-    heroHeight: Dp = 420.dp, loading: Boolean = false, onRetry: (() -> Unit)? = null, onOpenPlayer: () -> Unit = {}) {
+    heroHeight: Dp = 420.dp, loading: Boolean = false, onRetry: (() -> Unit)? = null, onOpenPlayer: () -> Unit = {}, bottomPadding: Dp = 0.dp) {
     val c = LocalContainer.current
     val scope = rememberCoroutineScope()
     val nav = com.prism.music.ui.LocalNavigator.current
@@ -303,7 +303,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
 
     VibePageLayout(settings, header = { Header() }, player = { Hero(it) }, scenarios = { Controls() },
-        backdrop = { VibeSphere(it, wave && playing && !buffering, style.diversity / 100f) })
+        bottomPadding = bottomPadding, backdrop = { VibeSphere(it, wave && playing && !buffering, style.diversity / 100f) })
     val editing = editor
     if (settingsOpen && editing != null) {
         val draftStyle = editing.style

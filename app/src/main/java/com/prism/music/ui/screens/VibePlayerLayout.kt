@@ -39,6 +39,15 @@ import com.prism.music.ui.theme.PrismIcons
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -48,31 +57,66 @@ import com.prism.music.data.prefs.StreamLayout
 import com.prism.music.data.prefs.StreamVisualStyle
 import com.prism.music.ui.theme.LocalUi
 
-/** The station owns the viewport between header and scenarios. Only genuinely short windows scroll. */
+/** Shared coordinates for the background texture and the control group. Coordinates are in root pixels.
+ * The anchor excludes the translated child, so motion cannot feed back into the next layout. */
+internal class VibeSceneState {
+    var anchor by mutableStateOf<Offset?>(null)
+    var drift by mutableStateOf(Offset.Zero)
+}
+internal val LocalVibeScene = staticCompositionLocalOf<VibeSceneState?> { null }
+
+@Composable
+internal fun VibeScene(content: @Composable () -> Unit) {
+    val scene = remember { VibeSceneState() }
+    CompositionLocalProvider(LocalVibeScene provides scene, content = content)
+}
+
+@Composable
+internal fun VibeSceneAnchor(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val scene = LocalVibeScene.current
+    Box(modifier.onGloballyPositioned { coordinates ->
+        scene?.anchor = coordinates.positionInRoot() + Offset(coordinates.size.width / 2f, coordinates.size.height / 2f)
+    }, contentAlignment = Alignment.Center) {
+        Box(Modifier.graphicsLayer {
+            val drift = scene?.drift ?: Offset.Zero
+            translationX = drift.x
+            translationY = drift.y
+        }) { content() }
+    }
+}
+
+/** Full-bleed scene; only foreground content reserves space for the global mini player and navigation. */
 @Composable
 internal fun VibePageLayout(
     settings: AppSettings, modifier: Modifier = Modifier, scrollable: Boolean = true,
     header: @Composable () -> Unit, player: @Composable (Modifier) -> Unit, scenarios: @Composable () -> Unit,
     backdrop: @Composable (Modifier) -> Unit = {},
+    bottomPadding: Dp = 0.dp, footer: @Composable () -> Unit = {},
 ) {
     val ui = LocalUi.current
-    BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        backdrop(Modifier.matchParentSize())
-        val page = Modifier.widthIn(max = 1040.dp).fillMaxWidth()
-        val scroll = rememberScrollState()
-        if (scrollable && !vibeFillsViewport(maxWidth, maxHeight)) {
-            Column(page.verticalScroll(scroll), verticalArrangement = Arrangement.spacedBy(ui.gap(8.dp))) {
-                header()
-                player(Modifier.fillMaxWidth())
-                scenarios()
-            }
-        } else {
-            // Measure header and shelf first, then give their remaining height to the stage.
-            // A weighted child inside verticalScroll would be measured at infinite height and wrap content.
-            Column(page.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(ui.gap(4.dp))) {
-                header()
-                player(Modifier.weight(1f, fill = true).fillMaxWidth())
-                scenarios()
+    VibeScene {
+        Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            backdrop(Modifier.matchParentSize())
+            BoxWithConstraints(Modifier.fillMaxSize().padding(bottom = bottomPadding), contentAlignment = Alignment.TopCenter) {
+                val page = Modifier.widthIn(max = 1040.dp).fillMaxWidth()
+                val scroll = rememberScrollState()
+                if (scrollable && !vibeFillsViewport(maxWidth, maxHeight)) {
+                    Column(page.fillMaxHeight()) {
+                        Column(Modifier.weight(1f).verticalScroll(scroll), verticalArrangement = Arrangement.spacedBy(ui.gap(8.dp))) {
+                            header()
+                            player(Modifier.fillMaxWidth())
+                            scenarios()
+                        }
+                        footer()
+                    }
+                } else {
+                    Column(page.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(ui.gap(4.dp))) {
+                        header()
+                        player(Modifier.weight(1f, fill = true).fillMaxWidth())
+                        scenarios()
+                        footer()
+                    }
+                }
             }
         }
     }
@@ -109,12 +153,16 @@ internal fun VibeDiscoveryStage(settings: AppSettings, title: String, active: Bo
                 }
             }
             val groupAlignment = if (settings.streamLayout == StreamLayout.SEPARATE && height >= 320.dp) Alignment.BottomCenter else Alignment.Center
-            Column(Modifier.align(groupAlignment).widthIn(max = 460.dp).fillMaxWidth().padding(horizontal = ui.gap(24.dp), vertical = ui.gap(if (groupAlignment == Alignment.BottomCenter) 32.dp else 16.dp)),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 10.dp else 20.dp))) {
-                VibeIdentity(title, compact, height >= 320.dp)
-                VibeStationAction(playing, starting, active, onStart, compact = compact)
-                VibeTunePill(onTune)
+            Box(Modifier.align(groupAlignment).widthIn(max = 460.dp).fillMaxWidth()
+                .padding(horizontal = ui.gap(24.dp), vertical = ui.gap(if (groupAlignment == Alignment.BottomCenter) 32.dp else 16.dp))) {
+                VibeSceneAnchor(Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 10.dp else 20.dp))) {
+                        VibeIdentity(title, compact, height >= 320.dp)
+                        VibeStationAction(playing, starting, active, onStart, compact = compact)
+                        VibeTunePill(onTune)
+                    }
+                }
             }
         }
     }
@@ -205,11 +253,15 @@ internal fun VibeStationOverlay(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center) {
                 if (expanded) Spacer(Modifier.weight(0.85f))
-                StationTitle()
-                Spacer(Modifier.height(ui.gap(if (compact) 8.dp else 16.dp)))
-                Transport()
-                Spacer(Modifier.height(ui.gap(8.dp)))
-                tune()
+                VibeSceneAnchor(Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        StationTitle()
+                        Spacer(Modifier.height(ui.gap(if (compact) 8.dp else 16.dp)))
+                        Transport()
+                        Spacer(Modifier.height(ui.gap(8.dp)))
+                        tune()
+                    }
+                }
                 if (hasTrack) {
                     if (expanded) Spacer(Modifier.weight(0.65f))
                     else Spacer(Modifier.height(ui.gap(12.dp)))
@@ -231,11 +283,13 @@ internal fun VibeStationOverlay(
                 Row(Modifier.widthIn(max = 820.dp).fillMaxWidth().padding(horizontal = ui.gap(16.dp), vertical = ui.gap(if (compact) 6.dp else 18.dp)),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(ui.gap(24.dp))) {
-                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 6.dp else 12.dp))) {
-                        StationTitle()
-                        Transport()
-                        tune()
+                    VibeSceneAnchor(Modifier.weight(1f)) {
+                        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 6.dp else 12.dp))) {
+                            StationTitle()
+                            Transport()
+                            tune()
+                        }
                     }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 6.dp else 14.dp))) {

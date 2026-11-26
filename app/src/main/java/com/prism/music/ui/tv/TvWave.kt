@@ -320,6 +320,7 @@ internal fun TvWavePlace(nav: TvNav) {
             }
             }
         } else {
+            com.prism.music.ui.screens.VibeScene {
             Box(Modifier.fillMaxSize()) {
             com.prism.music.ui.screens.VibeSphere(Modifier.matchParentSize(), now?.playing == true, style.diversity / 100f)
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(ui.gap(8.dp))) {
@@ -393,6 +394,7 @@ internal fun TvWavePlace(nav: TvNav) {
                             }
                     }
                 }
+            }
             }
             }
         }

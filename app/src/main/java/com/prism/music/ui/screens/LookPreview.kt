@@ -150,8 +150,7 @@ private fun MiniVibe(c: ThemeColors, song: Song?, live: Boolean) {
         if (backdrop != com.prism.music.ui.theme.Backdrop.DEFAULT) {
             com.prism.music.ui.theme.BackdropLayer(backdrop, photo, s.backdropDim, false, Modifier.fillMaxSize())
         }
-        Column(Modifier.fillMaxSize()) {
-            VibePageLayout(s, modifier = Modifier.weight(1f), scrollable = false, header = {
+        VibePageLayout(s, scrollable = false, header = {
                 com.prism.music.ui.components.ScreenHeader(tr(R.string.stream),
                     subtitle = tr(R.string.prism_stream_personal_stream).takeIf { s.streamShowStatus }) {
                     Icon(PrismIcons.Palette, null, Modifier.size(24.dp))
@@ -168,10 +167,12 @@ private fun MiniVibe(c: ThemeColors, song: Song?, live: Boolean) {
                         VibeScenarioTile(s.streamCompactScenarios, tile.label, tile.icon, tile.selected, {}, Modifier.weight(1f))
                     }
                 }
-            }, backdrop = { VibeSphere(it, animated = live, energy = 0.5f, preview = !live) })
-            Box(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) { MiniBar(c, song) }
-            Box(Modifier.padding(horizontal = 12.dp).padding(bottom = 14.dp)) { TabBarPreview(c) }
-        }
+            }, backdrop = { VibeSphere(it, animated = live, energy = 0.5f, preview = !live) }, footer = {
+                Column(Modifier.fillMaxWidth()) {
+                    Box(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) { MiniBar(c, song) }
+                    Box(Modifier.padding(horizontal = 12.dp).padding(bottom = 14.dp)) { TabBarPreview(c) }
+                }
+            })
     }
 }
 

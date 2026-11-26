@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="vibe_liquid_ring">Liquid ring</string>
+    <string name="vibe_spectral_wave">Spectral wave</string>
+    <string name="vibe_soft_glow">Soft glow</string>
+</resources>

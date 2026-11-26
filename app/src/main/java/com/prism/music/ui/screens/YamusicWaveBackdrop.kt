@@ -11,7 +11,7 @@ package com.prism.music.ui.screens
 import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.FloatState
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -24,7 +24,10 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.geometry.Offset
+import com.prism.music.data.prefs.StreamVisualStyle
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.conflate
@@ -37,38 +40,61 @@ import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-/** Same renderer and sampling resolution regardless of Prism's performance setting. */
+internal data class VibeWaveSignal(val phase: Float, val beat: Float, val bands: FloatArray)
+private data class WaveViewport(val size: IntSize = IntSize.Zero, val origin: Offset = Offset.Zero)
+private data class WaveFrame(val image: ImageBitmap, val drift: Offset)
+
+/** All visual styles share the same ambient field and the same published frame position. */
 @Composable
 internal fun YamusicWaveBackdrop(
-    modifier: Modifier, a: Color, b: Color, c: Color, time: FloatState, level: FloatState,
-    opacity: Float, scale: Float, moving: Boolean,
+    modifier: Modifier, a: Color, b: Color, c: Color, signal: State<VibeWaveSignal>,
+    opacity: Float, scale: Float, style: StreamVisualStyle, energy: Float, moving: Boolean,
 ) {
-    var viewport by remember { mutableStateOf(IntSize.Zero) }
+    var viewport by remember { mutableStateOf(WaveViewport()) }
+    val scene = LocalVibeScene.current
     val palette = remember(a, b, c) {
         listOf(a, lerp(a, b, 0.7f), b, lerp(b, c, 0.7f), c, lerp(c, a, 0.7f))
     }
-    val frame by produceState<ImageBitmap?>(null, viewport, palette, opacity, scale, moving) {
-        if (viewport.width <= 0 || viewport.height <= 0 || opacity <= 0f) {
+    val frame by produceState<WaveFrame?>(null, viewport, palette, opacity, scale, style, energy, moving, scene) {
+        val view = viewport.size
+        if (view.width <= 0 || view.height <= 0 || opacity <= 0f) {
+            scene?.drift = Offset.Zero
             value = null
             return@produceState
         }
-        // Like yamusic-rs's downsampled target, intentionally soft. Fixed pixel budget also for 4K TVs.
-        val aspect = viewport.width.toFloat() / viewport.height
+        val aspect = view.width.toFloat() / view.height
         val w = if (aspect >= 1f) 192 else (192 * aspect).roundToInt().coerceAtLeast(1)
         val h = if (aspect <= 1f) 192 else (192 / aspect).roundToInt().coerceAtLeast(1)
-        snapshotFlow { if (moving) time.floatValue to level.floatValue else 7f to 0f }
-            .conflate().collect { (phase, beat) ->
-                value = withContext(Dispatchers.Default) {
-                    renderYamusicWave(w, h, palette, phase, beat, opacity, scale)
+        snapshotFlow { (if (moving) signal.value else VibeWaveSignal(7f, 0f, EMPTY_BANDS)) to scene?.anchor }
+            .conflate().collect { (sample, anchor) ->
+                val drift = waveDrift(sample.phase, minOf(view.width, view.height).toFloat(), moving)
+                val at = if (anchor == null) Offset(view.width * 0.5f, view.height * 0.38f) else anchor - viewport.origin
+                val center = Offset(((at.x + drift.x) / view.width).coerceIn(0f, 1f),
+                    ((at.y + drift.y) / view.height).coerceIn(0f, 1f))
+                val bitmap = withContext(Dispatchers.Default) {
+                    renderYamusicWave(w, h, palette, sample, opacity, scale, style, energy, center)
                 }
+                // Publish geometry and pixels together; the controls follow the frame actually on screen.
+                value = WaveFrame(bitmap, drift)
+                scene?.drift = drift
             }
     }
-    Canvas(modifier.onSizeChanged { viewport = it }) {
+    Canvas(modifier.onGloballyPositioned {
+        viewport = WaveViewport(it.size, it.positionInRoot())
+    }) {
         frame?.let {
-            drawImage(it, dstSize = IntSize(size.width.roundToInt().coerceAtLeast(1),
+            drawImage(it.image, dstSize = IntSize(size.width.roundToInt().coerceAtLeast(1),
                 size.height.roundToInt().coerceAtLeast(1)), filterQuality = FilterQuality.Low)
         }
     }
+}
+
+private val EMPTY_BANDS = FloatArray(28)
+
+internal fun waveDrift(time: Float, span: Float, moving: Boolean): Offset {
+    if (!moving || !time.isFinite() || !span.isFinite() || span <= 0f) return Offset.Zero
+    val amplitude = span * 0.032f
+    return Offset(sin(time * 0.54f) * amplitude, cos(time * 0.43f) * amplitude)
 }
 
 private data class Blob(val x: Float, val y: Float, val ca: Float, val sa: Float,
@@ -81,28 +107,35 @@ private fun smoothstep(lo: Float, hi: Float, x: Float): Float {
 
 /** Software port of the upstream fragment, evaluated into a small, smoothly filtered texture. */
 private fun renderYamusicWave(
-    w: Int, h: Int, palette: List<Color>, time: Float, beat: Float, opacity: Float, scale: Float,
+    w: Int, h: Int, palette: List<Color>, sample: VibeWaveSignal, opacity: Float, scale: Float,
+    style: StreamVisualStyle, energy: Float, center: Offset,
 ): ImageBitmap {
     val pixels = IntArray(w * h)
     val aspect = w.toFloat() / h
     // Use the actual viewport aspect, never clip at the bounds of a scaled composable.
     // On wide screens keep the central glow proportionate to the available height.
-    val sceneScale = scale.coerceIn(0.25f, 1f) * minOf(1f, aspect * 1.65f)
-    val t = time
+    val sceneScale = scale.coerceIn(0.25f, 1f) * minOf(1.25f, aspect * 1.95f)
+    val t = sample.phase
+    val beat = sample.beat.coerceIn(0f, 1f)
+    val glowMode = style == StreamVisualStyle.GLOW
+    val ringMode = style == StreamVisualStyle.RING
+    val spectrumMode = style == StreamVisualStyle.EQUALIZER
+    val spread = if (glowMode) 1.33f else if (ringMode) 1.18f else 1f
+    val angular = if (glowMode) 0.45f else if (spectrumMode) 1.25f else 1f
     val blobs = Array(3) { i ->
         val fi = i.toFloat()
         val phase = fi * 2.094f
         val ang = t * 0.12f + phase
         Blob(0.05f * sin(t * 0.31f + phase), 0.05f * cos(t * 0.23f + phase * 1.3f),
-            cos(ang), sin(ang), (0.27f - fi * 0.03f) * (1f + 0.16f * beat),
+            cos(ang), sin(ang), (0.27f - fi * 0.03f) * spread * (1f + 0.16f * beat),
             fi * 1.7f, 0.75f - fi * 0.12f)
     }
     for (y in 0 until h) {
         val v = 1f - (y + 0.5f) / h
-        val py = (v - 0.62f) / sceneScale
+        val py = (v - (1f - center.y)) / sceneScale
         for (x in 0 until w) {
             val u = (x + 0.5f) / w
-            val px = (u - 0.5f) * aspect / sceneScale
+            val px = (u - center.x) * aspect / sceneScale
             var red = 0f
             var green = 0f
             var blue = 0f
@@ -113,10 +146,19 @@ private fun renderYamusicWave(
                 val qx = blob.ca * dx + blob.sa * dy
                 val qy = (-blob.sa * dx + blob.ca * dy) * 1.25f
                 val angle = atan2(qy, qx)
-                val edge = 1f + 0.14f * sin(angle * 3f + t * 0.8f + blob.seed) +
-                    0.08f * sin(angle * 5f - t * 1.1f + blob.seed * 2.3f)
+                // Frequency bands deform the same soft blob, never draw a separate bar or ring widget.
+                val frequency = if (spectrumMode || ringMode) waveBand(sample.bands, angle + t * 0.13f) else 0f
+                val edge = 1f + angular * (0.14f * sin(angle * 3f + t * 0.8f + blob.seed) +
+                    0.08f * sin(angle * 5f - t * 1.1f + blob.seed * 2.3f)) +
+                    frequency * (if (spectrumMode) 0.28f else 0.12f)
                 val d = hypot(qx, qy) / (blob.radius * edge)
-                val b = exp(-d * d * 3f)
+                val base = exp(-d * d * (if (glowMode) 1.8f else 3f))
+                val rim = exp(-((d - 0.76f) * 2.8f) * ((d - 0.76f) * 2.8f))
+                val b = when {
+                    ringMode -> base * 0.48f + rim * (0.42f + 0.18f * frequency)
+                    spectrumMode -> base * (0.82f + 0.18f * energy) + rim * frequency * 0.24f
+                    else -> base
+                }
                 val mix = smoothstep(0.2f, 0.9f, b)
                 val low = palette[i * 2 + 1]
                 val high = palette[i * 2]
@@ -125,7 +167,7 @@ private fun renderYamusicWave(
                 green += (low.green + (high.green - low.green) * mix) * weight
                 blue += (low.blue + (high.blue - low.blue) * mix) * weight
             }
-            val glow = (1f - smoothstep(0f, 0.55f, v)) * 0.12f
+            val glow = (1f - smoothstep(0f, 0.65f, v)) * (if (glowMode) 0.20f else 0.12f)
             val low = palette[1]
             val high = palette[3]
             red += (low.red + (high.red - low.red) * u) * glow
@@ -145,4 +187,14 @@ private fun renderYamusicWave(
         }
     }
     return Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888).asImageBitmap()
+}
+
+/** Mirror low-to-high FFT along the circumference and interpolate continuously at the seam. */
+internal fun waveBand(bands: FloatArray, angle: Float): Float {
+    if (bands.isEmpty() || !angle.isFinite()) return 0f
+    val turn = ((angle / 6.2831853f) % 1f + 1f) % 1f
+    val index = (1f - kotlin.math.abs(turn * 2f - 1f)) * (bands.size - 1)
+    val lo = index.toInt().coerceIn(0, bands.lastIndex)
+    val hi = minOf(lo + 1, bands.lastIndex)
+    return (bands[lo] + (bands[hi] - bands[lo]) * (index - lo)).coerceIn(0f, 1f)
 }
