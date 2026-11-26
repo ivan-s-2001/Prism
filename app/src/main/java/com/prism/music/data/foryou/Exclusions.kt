@@ -46,6 +46,12 @@ class Exclusions(context: Context, private val account: () -> String? = { null }
     private val _songs = MutableStateFlow(load(SONGS))
     val songs: StateFlow<List<Excluded>> = _songs
 
+    init {
+        save(ARTISTS, _artists, _artists.value)
+        save(PLAYLISTS, _playlists, _playlists.value)
+        save(SONGS, _songs, _songs.value)
+    }
+
     /** Reads them again (after "Bring your Prism" merged a phone's in, 1.8.0). */
     fun reload() = synchronized(MusicPreferenceLock) {
         val imported = listOf(ARTISTS, PLAYLISTS, SONGS).associateWith { decode(prefs.getString(it, null)) }

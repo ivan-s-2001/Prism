@@ -214,7 +214,7 @@ class Backup(private val c: AppContainer) {
         c.artistPrefs.reload()
         c.versions.reload()
         c.exclusions.reload()
-        c.library.dislikedIds.value = prefsOf("dislikes").getStringSet("ids", emptySet()).orEmpty().toSet()
+        c.library.reloadDislikesFromBackup()
         content.look?.let { code -> c.looks.decode(code)?.let { c.looks.apply(it) } }
         merged
     }

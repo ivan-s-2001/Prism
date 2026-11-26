@@ -32,6 +32,7 @@ class ArtistPrefs(context: Context, private val account: () -> String? = { null 
     }
 
     val favorites = MutableStateFlow(loadScoped())
+    init { saveFavorites(favorites.value) }
 
     private fun saveFavorites(list: List<FavoriteArtist>) {
         val raw = InnerTube.json.encodeToString(listSerializer, list)

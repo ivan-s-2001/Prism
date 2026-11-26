@@ -121,12 +121,23 @@ class LibraryRepository(private val c: AppContainer) {
 
     private var activeDislikeScope = dislikeScope()
     val dislikedIds = MutableStateFlow(loadScopedDislikes(activeDislikeScope))
+    init { saveScopedDislikes(activeDislikeScope, dislikedIds.value) }
+
+    /** Bring your Prism merges into the legacy compatibility key. Persist the result in the active scope too. */
+    internal suspend fun reloadDislikesFromBackup() = reactionLock.withLock {
+        val imported = dislikePrefs.getStringSet("ids", emptySet()).orEmpty().toSet()
+        refreshDislikeScope()
+        saveScopedDislikes(activeDislikeScope, imported)
+        dislikedIds.value = imported
+    }
     // Called with reactionLock held, so an account switch cannot mix two sets of dislikes.
     private fun refreshDislikeScope() {
         val scope = dislikeScope()
         if (scope == activeDislikeScope) return
-        dislikedIds.value = loadScopedDislikes(scope)
+        val next = loadScopedDislikes(scope)
+        saveScopedDislikes(scope, next)
         activeDislikeScope = scope
+        dislikedIds.value = next
     }
     /** Keep the metadata for excluded tracks, including exclusions saved by older versions. */
     val dislikedSongs: StateFlow<List<Song>> = dislikedIds.map { ids ->
@@ -167,6 +178,19 @@ class LibraryRepository(private val c: AppContainer) {
         if (c.settings.current.isLoggedIn) cachedSubscriptions(remoteReactionKey() + ":artists").orEmpty() else emptyList()
     )
     val artistLibraryReady = MutableStateFlow(c.settings.current.isLoggedIn && cachedSubscriptions(remoteReactionKey() + ":artists") != null)
+    private var activeArtistKey: String? = remoteReactionKey().takeIf { c.settings.current.isLoggedIn }?.plus(":artists")
+
+    private fun refreshArtistScope() = synchronized(artistEditLock) {
+        val key = remoteReactionKey().takeIf { c.settings.current.isLoggedIn }?.plus(":artists")
+        c.artistPrefs.refreshAccount()
+        c.exclusions.refreshAccount()
+        if (activeArtistKey != key) {
+            activeArtistKey = key
+            val cached = key?.let(::cachedSubscriptions)
+            subscribedArtists.value = cached.orEmpty()
+            artistLibraryReady.value = cached != null
+        }
+    }
     /** One view of local stars and the account's subscriptions, shared by both profile editors and Wave. */
     val profileArtists: StateFlow<List<FavoriteArtist>> by lazy {
         combine(c.artistPrefs.favorites, subscribedArtists, c.exclusions.artists) { local, remote, blocked ->
@@ -206,7 +230,12 @@ class LibraryRepository(private val c: AppContainer) {
     fun forgetAccount() {
         synchronized(this) { keptLoad.cancel() }
         synchronized(pending) { pending.clear(); followUps?.cancel() }
-        playlists.value = emptyList(); albums.value = emptyList(); artists.value = emptyList(); subscribedArtists.value = emptyList(); artistLibraryReady.value = false
+        playlists.value = emptyList(); albums.value = emptyList(); artists.value = emptyList()
+        synchronized(artistEditLock) {
+            activeArtistKey = null
+            subscribedArtists.value = emptyList()
+            artistLibraryReady.value = false
+        }
         c.scope.launch(Dispatchers.IO) { c.offline.clear(); c.homeCache.clear() }
     }
 
@@ -228,8 +257,7 @@ class LibraryRepository(private val c: AppContainer) {
         songs.liked().map { it.id }.filterNot { it.startsWith(Song.LOCAL_PREFIX) || it in kept }.forEach { songs.setLiked(it, false, 0) }
         refreshDislikeScope()
         forgetAccount()
-        val artistKey = remoteReactionKey() + ":artists"
-        cachedSubscriptions(artistKey)?.let { subscribedArtists.value = it; artistLibraryReady.value = true }
+        refreshArtistScope()
         }
         }
         }
@@ -539,6 +567,7 @@ class LibraryRepository(private val c: AppContainer) {
             }
             }
             }
+            refreshArtistScope()
             val artistKey = remoteReactionKey() + ":artists"
             val artistEdits = synchronized(artistEditLock) { pendingArtists(artistKey) }
             flushArtistEdits()
@@ -748,6 +777,8 @@ class LibraryRepository(private val c: AppContainer) {
      * subscribes to them on YouTube Music ([channelId]), which is what YouTube's own app does.
      */
     fun setFavoriteArtist(artist: FavoriteArtist, channelId: String?, on: Boolean) {
+        synchronized(artistEditLock) {
+        refreshArtistScope()
         c.artistPrefs.setFavorite(artist.copy(channelId = channelId ?: artist.channelId), on)
         if (on && artists.value.none { it.id == artist.id }) {
             artists.value = listOf(ArtistItem(artist.id, artist.name, "Artist", artist.thumbnail)) + artists.value
@@ -763,6 +794,7 @@ class LibraryRepository(private val c: AppContainer) {
                 cacheSubscriptions(key)
             }
             c.scope.launch(Dispatchers.IO) { flushArtistEdits() }
+        }
         }
     }
 
@@ -786,6 +818,7 @@ class LibraryRepository(private val c: AppContainer) {
             c.settings.flow.map { it.isLoggedIn to (it.dataSyncId ?: "${it.authUser}:${it.accountName}") }.distinctUntilChanged().collect {
                 kotlinx.coroutines.delay(1_000L)
                 reactionLock.withLock { refreshDislikeScope() }
+                refreshArtistScope()
                 restoreReactionJournal()
             }
         }
@@ -866,7 +899,8 @@ class LibraryRepository(private val c: AppContainer) {
         }
     }
 
-    fun setArtistExcluded(artist: com.prism.music.data.foryou.Excluded, excluded: Boolean, channelId: String? = null) {
+    fun setArtistExcluded(artist: com.prism.music.data.foryou.Excluded, excluded: Boolean, channelId: String? = null) = synchronized(artistEditLock) {
+        refreshArtistScope()
         if (excluded) {
             val favorite = (c.artistPrefs.favorites.value + subscribedArtists.value.filterIsInstance<ArtistItem>().map { FavoriteArtist(it.id, it.title, it.thumbnail) }).firstOrNull { it.id == artist.id || it.name.equals(artist.name, true) }
             if (favorite != null || channelId != null) {
