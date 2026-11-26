@@ -158,17 +158,9 @@ private fun MiniVibe(c: ThemeColors, song: Song?, live: Boolean) {
                 }
             }, player = { panel ->
                 VibeStationOverlay(s, tr(R.string.prism_stream_station_default), hasTrack = true, modifier = panel,
+                    showTrackDetails = false,
                     play = { VibeStationAction(true, false, true, {}) },
-                    tune = { VibeTunePill({}) },
-                    credits = {
-                        VibeCredits(s, song?.title ?: tr(R.string.song), song?.primaryArtist ?: tr(R.string.artist),
-                            artwork = { StandIn(song, it, com.prism.music.ui.theme.CoverShapes.of(s.shapes.player, s.player.artCorners.dp), standIns.first()) })
-                    },
-                    previous = { VibeTrackAction(PrismIcons.Previous, tr(R.string.widget_previous), {}) },
-                    next = { VibeTrackAction(PrismIcons.Next, tr(R.string.prism_stream_next), {}) },
-                    progress = { Box(Modifier.fillMaxWidth().height(3.dp).background(scheme.onSurface.copy(alpha = 0.18f))) {
-                        Box(Modifier.fillMaxWidth(0.42f).fillMaxHeight().background(scheme.primary))
-                    } })
+                    tune = { VibeTunePill({}) })
             }, scenarios = {
                 val scenarios = com.prism.music.data.foryou.WaveScenarios.visibleOrder(com.prism.music.data.foryou.WaveScenarios.all, s.streamScenarioOrder)
                 Row(Modifier.fillMaxWidth().padding(horizontal = ui.gap(12.dp), vertical = ui.gap(2.dp)),

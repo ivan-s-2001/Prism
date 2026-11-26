@@ -214,8 +214,8 @@ internal fun vibeStageMinHeight(width: Dp, height: Dp, layout: StreamLayout, vis
 internal fun VibeStationOverlay(
     settings: AppSettings, title: String, hasTrack: Boolean,
     modifier: Modifier = Modifier, play: @Composable () -> Unit,
-    credits: @Composable () -> Unit,
-    previous: @Composable () -> Unit, next: @Composable () -> Unit,
+    credits: @Composable () -> Unit = {},
+    previous: @Composable () -> Unit = {}, next: @Composable () -> Unit = {},
     dislike: @Composable () -> Unit = {}, like: @Composable () -> Unit = {},
     extra: (@Composable () -> Unit)? = null,
     progress: @Composable () -> Unit = {},
@@ -223,8 +223,10 @@ internal fun VibeStationOverlay(
     artist: String? = null,
     tune: @Composable () -> Unit = {},
     origin: com.prism.music.playback.VibeOrigin? = null,
+    showTrackDetails: Boolean = hasTrack,
 ) {
     val ui = LocalUi.current
+    val trackDetailsVisible = hasTrack && showTrackDetails
     BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         val layout = settings.streamLayout
         val shortWide = maxWidth >= 620.dp && maxHeight < 300.dp
@@ -247,7 +249,7 @@ internal fun VibeStationOverlay(
             VibeSceneAnchor { play() }
         }
         @Composable fun TrackDetails() {
-            if (hasTrack) {
+            if (trackDetailsVisible) {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(ui.gap(4.dp))) {
                     if (settings.streamReverseLayout && settings.streamShowProgress) progress()
@@ -271,7 +273,7 @@ internal fun VibeStationOverlay(
                     StationTitle()
                     Transport()
                     tune()
-                    if (hasTrack && layout != StreamLayout.SEPARATE) {
+                    if (trackDetailsVisible && layout != StreamLayout.SEPARATE) {
                         Spacer(Modifier.height(ui.gap(if (compact) 0.dp else 4.dp)))
                         TrackDetails()
                     }
@@ -287,7 +289,7 @@ internal fun VibeStationOverlay(
                     // The renderer already fades to transparent, preserving photos and custom Prism backdrops.
                 }
             }
-            if (wide && (layout == StreamLayout.SEPARATE || shortWide) && hasTrack) {
+            if (wide && (layout == StreamLayout.SEPARATE || shortWide) && trackDetailsVisible) {
                 Row(Modifier.widthIn(max = 820.dp).fillMaxWidth().padding(horizontal = ui.gap(16.dp), vertical = ui.gap(if (compact) 6.dp else 18.dp)),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(ui.gap(24.dp))) {
@@ -305,7 +307,7 @@ internal fun VibeStationOverlay(
                     }
                 }
             } else {
-                if (layout == StreamLayout.SEPARATE && hasTrack) {
+                if (layout == StreamLayout.SEPARATE && trackDetailsVisible) {
                     Column(Modifier.fillMaxWidth().padding(vertical = ui.gap(if (compact) 6.dp else 18.dp)),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(ui.gap(16.dp))) {

@@ -277,48 +277,19 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             }
         }
     }
-    // The mini player stays global; the Vibe stage also owns its stationary transport.
-    val hasPrevious by c.player.hasPrevious.collectAsState()
-    val hasNext by c.player.hasNext.collectAsState()
+    // The global mini player owns track metadata and secondary transport on mobile.
     @Composable fun Hero(modifier: Modifier) {
         val current = song.takeIf { wave }
         VibeStationOverlay(settings, activeVibeTitle(source, activeSaved, activeScenario),
             hasTrack = current != null,
+            showTrackDetails = false,
             origin = activeVibeOrigin(source, current),
             modifier = modifier.testTag("home:my_wave").customizable(CustomizeTarget.VIBE),
             play = {
                 VibeStationAction(wave && playing, starting && !wave, wave,
                     onPlay = { if (wave) c.player.togglePlay() else if (!starting) start() })
             },
-            tune = { if (!contextual) VibeTunePill({ openSettings() }) },
-            credits = {
-                if (current != null) VibeCredits(settings, current.title, current.primaryArtist,
-                    artwork = { com.prism.music.ui.components.Artwork(com.prism.music.data.PlaylistCovers.artOf(current), it,
-                        shape = com.prism.music.ui.theme.CoverShapes.of(settings.shapes.player, settings.player.artCorners.dp), size = 180) },
-                    onOpen = onOpenPlayer)
-            },
-            previous = {
-                VibeTrackAction(PrismIcons.Previous, tr(R.string.widget_previous),
-                    { if (hasPrevious) c.player.previous() }, enabled = hasPrevious)
-            },
-            next = {
-                VibeTrackAction(PrismIcons.Next, tr(R.string.prism_stream_next),
-                    { if (hasNext) c.player.next() }, enabled = hasNext)
-            },
-            progress = {
-                if (current != null) {
-                    var position by remember(current.id) { mutableLongStateOf(c.player.position) }
-                    LaunchedEffect(current.id) {
-                        while (true) {
-                            position = c.player.position
-                            kotlinx.coroutines.delay(250)
-                        }
-                    }
-                    CompositionLocalProvider(com.prism.music.ui.player.LocalEmbeddedPlayerInk provides MaterialTheme.colorScheme.onSurface) {
-                        com.prism.music.ui.player.PlayerScrubber(position, c.player.duration)
-                    }
-                }
-            })
+            tune = { if (!contextual) VibeTunePill({ openSettings() }) })
     }
 
     @Composable fun ScenarioTile(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
