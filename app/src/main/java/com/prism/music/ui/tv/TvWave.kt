@@ -77,7 +77,7 @@ internal fun TvWavePlace(nav: TvNav) {
     val song by c.player.currentSong.collectAsState()
     val now = rememberTvNow(c).takeIf { source.continuousRecommendations }
     val current = song.takeIf { source.continuousRecommendations }
-    val contextual = current != null && source.isSongRadio
+    val contextual = current != null && source.isContextVibe
 
     val title = tr(R.string.stream)
     fun restored() = MyWave.restore(source.originId, appSettings.streamStyleOrigin, appSettings.streamRussianPercent)
@@ -145,7 +145,7 @@ internal fun TvWavePlace(nav: TvNav) {
                 val picks = MyWave.initialPicks(candidates, current, offline = !c.network.isOnline())
                 if (picks.isEmpty()) c.player.reportError(if (!c.network.isOnline()) tr(R.string.prism_stream_no_matching_downloaded_tracks) else tr(R.string.prism_stream_not_enough_matching_tracks))
                 else {
-                    val next = QueueSource(QueueKind.RADIO, title, seedId = picks.first().id, originId = selected.origin)
+                    val next = QueueSource(QueueKind.VIBE, title, seedId = picks.first().id, originId = selected.origin)
                     if (old.isMyWave) {
                         if (!c.player.retuneWave(old, next, picks)) {
                             c.player.reportError(tr(R.string.prism_stream_could_not_update_stream))

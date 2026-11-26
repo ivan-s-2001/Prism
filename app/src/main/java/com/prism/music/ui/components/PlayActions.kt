@@ -94,7 +94,12 @@ fun playPlayable(c: AppContainer, context: android.content.Context, target: Play
     }
     // An artist's shuffle and mix come already in YouTube's order; the player shouldn't reshuffle them.
     val artist = (target as? Playable.Of)?.item is ArtistItem
-    c.player.playQueue(start.songs, 0, start.source, shuffle = shuffle && !artist, rest = start.rest)
+    if (mix || start.source.isVibe) {
+        if (!c.player.playContextVibe(title, start.source.vibeAnchors.ifEmpty { start.songs },
+                origin = start.source.vibeOrigin ?: com.prism.music.playback.VibeOrigin(com.prism.music.playback.VibeOriginKind.MIX, title))) {
+            Toast.makeText(context, tr(R.string.prism_vibe_start_failed), Toast.LENGTH_SHORT).show()
+        }
+    } else c.player.playQueue(start.songs, 0, start.source, shuffle = shuffle && !artist, rest = start.rest)
 }
 
 /** How long a lookup may take before the listener is told something's happening (a list on the phone needs no note). */
@@ -438,11 +443,12 @@ private suspend fun songsFor(c: AppContainer, target: Playable, shuffle: Boolean
                 val songs = c.radio(a.shuffleVideoId, a.shufflePlaylistId, a.shuffleParams).songs
                 songs to QueueSource(QueueKind.LIBRARY, a.name, originId = item.id)
             } else {
-                val supplied = c.radio(a.radioVideoId, a.radioPlaylistId ?: throw java.io.IOException(tr(R.string.no_mix)), a.radioParams).songs
-                val original = a.shelves.flatMap { it.items }.filterIsInstance<SongItem>().map { it.song }.filter { it.primaryArtist.equals(a.name, true) }
-                val anchors = com.prism.music.data.foryou.VibeContext.anchors(original.ifEmpty { supplied.filter { it.primaryArtist.equals(a.name, true) } }.ifEmpty { supplied })
-                c.yourMusic.contextBatch(anchors, emptyList(), 0, explicitContext = true, provided = supplied + anchors) to
-                    QueueSource(QueueKind.RADIO, tr(R.string.radio, a.name), vibeAnchors = anchors)
+                val original = a.shelves.flatMap { it.items }.filterIsInstance<SongItem>().map { it.song }
+                    .filter { it.artists.any { artist -> artist.id == item.id || artist.name.equals(a.name, true) } }
+                val supplied = if (original.isEmpty()) a.radioPlaylistId?.let { c.radio(a.radioVideoId, it, a.radioParams).songs }.orEmpty() else emptyList()
+                val anchors = com.prism.music.data.foryou.VibeContext.anchors(original.ifEmpty { supplied })
+                anchors to QueueSource(QueueKind.VIBE, a.name, seedId = anchors.firstOrNull()?.id,
+                    vibeAnchors = anchors, vibeOrigin = com.prism.music.playback.VibeOrigin(com.prism.music.playback.VibeOriginKind.ARTIST, a.name, a.thumbnail))
             }
         }
         else -> emptyList<Song>() to QueueSource(QueueKind.OTHER, item.title)
@@ -457,5 +463,7 @@ private suspend fun radio(c: AppContainer, videoId: String?, playlistId: String,
     val r = c.radio(videoId, playlistId, params, keepFirst = true)
     val songs = c.yourMusic.providedStream(r.songs)
     val seed = songs.firstOrNull()?.takeUnless { it.isLive || it.isEpisode }
-    return songs to QueueSource(if (seed == null) QueueKind.OTHER else QueueKind.RADIO, title, seedId = seed?.id)
+    return songs to QueueSource(if (seed == null) QueueKind.OTHER else QueueKind.VIBE, title, seedId = seed?.id,
+        vibeAnchors = if (seed == null) emptyList() else com.prism.music.data.foryou.VibeContext.anchors(r.songs),
+        vibeOrigin = seed?.let { com.prism.music.playback.VibeOrigin(com.prism.music.playback.VibeOriginKind.MIX, title) })
 }

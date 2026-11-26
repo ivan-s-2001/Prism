@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import java.util.concurrent.ConcurrentHashMap
 
-enum class QueueKind { SINGLE, ALBUM, PLAYLIST, RADIO, LIBRARY, REPLAY, OTHER }
+enum class QueueKind { SINGLE, ALBUM, PLAYLIST, RADIO, LIBRARY, REPLAY, OTHER, VIBE }
 
 @kotlinx.serialization.Serializable
 enum class VibeOriginKind { TRACK, ALBUM, ARTIST, PLAYLIST, COLLECTION, MIX }
@@ -34,16 +34,22 @@ data class QueueSource(
     val vibeAnchors: List<com.prism.music.data.model.Song> = emptyList(),
     val vibeOrigin: VibeOrigin? = null,
 ) {
-    /** A radio started from one song: it keeps going with similar music, Autoplay or not. */
-    val isSongRadio: Boolean get() = kind == QueueKind.RADIO && !isMyWave && (seedId != null || vibeAnchors.isNotEmpty())
-    val isMyWave: Boolean get() = kind == QueueKind.RADIO && com.prism.music.data.foryou.MyWave.isOrigin(originId)
-    /** The source itself supplies more songs; optional Autoplay is not a separate mode here. */
-    val continuousRecommendations: Boolean get() = isMyWave || isSongRadio
+    /** RADIO remains readable only to migrate previous releases. New sessions always use VIBE. */
+    val isVibe: Boolean get() = kind == QueueKind.VIBE ||
+        (kind == QueueKind.RADIO && (seedId != null || vibeAnchors.isNotEmpty() || com.prism.music.data.foryou.MyWave.isOrigin(originId)))
+    val isContextVibe: Boolean get() = isVibe && !isMyWave
+    val isMyWave: Boolean get() = isVibe && com.prism.music.data.foryou.MyWave.isOrigin(originId)
+    /** Compatibility for old callers; no separate radio playback mode. */
+    val isSongRadio: Boolean get() = isContextVibe
+    val continuousRecommendations: Boolean get() = isVibe
+    fun normalizedVibe(): QueueSource = if (kind != QueueKind.RADIO) this else
+        copy(kind = if (isVibe) QueueKind.VIBE else QueueKind.OTHER,
+            title = vibeOrigin?.name ?: title)
     /** Stream ordering is part of its tuning; shuffle and repeat would defeat that ordering. */
     val allowsOrderModes: Boolean get() = !continuousRecommendations
     /** The same seed in the same context is already running; another track is a new explicit request. */
     fun matchesTrackStream(id: String, context: String): Boolean =
-        isSongRadio && vibeAnchors.isEmpty() && seedId == id && title == context
+        isContextVibe && (vibeOrigin?.kind == VibeOriginKind.TRACK || vibeOrigin == null && vibeAnchors.isEmpty()) && seedId == id && (vibeOrigin?.name == context || title == context)
 }
 
 /** Shared queue bookkeeping between the UI-facing [PlayerConnection] and [PlaybackService]. */

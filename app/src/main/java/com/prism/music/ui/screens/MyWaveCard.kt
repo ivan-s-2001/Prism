@@ -123,7 +123,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val playing by c.player.isPlaying.collectAsState()
     val buffering by c.player.buffering.collectAsState()
     val wave = source.continuousRecommendations && song != null
-    val contextual = wave && source.isSongRadio
+    val contextual = wave && source.isContextVibe
     val title = tr(R.string.stream)
 
     var starting by remember { mutableStateOf(false) }
@@ -225,7 +225,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     style = restoredStyle(previous.originId)
                     c.player.reportError(if (!c.network.isOnline()) tr(R.string.prism_stream_no_matching_downloaded_tracks) else tr(R.string.prism_stream_not_enough_tracks_for_the_selected_mix_change_the_percentage_or_check))
                 } else {
-                    val next = QueueSource(QueueKind.RADIO, title, seedId = nextSongs.first().id, originId = selected.origin)
+                    val next = QueueSource(QueueKind.VIBE, title, seedId = nextSongs.first().id, originId = selected.origin)
                     if (previous.isMyWave) {
                         if (!c.player.retuneWave(previous, next, nextSongs)) {
                             style = restoredStyle(previous.originId)

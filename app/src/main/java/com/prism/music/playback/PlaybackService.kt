@@ -90,7 +90,7 @@ internal data class SavedQueue(
 ) {
     fun source(): QueueSource = QueueSource(
         QueueKind.entries.firstOrNull { it.name == sourceKind } ?: QueueKind.OTHER, title, seedId, originId, vibeAnchors = vibeAnchors, vibeOrigin = vibeOrigin,
-    )
+    ).normalizedVibe()
 }
 
 /**
@@ -377,7 +377,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                             c.queue.autoplayStart.value = -1
                             c.queue.autoplayContinuation = null
                             c.queue.source.value = if (pick.radio) {
-                                QueueSource(QueueKind.RADIO, tr(R.string.radio, pick.songs.first().title), seedId = pick.songs.first().id, vibeOrigin = VibeOrigin(VibeOriginKind.TRACK, pick.songs.first().title, pick.songs.first().thumbnail, pick.songs.first().artists.joinToString(", ") { it.name }.ifBlank { null }))
+                                QueueSource(QueueKind.VIBE, pick.songs.first().title, seedId = pick.songs.first().id, vibeOrigin = VibeOrigin(VibeOriginKind.TRACK, pick.songs.first().title, pick.songs.first().thumbnail, pick.songs.first().artists.joinToString(", ") { it.name }.ifBlank { null }))
                             } else QueueSource(QueueKind.PLAYLIST, pick.title)
                             val list = if (pick.radio) pick.songs.take(1) else pick.songs
                             player.shuffleModeEnabled = false
@@ -952,7 +952,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         // artists the listener doesn't want played when a radio or autoplay brought them (a playlist they picked plays as it is).
         val queueSource = c.queue.source.value
         val picked = song.id !in c.queue.userQueued.value &&
-            (queueSource.isMyWave || (queueSource.isSongRadio && song.id != queueSource.seedId) ||
+            (queueSource.isMyWave || (queueSource.isContextVibe && song.id != queueSource.seedId) ||
                 player.currentMediaItemIndex >= c.queue.autoplayStart.value.let { if (it < 0) Int.MAX_VALUE else it })
         val unwanted = c.library.isDisliked(song.id) || (picked && c.exclusions.blocks(song))
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && !c.queue.followingHost && unwanted && player.hasNextMediaItem()) {
@@ -1831,7 +1831,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
     private suspend fun refreshRecommendationsForNetwork() {
         val src = c.queue.source.value
         if (player.mediaItemCount == 0 || c.queue.followingHost) return
-        if (!src.isMyWave && !src.isSongRadio && c.queue.autoplayStart.value < 0 && !c.queue.autoplayLoading) return
+        if (!src.isMyWave && !src.isContextVibe && c.queue.autoplayStart.value < 0 && !c.queue.autoplayLoading) return
         val offline = !c.network.isOnline()
         val downloads = if (offline) withContext(Dispatchers.IO) {
             c.downloads.completedSongs().mapTo(hashSetOf()) { it.id }
@@ -1840,7 +1840,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         dropAutoplay()
         if (offline) {
             val manual = c.queue.userQueued.value
-            val generatedStart = if (src.isMyWave || src.isSongRadio) 0 else c.queue.autoplayStart.value
+            val generatedStart = if (src.isMyWave || src.isContextVibe) 0 else c.queue.autoplayStart.value
             if (generatedStart >= 0) for (i in player.mediaItemCount - 1 downTo maxOf(generatedStart, player.currentMediaItemIndex + 1)) {
                 val id = player.getMediaItemAt(i).mediaId
                 if (id in manual) continue
@@ -1856,7 +1856,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         // Still looking for a queue that's been replaced, whoever replaced it (a car, a watch, a spoken request).
         if (autoplayJob != null && autoplayFor !== src) dropAutoplay()
         // A song's radio (Quick picks, "Radio" in a song's menu) keeps going whether or not Autoplay is on: that's what it is.
-        val radio = src.isSongRadio
+        val radio = src.isContextVibe
         val wave = src.isMyWave
         if ((!c.settings.current.autoplay && !radio && !wave) || player.mediaItemCount == 0 || c.queue.followingHost || c.queue.filling) return
         // No music radio after a podcast episode.
@@ -1937,7 +1937,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 if (!offline && c.settings.current.behavior.autoplayNoRepeats &&
                     accepted.any { com.prism.music.data.foryou.LocalRadio.sameSong(it) in pastKeys })
                     c.player.reportError(tr(R.string.no_repeats_ran_out))
-                else if (c.player.radioNotice.take(src, accepted.size)) c.player.reportError(tr(R.string.radio_started))
+                else if (c.player.radioNotice.take(src, accepted.size)) c.player.reportError(tr(R.string.prism_vibe_started))
             }
         }
         autoplayJob = job
@@ -2124,7 +2124,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         val fromRadio = c.settings.current.radioSongsOnly && run {
             val at = (0 until player.mediaItemCount).firstOrNull { player.getMediaItemAt(it).mediaId == item.mediaId } ?: -1
             val auto = c.queue.autoplayStart.value
-            c.queue.source.value.kind == QueueKind.RADIO || (auto in 0..at)
+            c.queue.source.value.isVibe || (auto in 0..at)
         }
         if (!c.player.songsEverywhere() && !fromRadio) return
         val video = item.toSong()?.takeIf { it.isVideo && !it.isLive && !it.isEpisode && !it.isLocal } ?: return
@@ -2816,7 +2816,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 }
                 SessionButton.CAR_LYRICS -> if (carLyrics.button.showing) button(CommandButton.ICON_SUBTITLES, tr(R.string.hide_lyrics), lyricsCommand)
                     else button(CommandButton.ICON_SUBTITLES_OFF, tr(R.string.show_lyrics), lyricsCommand)
-                SessionButton.RADIO -> button(CommandButton.ICON_RADIO, tr(R.string.start_radio), radioCommand)
+                SessionButton.RADIO -> button(CommandButton.ICON_RADIO, tr(R.string.prism_vibe_from_track), radioCommand)
                 SessionButton.DISLIKE -> button(CommandButton.ICON_THUMB_DOWN_UNFILLED, tr(R.string.not_for_me), dislikeCommand)
                 SessionButton.BACK_10 -> button(CommandButton.ICON_SKIP_BACK_10, tr(R.string.back_10_seconds), back10Command)
                 SessionButton.AHEAD_30 -> button(CommandButton.ICON_SKIP_FORWARD_30, tr(R.string.ahead_30_seconds), ahead30Command)
@@ -3333,7 +3333,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             c.queue.autoplayContinuation = null
             if (pick.radio) {
                 val song = pick.songs.first()
-                c.queue.source.value = QueueSource(QueueKind.RADIO, tr(R.string.radio, song.title), seedId = song.id, vibeOrigin = VibeOrigin(VibeOriginKind.TRACK, song.title, song.thumbnail, song.artists.joinToString(", ") { it.name }.ifBlank { null }))
+                c.queue.source.value = QueueSource(QueueKind.VIBE, song.title, seedId = song.id, vibeOrigin = VibeOrigin(VibeOriginKind.TRACK, song.title, song.thumbnail, song.artists.joinToString(", ") { it.name }.ifBlank { null }))
                 player.shuffleModeEnabled = false
                 player.repeatMode = Player.REPEAT_MODE_OFF
                 return MediaSession.MediaItemsWithStartPosition(listOf(song.toMediaItem()), 0, C.TIME_UNSET)

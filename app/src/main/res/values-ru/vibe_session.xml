@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="prism_vibe_started">Вайб запущен</string>
+    <string name="prism_vibe_start_failed">Не удалось запустить Вайб</string>
+</resources>

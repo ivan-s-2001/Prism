@@ -1025,7 +1025,7 @@ fun PlayerActionRow(
     val chosen = pairedPlayerReactions(settings.player.buttons, settings.shows(PlayerPart.LIKE)).filter {
         (it != PlayerButton.VIDEO || settings.showVideoSwitch) &&
             (it != PlayerButton.RADIO || (!primaryVibeVisible && currentSong?.let { song -> canStartTrackVibe(song) &&
-                !source.matchesTrackStream(song.id, tr(R.string.radio, song.title)) } == true))
+                !source.matchesTrackStream(song.id, song.title) } == true))
     }
     // Six to a row still fits a small phone: the buttons narrow a little past four.
     val glyph = when { chosen.size >= 6 -> 46.dp; chosen.size == 5 -> 50.dp; else -> 56.dp }

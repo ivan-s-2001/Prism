@@ -73,7 +73,7 @@ fun startKind(source: QueueSource, songs: List<Song>, start: Int, asVideo: Boole
     val first = songs.getOrNull(start)
     return when {
         dj -> StartKind.DJ_SET
-        source.kind == QueueKind.RADIO -> StartKind.RADIO
+        source.isVibe || source.kind == QueueKind.RADIO -> StartKind.RADIO
         asVideo -> StartKind.VIDEO
         first?.isEpisode == true || first?.isLive == true -> StartKind.SPOKEN
         source.kind == QueueKind.SINGLE || songs.size < 2 -> StartKind.SINGLE
@@ -412,7 +412,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
      * when there are no more. They join the queue behind the songs playing ([fillQueue]).
      */
     fun playQueue(songs: List<Song>, startIndex: Int = 0, source: QueueSource, shuffle: Boolean = false, rest: (suspend () -> List<Song>?)? = null) {
-        playQueueRequested(songs, startIndex, source, shuffle, rest, dj = false)
+        playQueueRequested(songs, startIndex, source.normalizedVibe(), shuffle, rest, dj = false)
     }
 
     // DJ belongs to this request, not a mutable flag that a rejected or superseded request can leave behind.
@@ -421,7 +421,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         if (songs.isEmpty()) return
         val requestedShuffle = shuffle && source.allowsOrderModes && !dj
         // "No repeats this session" (#159): a radio starts without what's been heard, on the song it starts on.
-        if (source.kind == QueueKind.RADIO && c.settings.current.behavior.autoplayNoRepeats) {
+        if (source.isVibe && c.settings.current.behavior.autoplayNoRepeats) {
             val (kept, at) = c.sessionHeard.radioStart(songs, startIndex)
             if (kept.size < songs.size) { startFiltered(kept, at, source, requestedShuffle, rest, dj); return }
         }
@@ -714,7 +714,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
      */
     fun playRadio(song: Song, announce: Boolean = false, contextTitle: String = song.title) {
         if (song.isLive || song.isEpisode || c.queue.followingHost) return
-        val source = QueueSource(QueueKind.RADIO, tr(R.string.radio, contextTitle), seedId = song.id,
+        val source = QueueSource(QueueKind.VIBE, contextTitle, seedId = song.id,
             vibeOrigin = VibeOrigin(VibeOriginKind.TRACK, contextTitle, com.prism.music.data.PlaylistCovers.artOf(song), song.artists.joinToString(", ") { it.name }.ifBlank { null }))
         val p = player
         if (p?.currentMediaItem?.mediaId == song.id && c.queue.source.value.matchesTrackStream(song.id, source.title)) {
@@ -776,7 +776,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         if (context.isEmpty() || !stillStarting(token) || c.queue.followingHost || c.queue.source.value !== old) return@withContext false
         val first = context.firstOrNull { !c.sessionHeard.has(it) } ?: context.first()
         val identity = origin ?: VibeOrigin(VibeOriginKind.COLLECTION, title)
-        val source = QueueSource(QueueKind.RADIO, tr(R.string.radio, title), seedId = first.id,
+        val source = QueueSource(QueueKind.VIBE, title, seedId = first.id,
             vibeAnchors = context, vibeOrigin = identity)
         playQueue(listOf(first), 0, source)
         val started = c.queue.source.value == source

@@ -47,7 +47,7 @@ object TvPlay {
         val selected = c.yourMusic.providedStream(songs)
         if (selected.isEmpty()) return false
         val seed = selected.first().takeUnless { it.isLive || it.isEpisode }
-        c.player.playQueue(selected, 0, QueueSource(if (seed == null) QueueKind.OTHER else QueueKind.RADIO, mix.title, seedId = seed?.id, vibeOrigin = seed?.let { com.prism.music.playback.VibeOrigin(com.prism.music.playback.VibeOriginKind.MIX, mix.title, mix.thumbnail) }))
+        c.player.playQueue(selected, 0, QueueSource(if (seed == null) QueueKind.OTHER else QueueKind.VIBE, mix.title, seedId = seed?.id, vibeOrigin = seed?.let { com.prism.music.playback.VibeOrigin(com.prism.music.playback.VibeOriginKind.MIX, mix.title, mix.thumbnail) }))
         return true
     }
 

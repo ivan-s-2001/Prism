@@ -523,7 +523,12 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
                     }
                     val songs = if (live && !first.isLive) listOf(first.copy(isLive = true)) + r.songs.drop(1) else r.songs
                     c.queue.counterparts.putAll(r.counterparts)
-                    c.player.playQueue(songs, 0, com.prism.music.playback.QueueSource(com.prism.music.playback.QueueKind.RADIO, mix.title))
+                    if (live || first.isEpisode) {
+                        c.player.playQueue(songs, 0, com.prism.music.playback.QueueSource(com.prism.music.playback.QueueKind.OTHER, mix.title))
+                    } else if (!c.player.playContextVibe(mix.title, songs,
+                            origin = com.prism.music.playback.VibeOrigin(com.prism.music.playback.VibeOriginKind.MIX, mix.title, mix.thumbnail))) {
+                        Toast.makeText(context, tr(R.string.prism_vibe_start_failed), Toast.LENGTH_SHORT).show()
+                    }
                 }
             })
         }
