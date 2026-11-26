@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import com.prism.music.data.prefs.AppSettings
 import com.prism.music.data.prefs.StreamLayout
 import com.prism.music.data.prefs.StreamVisualStyle
@@ -43,56 +44,40 @@ internal fun VibePageLayout(
 ) {
     val ui = LocalUi.current
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        val wide = maxWidth >= 520.dp
-        val fieldMin = if (settings.streamLayout == StreamLayout.COMPACT || settings.streamVisualStyle == StreamVisualStyle.OFF) 180.dp
-            else if (wide) 252.dp else (maxWidth * 0.83f).coerceIn(260.dp, 344.dp)
         val page = Modifier.widthIn(max = 1040.dp).fillMaxWidth()
         val scroll = rememberScrollState()
         Column(page.then(if (scrollable) Modifier.verticalScroll(scroll) else Modifier),
-            verticalArrangement = Arrangement.spacedBy(ui.gap(6.dp))) {
+            verticalArrangement = Arrangement.spacedBy(ui.gap(8.dp))) {
             header()
-            player(Modifier.fillMaxWidth().heightIn(min = fieldMin).padding(horizontal = ui.gap(8.dp)))
+            player(Modifier.fillMaxWidth().padding(horizontal = ui.gap(12.dp)))
             scenarios()
         }
     }
 }
 
-/** One immersive field, including all station controls; no duplicate player strip. */
+/** One visual slot: the station layout owns its geometry, not the full page or track credits. */
 @Composable
 internal fun VibeFlowField(
     modifier: Modifier = Modifier, animated: Boolean = false, energy: Float = 0.5f,
-    preview: Boolean = false, content: @Composable BoxScope.() -> Unit,
+    preview: Boolean = false, content: @Composable (visual: @Composable (Modifier) -> Unit) -> Unit,
 ) {
-    val s = LocalAppSettings.current
-    val ui = LocalUi.current
-    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
-        val visible = s.streamVisualStyle != StreamVisualStyle.OFF
-        val separate = s.streamLayout == StreamLayout.SEPARATE && visible
-        val visualSize = s.streamVisualSize.fraction
-        if (separate && maxWidth >= 620.dp) {
-            // A real two-column composition on TV and wide windows, with the same focusable controls.
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
-                BoxWithConstraints(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    VibeSphere(Modifier.size(minOf(maxWidth, maxHeight, 420.dp) * visualSize), animated, energy, preview)
-                }
-                Box(Modifier.weight(1f), contentAlignment = Alignment.Center, content = content)
-            }
-        } else if (separate) {
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                VibeSphere(Modifier.size(minOf(maxWidth * 0.68f, 228.dp) * visualSize), animated, energy, preview)
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center, content = content)
-            }
-        } else {
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                if (visible) BoxWithConstraints(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
-                    val cap = if (s.streamLayout == StreamLayout.COMPACT) 210.dp else 520.dp
-                    VibeSphere(Modifier.size(minOf(maxWidth, maxHeight, cap) * visualSize), animated, energy, preview)
-                }
-                content()
-            }
-        }
+    Box(modifier, contentAlignment = Alignment.Center) {
+        content { visualModifier -> VibeSphere(visualModifier, animated, energy, preview) }
     }
+}
+
+/** The visual field's size never depends on track title, artwork or whether playback has started. */
+internal fun vibeHeroSize(width: Dp, height: Dp, layout: StreamLayout, sideBySide: Boolean, fraction: Float): Dp {
+    val widthBudget = if (sideBySide) width * 0.43f else width
+    val preferred = when {
+        sideBySide -> widthBudget.coerceAtMost(420.dp)
+        layout == StreamLayout.COMPACT -> (widthBudget * 0.40f).coerceIn(104.dp, 154.dp)
+        layout == StreamLayout.SEPARATE -> (widthBudget * 0.64f).coerceIn(144.dp, 250.dp)
+        else -> (widthBudget * 0.82f).coerceIn(188.dp, 340.dp)
+    }
+    val heightBudget = if (height == Dp.Infinity) preferred else
+        (height * if (sideBySide) 0.95f else 0.50f).coerceAtLeast(0.dp)
+    return minOf(preferred * fraction.coerceIn(0.6f, 1f), widthBudget, heightBudget).coerceAtLeast(0.dp)
 }
 
 @Composable
@@ -104,37 +89,77 @@ internal fun VibeStationOverlay(
     dislike: @Composable () -> Unit, like: @Composable () -> Unit,
     extra: (@Composable () -> Unit)? = null,
     progress: @Composable () -> Unit = {},
+    visual: @Composable (Modifier) -> Unit = {},
 ) {
     val ui = LocalUi.current
-    BoxWithConstraints(modifier.widthIn(max = 416.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
-        val compact = settings.streamLayout == StreamLayout.COMPACT
-        Column(Modifier.fillMaxWidth().padding(horizontal = ui.gap(6.dp), vertical = ui.gap(if (compact) 8.dp else 22.dp)),
-            horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(ui.gap(if (compact) 6.dp else 14.dp)))
-            Row(horizontalArrangement = Arrangement.spacedBy(ui.gap(20.dp)), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.width(52.dp), contentAlignment = Alignment.Center) {
+    BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val layout = settings.streamLayout
+        val compact = layout == StreamLayout.COMPACT
+        val showVisual = settings.streamVisualStyle != StreamVisualStyle.OFF
+        val split = layout == StreamLayout.SEPARATE && showVisual
+        val sideBySide = split && maxWidth >= 620.dp
+        val hero = vibeHeroSize(maxWidth, maxHeight, layout, sideBySide, settings.streamVisualSize.fraction)
+        val sideWidth = if (maxWidth < 300.dp) 44.dp else 52.dp
+        val playGap = ui.gap(if (compact || maxWidth < 300.dp) 8.dp else 18.dp)
+        @Composable fun StationTitle() {
+            Text(title, style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        @Composable fun Transport() {
+            Row(horizontalArrangement = Arrangement.spacedBy(playGap), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(sideWidth), contentAlignment = Alignment.Center) {
                     if (hasTrack && settings.streamShowReactions) dislike()
                 }
                 play()
-                Box(Modifier.width(52.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.width(sideWidth), contentAlignment = Alignment.Center) {
                     if (hasTrack && settings.streamShowReactions) like()
                 }
             }
+        }
+        @Composable fun TrackDetails() {
             if (hasTrack) {
-                Spacer(Modifier.height(ui.gap(if (compact) 4.dp else 12.dp)))
-                @Composable fun TrackRow() {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.width(52.dp), contentAlignment = Alignment.Center) { previous() }
-                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { credits() }
-                        Box(Modifier.width(52.dp), contentAlignment = Alignment.Center) { next() }
-                    }
-                }
                 if (settings.streamReverseLayout && settings.streamShowProgress) progress()
-                TrackRow()
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.width(sideWidth), contentAlignment = Alignment.Center) { previous() }
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { credits() }
+                    Box(Modifier.width(sideWidth), contentAlignment = Alignment.Center) { next() }
+                }
                 if (!settings.streamReverseLayout && settings.streamShowProgress) progress()
-                if (extra != null) { Spacer(Modifier.height(ui.gap(2.dp))); extra() }
+                if (extra != null) extra()
+            }
+        }
+        @Composable fun Controls() {
+            Column(Modifier.widthIn(max = 416.dp).fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 4.dp else 10.dp))) {
+                StationTitle()
+                if (showVisual && !split) {
+                    // Align the membrane with PLAY, not with the entire group of track controls.
+                    Box(Modifier.fillMaxWidth().heightIn(min = hero), contentAlignment = Alignment.Center) {
+                        visual(Modifier.size(hero))
+                        Transport()
+                    }
+                } else {
+                    Transport()
+                }
+                TrackDetails()
+            }
+        }
+        if (sideBySide) {
+            Row(Modifier.widthIn(max = 1000.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(ui.gap(20.dp))) {
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    visual(Modifier.size(hero))
+                }
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { Controls() }
+            }
+        } else {
+            Column(Modifier.widthIn(max = 520.dp).fillMaxWidth().padding(vertical = ui.gap(4.dp)),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 2.dp else 6.dp))) {
+                if (split) visual(Modifier.size(hero))
+                Controls()
             }
         }
     }
@@ -189,19 +214,28 @@ internal fun VibeCredits(
 ) {
     val ui = LocalUi.current
     val scheme = MaterialTheme.colorScheme
-    val coverSize = 32.dp * settings.streamCoverSize.fraction
+    val inline = settings.streamLayout != StreamLayout.CENTERED
+    val coverSize = (if (inline) 54.dp else 40.dp) * settings.streamCoverSize.fraction
+    @Composable fun Labels(modifier: Modifier = Modifier) {
+        Column(modifier, horizontalAlignment = if (inline) Alignment.Start else Alignment.CenterHorizontally) {
+            Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                textAlign = if (inline) TextAlign.Start else TextAlign.Center)
+            Text(artist, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1,
+                overflow = TextOverflow.Ellipsis, textAlign = if (inline) TextAlign.Start else TextAlign.Center)
+        }
+    }
     @Composable fun Body() {
-        Row(Modifier.fillMaxWidth().then(if (onOpen != null) Modifier.clickable(onClick = onOpen) else Modifier)
-            .padding(vertical = ui.gap(3.dp), horizontal = ui.gap(4.dp)),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ui.gap(6.dp))) {
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                if (settings.streamShowCover) {
-                    artwork(Modifier.size(coverSize))
-                    Spacer(Modifier.height(ui.gap(4.dp)))
-                }
-                Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-                Text(artist, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1,
-                    overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        val body = Modifier.fillMaxWidth().then(if (onOpen != null) Modifier.clickable(onClick = onOpen) else Modifier)
+            .padding(vertical = ui.gap(4.dp), horizontal = ui.gap(6.dp))
+        if (inline && settings.streamShowCover) {
+            Row(body, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ui.gap(10.dp))) {
+                artwork(Modifier.size(coverSize))
+                Labels(Modifier.weight(1f))
+            }
+        } else {
+            Column(body, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(ui.gap(4.dp))) {
+                if (settings.streamShowCover) artwork(Modifier.size(coverSize))
+                Labels()
             }
         }
     }

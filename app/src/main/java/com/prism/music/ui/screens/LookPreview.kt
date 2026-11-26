@@ -156,12 +156,12 @@ private fun MiniVibe(c: ThemeColors, song: Song?) {
                 Icon(PrismIcons.Shuffle, null, Modifier.size(24.dp))
             }
         }, player = { panel ->
-            VibeFlowField(panel, preview = true) {
-                VibeStationOverlay(s, tr(R.string.prism_stream_station_default), hasTrack = song != null,
-                    modifier = Modifier.align(Alignment.Center),
-                    play = { VibeStationAction(song != null, starting = false, active = song != null, onPlay = {}) },
+            VibeFlowField(panel, preview = true) { visual ->
+                VibeStationOverlay(s, tr(R.string.prism_stream_station_default), hasTrack = true,
+                    visual = visual,
+                    play = { VibeStationAction(false, starting = false, active = true, onPlay = {}) },
                     credits = {
-                        if (song != null) VibeCredits(s, song.title, song.primaryArtist,
+                        VibeCredits(s, song?.title ?: tr(R.string.song), song?.primaryArtist ?: tr(R.string.artist),
                             artwork = { StandIn(song, it, com.prism.music.ui.theme.CoverShapes.of(s.shapes.player, s.player.artCorners.dp), standIns.first()) })
                     }, previous = {
                         VibeTrackAction(PrismIcons.Previous, tr(R.string.widget_previous), {})

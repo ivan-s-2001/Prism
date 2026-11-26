@@ -335,12 +335,12 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             })
         }
         VibeFlowField(modifier.testTag("home:my_wave").customizable(CustomizeTarget.VIBE), animated = wave && playing && !buffering,
-            energy = style.diversity / 100f) {
+            energy = style.diversity / 100f) { visual ->
             CompositionLocalProvider(com.prism.music.ui.player.LocalEmbeddedPlayerInk provides scheme.onSurface,
                 LocalContentColor provides scheme.onSurface) {
                 VibeStationOverlay(settings, (chosenPresetId?.let { id -> savedPresets.firstOrNull { it.id == id }?.name
                         ?: WaveScenarios.all.firstOrNull { it.id == id }?.label } ?: tr(R.string.prism_stream_station_default)),
-                    hasTrack = current != null, modifier = Modifier.align(Alignment.Center),
+                    hasTrack = current != null, visual = visual,
                     play = {
                         VibeStationAction(playing = wave && playing, starting = starting && !wave, active = wave,
                             onPlay = { if (wave) c.player.togglePlay() else if (!starting) start() })

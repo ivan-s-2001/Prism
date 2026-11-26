@@ -174,7 +174,26 @@ internal fun TvWavePlace(nav: TvNav) {
                             TvWaveChoices(tr(R.string.intensity), listOf(0f, 0.5f, 1f, 1.5f, 2f), appSettings.streamSensitivity, "intensity", { "${(it * 100).toInt()}%" }) { c.settings.setStreamSensitivity(it) }
                         }
                         Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                            com.prism.music.ui.screens.VibeSphere(Modifier.size(240.dp * appSettings.streamVisualSize.fraction), animated = false, energy = 0.5f, preview = true)
+                            com.prism.music.ui.screens.VibeFlowField(Modifier.fillMaxWidth(), preview = true) { visual ->
+                                @Composable fun PreviewIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, size: androidx.compose.ui.unit.Dp = 24.dp) {
+                                    Box(Modifier.size(size + 16.dp), contentAlignment = Alignment.Center) {
+                                        androidx.compose.material3.Icon(icon, null, Modifier.size(size))
+                                    }
+                                }
+                                com.prism.music.ui.screens.VibeStationOverlay(appSettings,
+                                    tr(R.string.prism_stream_station_default), hasTrack = true, visual = visual,
+                                    play = { PreviewIcon(PrismIcons.Play, 44.dp) },
+                                    credits = {
+                                        com.prism.music.ui.screens.VibeCredits(appSettings, current?.title ?: tr(R.string.song),
+                                            current?.primaryArtist ?: tr(R.string.artist), artwork = {
+                                                com.prism.music.ui.screens.StandIn(current, it,
+                                                    com.prism.music.ui.theme.CoverShapes.of(appSettings.shapes.player, appSettings.player.artCorners.dp),
+                                                    com.prism.music.ui.screens.standIns.first())
+                                            })
+                                    },
+                                    previous = { PreviewIcon(PrismIcons.Previous) }, next = { PreviewIcon(PrismIcons.Next) },
+                                    dislike = { PreviewIcon(PrismIcons.ThumbDown) }, like = { PreviewIcon(PrismIcons.Heart) })
+                            }
                         }
                     }
                     WaveTvButton(tr(R.string.done), { toggleAppearance(false) }, Modifier.tvItem("tv_wave/appearance/done"))
@@ -298,12 +317,12 @@ internal fun TvWavePlace(nav: TvNav) {
                     if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (current != null) TvIconButton(PrismIcons.Shuffle, tr(R.string.prism_stream_refresh), { if (!starting) { if (djOn) c.player.toggleShuffle() else start() } }, Modifier.tvItem("tv_wave/refresh"))
                 }
-                com.prism.music.ui.screens.VibeFlowField(Modifier.weight(1f, fill = false).fillMaxWidth().heightIn(min = 240.dp), animated = now?.playing == true,
-                    energy = style.diversity / 100f) {
+                com.prism.music.ui.screens.VibeFlowField(Modifier.weight(1f, fill = false).fillMaxWidth(), animated = now?.playing == true,
+                    energy = style.diversity / 100f) { visual ->
                     com.prism.music.ui.screens.VibeStationOverlay(appSettings,
                         (chosenPresetId?.let { id -> savedPresets.firstOrNull { it.id == id }?.name
                         ?: WaveScenarios.all.firstOrNull { it.id == id }?.label } ?: tr(R.string.prism_stream_station_default)), hasTrack = current != null,
-                        modifier = Modifier.align(Alignment.Center),
+                        visual = visual,
                         play = {
                             TvIconButton(if (now?.playing == true) PrismIcons.Pause else PrismIcons.Play, tr(when {
                                 starting && current == null -> R.string.prism_stream_finding_music
