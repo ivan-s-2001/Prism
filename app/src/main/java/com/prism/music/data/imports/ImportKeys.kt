@@ -70,5 +70,6 @@ object ImportKeys {
         "tribute" to listOf("tribute"),
         "8d" to listOf("8d"),
         "mono" to listOf("mono"),
+        "clean" to listOf("clean"),
     )
 }

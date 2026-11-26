@@ -68,6 +68,34 @@ class SongVersionsTest {
         assertNull(v.of("a"))
     }
 
+    @Test
+    fun removedExternalVersionsArePurgedWithoutLosingNativePicks() {
+        val prefs = RuntimeEnvironment.getApplication().getSharedPreferences("song_versions_migration_test", 0)
+        val external = listOf("sc:artist:track", "sc-hls:artist:track", "bc:artist:track", "au:track", "zc:123:456")
+        val local = Song.LOCAL_PREFIX + "7"
+        val editor = prefs.edit().clear().putString("native", "youtubeId\tNative").putString("file", "$local\tFile")
+        external.forEachIndexed { index, id -> editor.putString("old$index", "$id\tExternal") }
+        editor.commit()
+
+        val versions = SongVersions(prefs)
+        assertEquals("youtubeId", versions.streamedOf("native"))
+        assertEquals(local, versions.fileOf("file"))
+        assertNull(versions.streamedOf("file"))
+        external.indices.forEach { index ->
+            assertNull(versions.of("old$index"))
+            assertFalse(prefs.contains("old$index"))
+        }
+        // Old backups and stale requests cannot bring an external recording back.
+        prefs.edit().putString("restored", "bc:artist:track\tExternal").commit()
+        versions.reload()
+        assertNull(versions.of("restored"))
+        assertFalse(prefs.contains("restored"))
+        versions.set("new", SongVersions.Pick("sc:artist:track", "External"))
+        assertNull(versions.of("new"))
+        assertFalse(prefs.contains("new"))
+        assertEquals("youtubeId", versions.of("native"))
+    }
+
     /** #328: a picked version shows in the song's place (cover, title, artists, album, length); the song stays itself. */
     @Test
     fun aPickedVersionShowsInTheSongsPlace() {

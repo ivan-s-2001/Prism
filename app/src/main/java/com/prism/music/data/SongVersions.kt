@@ -48,10 +48,11 @@ class SongVersions(private val prefs: SharedPreferences) {
 
     /** Plays [pick] for [songId] from now on; null goes back to the song's own. */
     fun set(songId: String, pick: Pick?) {
+        val accepted = pick?.takeUnless { it.id == songId || isRetiredExternal(it.id) }
         val ed = prefs.edit()
-        if (pick == null || pick.id == songId) ed.remove(songId) else ed.putString(songId, encode(pick))
+        if (accepted == null) ed.remove(songId) else ed.putString(songId, encode(accepted))
         ed.apply()
-        _picks.value = read(if (pick == null || pick.id == songId) _picks.value - songId else _picks.value + (songId to pick))
+        _picks.value = read(if (accepted == null) _picks.value - songId else _picks.value + (songId to accepted))
         shownPicks.value = _picks.value
     }
 
@@ -74,15 +75,31 @@ class SongVersions(private val prefs: SharedPreferences) {
         pick.song?.let { com.prism.music.data.innertube.InnerTube.json.encodeToString(Song.serializer(), it) },
     ).joinToString("\t")
 
-    private fun read(now: Map<String, Pick>? = null): Map<String, Pick> = now ?: prefs.all.mapNotNull { (k, v) ->
-        val parts = (v as? String)?.split('\t', limit = 3) ?: return@mapNotNull null
-        // Versions from the removed external providers must fall back to the original song.
-        if (listOf("sc:", "sc-hls:", "bc:", "au:", "zc:").any { parts[0].startsWith(it) }) return@mapNotNull null
-        val version = parts.getOrNull(2)?.let { runCatching { com.prism.music.data.innertube.InnerTube.json.decodeFromString(Song.serializer(), it) }.getOrNull() }
-        parts[0].takeIf { it.isNotBlank() }?.let { k to Pick(it, parts.getOrElse(1) { "" }, version?.takeIf { s -> s.id == it }) }
-    }.toMap()
+    private fun read(now: Map<String, Pick>? = null): Map<String, Pick> {
+        if (now != null) return now
+        val retired = mutableListOf<String>()
+        val restored = prefs.all.mapNotNull { (k, v) ->
+            val parts = (v as? String)?.split('\t', limit = 3) ?: return@mapNotNull null
+            // Retire removed external recordings on startup and after restoring an older backup.
+            if (isRetiredExternal(parts[0])) {
+                retired += k
+                return@mapNotNull null
+            }
+            val version = parts.getOrNull(2)?.let { runCatching { com.prism.music.data.innertube.InnerTube.json.decodeFromString(Song.serializer(), it) }.getOrNull() }
+            parts[0].takeIf { it.isNotBlank() }?.let { k to Pick(it, parts.getOrElse(1) { "" }, version?.takeIf { s -> s.id == it }) }
+        }.toMap()
+        if (retired.isNotEmpty()) {
+            val editor = prefs.edit()
+            retired.forEach { editor.remove(it) }
+            editor.apply()
+        }
+        return restored
+    }
 
     companion object {
+        private val retiredPrefixes = listOf("sc:", "sc-hls:", "bc:", "au:", "zc:")
+        private fun isRetiredExternal(id: String): Boolean = retiredPrefixes.any { id.startsWith(it) }
+
         /** The phone's picks, for what draws a song without the app's container at hand (the media session, a row). */
         @Volatile var shared: SongVersions? = null
             internal set
