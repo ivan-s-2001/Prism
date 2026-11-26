@@ -452,7 +452,7 @@ private fun rememberArtworkColor(song: Song?, settings: com.prism.music.data.pre
         val stops = com.prism.music.ui.theme.SpectrumPresets
         stops.coverTargetStops = made.second
         val old = stops.coverStops
-        val ms = if (settings.reduceMotion) 0 else settings.artworkChange.ms
+        val ms = if (settings.reduceMotionRequested ?: settings.reduceMotion) 0 else settings.artworkChange.ms
         if (ms <= 0 || old.size < 2 || settings.spectrumPreset != stops.COVER) { stops.coverStops = made.second; return@LaunchedEffect }
         val start = androidx.compose.runtime.withFrameMillis { it }
         while (true) {
