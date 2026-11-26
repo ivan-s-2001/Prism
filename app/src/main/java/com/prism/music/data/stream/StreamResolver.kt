@@ -481,6 +481,14 @@ class StreamResolver(
      * ([NetFamily.Tag]) for the diagnostics, and the same over IPv4 only, for the step after a refused link.
      */
     private val apiHttp: OkHttpClient = http.newBuilder().addNetworkInterceptor(NetFamily.Tag).build()
+    private val zaycev = ZaycevVersions()
+    fun zaycevVersions(song: com.prism.music.data.model.Song) = zaycev.search(song)
+    fun zaycevVersionFromLink(song: com.prism.music.data.model.Song, url: String): com.prism.music.data.model.Song? {
+        val key = ZaycevVersions.id(url.trim()) ?: return null
+        val recording = zaycev.track(key) ?: return null
+        return recording.song.takeIf { com.prism.music.data.SongVersions.compatibleRecording(song, it) }
+    }
+
     private val audius = AudiusVersions()
     fun audiusVersions(song: com.prism.music.data.model.Song) = audius.search(song)
 
@@ -763,7 +771,12 @@ class StreamResolver(
             val publicUrl = PublicRecording.url(videoId)
             val f = (if (publicUrl != null) {
                 if (forVideo) throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
-                if (AudiusVersions.url(videoId) != null) {
+                if (ZaycevVersions.url(videoId) != null) {
+                    val recording = zaycev.track(videoId) ?: throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
+                    Formats(listOf(Fmt(-400, "audio/mpeg", null, 0, 0, 2, -1) { recording.audioUrl }),
+                        emptyList(), emptyList(), recording.song.durationSec.toLong(),
+                        System.currentTimeMillis() + 2 * 60_000, via = "Zaycev.net")
+                } else if (AudiusVersions.url(videoId) != null) {
                     val track = audius.track(videoId) ?: throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
                     Formats(listOf(Fmt(-300, "audio/mpeg", null, 0, 0, 2, -1) { publicUrl }),
                         emptyList(), emptyList(), track.durationSec.toLong(), System.currentTimeMillis() + 5 * 60_000, via = "Audius")

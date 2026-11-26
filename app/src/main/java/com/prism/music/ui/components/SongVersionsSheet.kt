@@ -153,6 +153,14 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
             catch (e: Exception) { Result.failure(e) }
         }
     }
+    val zaycev by produceState<Result<List<Song>>?>(null, song.id, preferExplicit) {
+        value = null
+        if (preferExplicit) value = withContext(Dispatchers.IO) {
+            try { Result.success(c.streams.zaycevVersions(song)) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { Result.failure(e) }
+        }
+    }
     var link by remember(song.id) { mutableStateOf("") }
     var checkingLink by remember(song.id) { mutableStateOf(false) }
     var checkedLink by remember(song.id) { mutableStateOf<Song?>(null) }
@@ -275,6 +283,23 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                 }
             }
             if (preferExplicit && !song.isLocal && !song.isEpisode && !song.isLive && !song.isUpload) {
+                Text("Zaycev.net", Modifier.padding(horizontal = 22.dp, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
+                val zz = zaycev
+                val zc = zz?.getOrNull().orEmpty()
+                val savedZ = picks[song.id]?.song?.takeIf { com.prism.music.data.stream.ZaycevVersions.url(it.id) != null }
+                if (savedZ != null && zc.none { it.id == savedZ.id }) {
+                    VersionRow(savedZ, "Zaycev.net", true, Modifier.testTag("version:${savedZ.id}")) {}
+                }
+                when {
+                    zz == null -> PrismSpinner(Modifier.padding(22.dp).size(22.dp), stroke = 2.dp)
+                    zz.isFailure -> Quiet(tr(R.string.prism_zaycev_unavailable))
+                    zc.isEmpty() -> Quiet(tr(R.string.prism_sc_no_versions))
+                    else -> zc.forEach { v ->
+                        VersionRow(v, "Zaycev.net", picked == v.id, Modifier.testTag("version:${v.id}")) {
+                            choose(SongVersions.Pick(v.id, "Zaycev.net · " + versionLabel(v), v))
+                        }
+                    }
+                }
                 androidx.compose.material3.TextButton(
                     onClick = {
                         val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
@@ -294,7 +319,7 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),
                         enabled = !checkingLink,
                         singleLine = true,
-                        label = { Text("Bandcamp URL") },
+                        label = { Text("Bandcamp / Zaycev.net URL") },
                     )
                     androidx.compose.material3.TextButton(
                         enabled = link.isNotBlank() && !checkingLink,
@@ -305,7 +330,11 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                             val requested = link
                             linkScope.launch {
                                 try {
-                                    checkedLink = withContext(Dispatchers.IO) { c.streams.bandcampVersionFromLink(song, requested) }
+                                    checkedLink = withContext(Dispatchers.IO) {
+                                        if (com.prism.music.data.stream.ZaycevVersions.id(requested.trim()) != null)
+                                            c.streams.zaycevVersionFromLink(song, requested)
+                                        else c.streams.bandcampVersionFromLink(song, requested)
+                                    }
                                     linkError = checkedLink == null
                                 } catch (e: kotlinx.coroutines.CancellationException) { throw e }
                                 catch (_: Exception) { linkError = true }
@@ -317,8 +346,9 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                     if (checkingLink) PrismSpinner(Modifier.padding(22.dp).size(22.dp), stroke = 2.dp)
                     if (linkError) Quiet(tr(R.string.prism_bc_link_failed))
                     checkedLink?.let { v ->
-                        VersionRow(v, "Bandcamp", picked == v.id, Modifier.testTag("version:manual")) {
-                            choose(SongVersions.Pick(v.id, "Bandcamp · " + versionLabel(v), v))
+                        val source = if (com.prism.music.data.stream.ZaycevVersions.url(v.id) != null) "Zaycev.net" else "Bandcamp"
+                        VersionRow(v, source, picked == v.id, Modifier.testTag("version:manual")) {
+                            choose(SongVersions.Pick(v.id, "$source · " + versionLabel(v), v))
                         }
                     }
                 }
