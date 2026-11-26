@@ -17,6 +17,9 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.prism.music.data.foryou.MyWave
+import com.prism.music.data.prefs.StreamLayout
+import com.prism.music.data.prefs.StreamVisualStyle
+import com.prism.music.data.prefs.StreamCoverSize
 import com.prism.music.data.foryou.WaveSettingsDraft
 import androidx.compose.foundation.verticalScroll
 import com.prism.music.data.foryou.WaveScenarios
@@ -71,6 +74,7 @@ internal fun TvWavePlace(nav: TvNav) {
         ?: savedPresets.firstOrNull { chosenPresetId == null && it.origin == style.origin }
     val activeScenario = if (activeSaved == null) WaveScenarios.active(style, chosenPresetId, appSettings.streamScenarioStyles) else null
     var tuning by remember { mutableStateOf(false) }
+    var appearance by rememberSaveable { mutableStateOf(false) }
     var starting by remember { mutableStateOf(false) }
     var job by remember { mutableStateOf<Job?>(null) }
     var request by remember { mutableIntStateOf(0) }
@@ -87,6 +91,11 @@ internal fun TvWavePlace(nav: TvNav) {
         tuning = open
     }
     BackHandler(tuning) { toggleTuning(false) }
+    fun toggleAppearance(open: Boolean) {
+        memory.opening(if (open) "$screen/appearance" else screen)
+        appearance = open
+    }
+    BackHandler(appearance) { toggleAppearance(false) }
     suspend fun loadBase(): List<Song> {
         val settings = c.settings.current
         val account = "${settings.authUser}|${settings.dataSyncId}|${settings.accountName}"
@@ -152,7 +161,24 @@ internal fun TvWavePlace(nav: TvNav) {
     BoxWithConstraints(Modifier.fillMaxSize().padding(TvSafe)) {
         val narrow = maxWidth < 760.dp
         val scheme = MaterialTheme.colorScheme
-        if (tuning) {
+        if (appearance) {
+            CompositionLocalProvider(LocalTvScreen provides "$screen/appearance") {
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
+                    Text(tr(R.string.customize_prism), style = MaterialTheme.typography.headlineMedium)
+                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(ui.gap(24.dp))) {
+                        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
+                            TvWaveChoices(tr(R.string.visualizer), StreamVisualStyle.entries, appSettings.streamVisualStyle, "visual", { it.label }) { c.settings.setStreamVisualStyle(it) }
+                            TvWaveChoices(tr(R.string.layout), StreamLayout.entries, appSettings.streamLayout, "layout", { it.label }) { c.settings.setStreamLayout(it) }
+                            TvWaveChoices(tr(R.string.size), StreamCoverSize.entries, appSettings.streamVisualSize, "size", { it.label }) { c.settings.setStreamVisualSize(it) }
+                        }
+                        Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                            com.prism.music.ui.screens.VibeSphere(Modifier.size(240.dp * appSettings.streamVisualSize.fraction), animated = false, energy = 0.5f, preview = true)
+                        }
+                    }
+                    WaveTvButton(tr(R.string.done), { toggleAppearance(false) }, Modifier.tvItem("tv_wave/appearance/done"))
+                }
+            }
+        } else if (tuning) {
             CompositionLocalProvider(LocalTvScreen provides "$screen/tune") {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(ui.gap(24.dp))) {
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(com.prism.music.ui.theme.LocalUi.current.gap(12.dp))) {
@@ -261,6 +287,7 @@ internal fun TvWavePlace(nav: TvNav) {
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(ui.gap(8.dp))) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(title, Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium)
+                    TvIconButton(PrismIcons.Palette, tr(R.string.customize_prism), { toggleAppearance(true) }, Modifier.tvItem("tv_wave/appearance"))
                     if (current != null) TvIconButton(if (djOn) PrismIcons.TurntableFilled else PrismIcons.Turntable,
                         tr(if (djOn) R.string.dj_mode_off else R.string.dj_mode), { c.player.setDjMode(!djOn) },
                         Modifier.tvItem("tv_wave/dj"), on = djOn)

@@ -31,6 +31,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.prism.music.data.prefs.AppSettings
+import com.prism.music.data.prefs.StreamLayout
+import com.prism.music.data.prefs.StreamVisualStyle
 import com.prism.music.ui.theme.LocalUi
 
 /** Content-driven page: header, station and shelf remain adjacent. Only short windows scroll. */
@@ -42,7 +44,8 @@ internal fun VibePageLayout(
     val ui = LocalUi.current
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         val wide = maxWidth >= 520.dp
-        val fieldMin = if (wide) 252.dp else (maxWidth * 0.83f).coerceIn(260.dp, 344.dp)
+        val fieldMin = if (settings.streamLayout == StreamLayout.COMPACT || settings.streamVisualStyle == StreamVisualStyle.OFF) 180.dp
+            else if (wide) 252.dp else (maxWidth * 0.83f).coerceIn(260.dp, 344.dp)
         val page = Modifier.widthIn(max = 1040.dp).fillMaxWidth()
         val scroll = rememberScrollState()
         Column(page.then(if (scrollable) Modifier.verticalScroll(scroll) else Modifier),
@@ -60,12 +63,35 @@ internal fun VibeFlowField(
     modifier: Modifier = Modifier, animated: Boolean = false, energy: Float = 0.5f,
     preview: Boolean = false, content: @Composable BoxScope.() -> Unit,
 ) {
-    Box(modifier, contentAlignment = Alignment.Center) {
-        // The effect follows the measured controls, never establishes the height of the page.
-        BoxWithConstraints(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
-            VibeSphere(Modifier.size(minOf(maxWidth, maxHeight, 520.dp)), animated, energy, preview)
+    val s = LocalAppSettings.current
+    val ui = LocalUi.current
+    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+        val visible = s.streamVisualStyle != StreamVisualStyle.OFF
+        val separate = s.streamLayout == StreamLayout.SEPARATE && visible
+        val visualSize = s.streamVisualSize.fraction
+        if (separate && maxWidth >= 620.dp) {
+            // A real two-column composition on TV and wide windows, with the same focusable controls.
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
+                BoxWithConstraints(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    VibeSphere(Modifier.size(minOf(maxWidth, maxHeight, 420.dp) * visualSize), animated, energy, preview)
+                }
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center, content = content)
+            }
+        } else if (separate) {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                VibeSphere(Modifier.size(minOf(maxWidth * 0.68f, 228.dp) * visualSize), animated, energy, preview)
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center, content = content)
+            }
+        } else {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                if (visible) BoxWithConstraints(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
+                    val cap = if (s.streamLayout == StreamLayout.COMPACT) 210.dp else 520.dp
+                    VibeSphere(Modifier.size(minOf(maxWidth, maxHeight, cap) * visualSize), animated, energy, preview)
+                }
+                content()
+            }
         }
-        content()
     }
 }
 
@@ -81,11 +107,12 @@ internal fun VibeStationOverlay(
 ) {
     val ui = LocalUi.current
     BoxWithConstraints(modifier.widthIn(max = 416.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = ui.gap(6.dp), vertical = ui.gap(22.dp)),
+        val compact = settings.streamLayout == StreamLayout.COMPACT
+        Column(Modifier.fillMaxWidth().padding(horizontal = ui.gap(6.dp), vertical = ui.gap(if (compact) 8.dp else 22.dp)),
             horizontalAlignment = Alignment.CenterHorizontally) {
             Text(title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(ui.gap(14.dp)))
+            Spacer(Modifier.height(ui.gap(if (compact) 6.dp else 14.dp)))
             Row(horizontalArrangement = Arrangement.spacedBy(ui.gap(20.dp)), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.width(52.dp), contentAlignment = Alignment.Center) {
                     if (hasTrack && settings.streamShowReactions) dislike()
@@ -96,7 +123,7 @@ internal fun VibeStationOverlay(
                 }
             }
             if (hasTrack) {
-                Spacer(Modifier.height(ui.gap(12.dp)))
+                Spacer(Modifier.height(ui.gap(if (compact) 4.dp else 12.dp)))
                 @Composable fun TrackRow() {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.width(52.dp), contentAlignment = Alignment.Center) { previous() }

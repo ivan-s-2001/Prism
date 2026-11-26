@@ -24,6 +24,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import com.prism.music.playback.Spectrum
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.geometry.Offset
 import kotlin.math.sin
@@ -39,6 +45,7 @@ uniform float2 size;
 uniform float2 center;
 uniform float time;
 uniform float bass;
+uniform float4 frequencies;
 uniform float energy;
 uniform float opacity;
 uniform float3 colA;
@@ -66,6 +73,7 @@ float fbm(float2 p) {
 
 half4 main(float2 fc) {
     float2 uv = (fc - center) / min(size.x, size.y);
+    uv -= float2(sin(time * 0.37), cos(time * 0.29)) * 0.026;
     float t = time * (0.42 + energy * 0.36);
     // Two independently travelling distortion fields make the light fold, rather than rotate as a flat picture.
     float angle = atan(uv.y, uv.x);
@@ -76,8 +84,11 @@ half4 main(float2 fc) {
     float2 p = float2(uv.x * cs - uv.y * sn, uv.x * sn + uv.y * cs);
     float cloud = fbm(p * 3.1 + float2(t * 0.21, -t * 0.16));
     float detail = fbm(p * 5.4 + float2(cloud * 1.8, -cloud * 1.6) + float2(-t * 0.15, t * 0.12));
-    float fold = 0.025 * sin(angle * 3.0 + t * 1.15) + 0.017 * sin(angle * 5.0 - t * 0.82);
-    float radius = 0.325 + 0.018 * sin(t * 1.08) + 0.035 * bass;
+    // Low frequencies swell the body, mids fold the membrane, highs ripple its edge.
+    float fold = (0.042 + 0.027 * frequencies.y) * sin(angle * 3.0 + t * 1.15)
+               + (0.025 + 0.021 * frequencies.z) * sin(angle * 5.0 - t * 0.82)
+               + (0.010 + 0.012 * frequencies.w) * sin(angle * 9.0 + t * 1.7);
+    float radius = 0.315 + 0.019 * sin(t * 1.08) + 0.037 * bass + 0.018 * frequencies.x;
     float edge = r + (cloud - 0.5) * (0.11 + 0.10 * energy) + (detail - 0.5) * 0.042 + fold;
     float outer = 1.0 - smoothstep(radius * 0.91, radius * 1.48, edge);
     float inner = smoothstep(radius * 0.56, radius * 0.94, edge);
@@ -87,7 +98,14 @@ half4 main(float2 fc) {
     float3 col = mix(mix(colA, colB, smoothstep(0.0, 0.56, tone)), colC, smoothstep(0.52, 1.0, tone));
     col = mix(col, colC, sheen * 0.23);
     // A soft transparent center protects text contrast even in a light theme.
-    float light = outer * inner * (0.33 + 0.56 * cloud + sheen * 0.62) * (0.88 + 0.29 * bass);
+    float m = (edge - radius) * 26.0;
+    float n = (edge - radius * 0.79 + 0.013 * sin(angle * 4.0 - t)) * 36.0;
+    float membrane = exp(-m * m);
+    float secondary = exp(-n * n);
+    float light = outer * inner * (0.23 + 0.40 * cloud + sheen * 0.42)
+        + membrane * (0.22 + 0.40 * sheen + 0.12 * frequencies.w)
+        + secondary * (0.08 + 0.20 * detail);
+    light *= 0.88 + 0.29 * bass;
     float clipEdge = 1.0 - smoothstep(0.42, 0.50, r);
     float al = clamp(light * opacity * clipEdge, 0.0, 0.95);
     return half4(half3(clamp(col, 0.0, 1.0) * al), half(al));
@@ -117,10 +135,14 @@ internal fun VibeSphere(
     val playing = rememberUpdatedState(animated)
     val time = remember { mutableFloatStateOf(7f) }
     val level = remember { mutableFloatStateOf(0f) }
-    val liveLevel = rememberUpdatedState(visualizer?.level)
+    val live = rememberUpdatedState(visualizer)
+    val bands = remember { FloatArray(Spectrum.BANDS) }
+    val group = remember { FloatArray(4) }
     LaunchedEffect(motion) {
         if (!motion) {
             level.floatValue = 0f
+            bands.fill(0f)
+            group.fill(0f)
             return@LaunchedEffect
         }
         var last = 0L
@@ -131,7 +153,16 @@ internal fun VibeSphere(
                 val dt = now - last
                 if (dt >= 30_000_000L) {
                     time.floatValue += (dt / 1e9f).coerceIn(0f, 0.1f) * if (playing.value) 2.2f else 0.75f
-                    level.floatValue = liveLevel.value?.floatValue?.coerceIn(0f, 1f) ?: 0f
+                    val source = live.value
+                    val target = source?.level?.floatValue ?: 0f
+                    level.floatValue = smoothVibe(level.floatValue, target)
+                    for (i in bands.indices) bands[i] = smoothVibe(bands[i], source?.bands?.get(i) ?: 0f)
+                    for (i in group.indices) {
+                        var sum = 0f
+                        val start = i * 7
+                        for (j in start until start + 7) sum += bands[j]
+                        group[i] = sum / 7f
+                    }
                     last = now
                 }
             }
@@ -141,10 +172,15 @@ internal fun VibeSphere(
     val opacity = if (dark) 0.90f else 0.70f
     if (style == StreamVisualStyle.GLOW) {
         Canvas(modifier) { drawVibeGlow(a, b, bass(), opacity, if (motion) time.floatValue else 7f) }
+    } else if (style == StreamVisualStyle.RING || style == StreamVisualStyle.EQUALIZER) {
+        Canvas(modifier) {
+            val t = if (motion) time.floatValue else 7f
+            drawVibeSpectrum(a, b, bands, t, opacity, style == StreamVisualStyle.RING, preview)
+        }
     } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !settings.performanceMode) {
-        ShaderSphere(modifier, a, b, c, energy.coerceIn(0f, 1f), opacity, { time.floatValue }, bass)
+        ShaderSphere(modifier, a, b, c, energy.coerceIn(0f, 1f), opacity, { time.floatValue }, bass, bands, group)
     } else {
-        Canvas(modifier) { drawSoftSphere(a, b, c, bass(), opacity, if (motion) time.floatValue else 7f) }
+        Canvas(modifier) { drawLiquidVibe(a, b, c, bands, bass(), opacity, if (motion) time.floatValue else 7f) }
     }
 }
 
@@ -152,7 +188,7 @@ internal fun VibeSphere(
 @Composable
 private fun ShaderSphere(
     modifier: Modifier, a: Color, b: Color, c: Color, energy: Float, opacity: Float,
-    time: () -> Float, bass: () -> Float,
+    time: () -> Float, bass: () -> Float, bands: FloatArray, group: FloatArray,
 ) {
     // RuntimeShader compilation can fail on a device's Skia implementation. Keep the screen usable.
     val shader = remember { runCatching { RuntimeShader(SPHERE_AGSL) }.onFailure { Log.w("PrismVibe", "AGSL unavailable; using animated gradients", it) }.getOrNull() }
@@ -160,12 +196,13 @@ private fun ShaderSphere(
         if (size.minDimension <= 0f) return@Canvas
         val level = bass()
         if (shader == null) {
-            drawSoftSphere(a, b, c, level, opacity, time())
+            drawLiquidVibe(a, b, c, bands, level, opacity, time())
         } else {
             shader.setFloatUniform("size", size.width, size.height)
             shader.setFloatUniform("center", center.x, center.y)
             shader.setFloatUniform("time", time())
             shader.setFloatUniform("bass", level)
+            shader.setFloatUniform("frequencies", group[0], group[1], group[2], group[3])
             shader.setFloatUniform("energy", energy)
             shader.setFloatUniform("opacity", opacity)
             shader.setFloatUniform("colA", a.red, a.green, a.blue)
@@ -190,6 +227,86 @@ private fun DrawScope.drawVibeGlow(a: Color, b: Color, bass: Float, opacity: Flo
             0.70f to color.copy(alpha = (0.24f + 0.10f * bass) * opacity),
             1f to Color.Transparent, center = at, radius = radius
         ), radius = radius, center = at)
+    }
+}
+
+/** Smooth attack/release on top of the shared FFT. Also decays when the PCM tap goes quiet. */
+internal fun smoothVibe(previous: Float, next: Float): Float {
+    val target = if (next.isFinite()) next.coerceIn(0f, 1f) else 0f
+    return previous + (target - previous) * if (target > previous) 0.36f else 0.12f
+}
+
+/** A portable liquid membrane with continuous curved contours, even without AGSL. */
+private fun DrawScope.drawLiquidVibe(a: Color, b: Color, c: Color, bands: FloatArray, bass: Float, opacity: Float, time: Float) {
+    if (size.minDimension <= 0f) return
+    val radius = size.minDimension * (0.30f + 0.035f * bass)
+    val origin = center + Offset(sin(time * 0.37f), cos(time * 0.29f)) * (radius * 0.09f)
+    drawSoftSphere(a, b, c, bass, opacity * 0.36f, time)
+    val count = 84
+    for (layer in 0..3) {
+        val phase = time * (0.26f + layer * 0.037f) + layer * 0.9f
+        val points = Array(count) { i ->
+            val angle = i * 6.2831853f / count
+            val index = i * bands.size.toFloat() / count
+            val left = index.toInt() % bands.size
+            val right = (left + 1) % bands.size
+            val v = bands[left] + (bands[right] - bands[left]) * (index - index.toInt())
+            val shape = 1f + 0.16f * sin(3f * angle + phase) + 0.085f * cos(5f * angle - phase * 1.3f) +
+                0.045f * sin(7f * angle + phase * 0.8f) + v * 0.10f
+            val r = radius * (1f - layer * 0.072f) * shape
+            origin + Offset(cos(angle), sin(angle)) * r
+        }
+        val path = Path()
+        val start = (points.last() + points.first()) * 0.5f
+        path.moveTo(start.x, start.y)
+        for (i in points.indices) {
+            val p = points[i]
+            val end = (p + points[(i + 1) % count]) * 0.5f
+            path.quadraticBezierTo(p.x, p.y, end.x, end.y)
+        }
+        path.close()
+        val color = if (layer % 2 == 0) a else b
+        val brush = Brush.sweepGradient(listOf(a, b, c, a), origin)
+        drawPath(path, Brush.radialGradient(
+            0f to Color.Transparent, 0.5f to Color.Transparent,
+            0.83f to color.copy(alpha = 0.12f * opacity), 1f to Color.Transparent,
+            center = origin, radius = radius * 1.3f
+        ))
+        drawPath(path, brush, alpha = opacity * (0.20f - layer * 0.03f), style = Stroke((2.8f - layer * 0.4f) * density))
+        drawPath(path, brush, alpha = opacity * (0.36f - layer * 0.05f), style = Stroke(0.7f * density))
+    }
+}
+
+/** Frequency display: 28 genuine logarithmic FFT bands, no simulated beat when audio is unavailable. */
+private fun DrawScope.drawVibeSpectrum(a: Color, b: Color, bands: FloatArray, time: Float, opacity: Float, ring: Boolean, preview: Boolean) {
+    if (size.minDimension <= 0f) return
+    val n = bands.size
+    val span = size.minDimension
+    fun value(i: Int): Float = if (preview) (0.18f + 0.52f * (0.5f + 0.5f * sin(i * 0.53f))) else bands[i]
+    if (ring) {
+        val r = span * (0.31f + 0.012f * sin(time * 0.55f))
+        for (i in 0 until n * 2) {
+            val index = if (i < n) i else 2 * n - 1 - i
+            val v = value(index)
+            val angle = i * 6.2831853f / (2 * n) - 1.5707963f
+            val dir = Offset(cos(angle), sin(angle))
+            drawLine(lerp(a, b, index.toFloat() / n), center + dir * r,
+                center + dir * (r + span * (0.017f + 0.105f * v)),
+                strokeWidth = (span * 0.008f).coerceAtLeast(density), cap = StrokeCap.Round, alpha = opacity * (0.30f + 0.55f * v))
+        }
+    } else {
+        val width = span * 0.86f
+        val step = width / n
+        val w = step * 0.52f
+        for (i in 0 until n) {
+            val v = value(i)
+            val h = span * (0.025f + 0.33f * v)
+            val x = center.x - width / 2 + i * step + (step - w) / 2
+            val top = center.y - h / 2
+            val color = lerp(a, b, i.toFloat() / n)
+            drawRoundRect(Brush.verticalGradient(listOf(color, color.copy(alpha = 0.18f), color), top, top + h),
+                Offset(x, top), Size(w, h), CornerRadius(w / 2), alpha = opacity * (0.38f + 0.48f * v))
+        }
     }
 }
 
