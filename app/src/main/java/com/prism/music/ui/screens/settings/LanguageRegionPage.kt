@@ -91,9 +91,10 @@ internal fun LanguageRegionContent(
     val languageNow = languages.firstOrNull { it.equals(language, ignoreCase = true) } ?: AppLanguage.PHONE
     val phoneCountry = java.util.Locale.getDefault().country
     val automatic = tr(R.string.automatic_3, if (phoneCountry.isBlank()) tr(R.string.united_states) else countryName(phoneCountry))
-    // Automatic, then the United States (where YouTube Music has everything), then every country by name.
+    // Common alternate catalog regions first. The selected country is still explicit and reversible.
     val countries = remember {
-        listOf("", "US") + java.util.Locale.getISOCountries().filter { it != "US" }.sortedBy { countryName(it) }
+        val featured = listOf("KZ", "AM", "DE", "US")
+        listOf("") + featured + java.util.Locale.getISOCountries().filterNot { it in featured }.sortedBy { countryName(it) }
     }
     val countryLabel: (String) -> String = { code ->
         when (code) { "" -> tr(R.string.automatic_follow_the_phone); "US" -> tr(R.string.united_states); else -> countryName(code) }

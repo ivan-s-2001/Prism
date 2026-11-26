@@ -113,7 +113,7 @@ class SongVersions(private val prefs: SharedPreferences) {
          * itself, one of each; the song's own artist first, slowed / sped-up / karaoke edits last, songs before videos.
          * At most [max].
          */
-        fun candidates(song: Song, results: List<Song>, max: Int = 12): List<Song> {
+        fun candidates(song: Song, results: List<Song>, max: Int = 12, preferExplicit: Boolean = false): List<Song> {
             val want = bare(song.title)
             if (want.isEmpty()) return emptyList()
             val mine = song.artists.map { it.name.lowercase() }.filter { it.isNotBlank() }.toSet()
@@ -124,9 +124,35 @@ class SongVersions(private val prefs: SharedPreferences) {
             return results.asSequence()
                 .filter { it.id != song.id && !it.isLive && !it.isEpisode && bare(it.title) == want }
                 .distinctBy { it.id }
-                .sortedWith(compareBy({ knockoff(it) }, { !byArtist(it) }, { it.isVideo }))
+                .sortedWith(compareBy<Song>(
+                    { !(preferExplicit && preferredOriginal(song, it)) },
+                    { knockoff(it) }, { !byArtist(it) }, { it.isVideo },
+                ))
                 .take(max)
                 .toList()
+        }
+
+        private val CLEAN_LABEL = Regex("""(?iu)(?:^|[^\p{L}\p{N}])(?:clean version|clean edit|radio edit|censored|цензурированная версия|без мата)(?=$|[^\p{L}\p{N}])|[(\[]\s*clean\s*[)\]]""")
+        private val EDIT_LABEL = Regex("""(?iu)(?:^|[^\p{L}\p{N}])(?:acoustic|instrumental|demo|live|remix|cover|karaoke|nightcore|sped[ -]?up|slowed|reverb|акустика|концертная версия|ремикс|кавер)(?=$|[^\p{L}\p{N}])""")
+
+        /** Strong metadata match, not proof of identical audio or of an uncensored recording. */
+        fun preferredOriginal(song: Song, v: Song): Boolean {
+            if (!v.explicit || v.id == song.id || v.isVideo || v.isLive || v.isEpisode ||
+                v.isLocal || v.isUpload || song.isLocal || song.isUpload ||
+                song.durationSec <= 0 || v.durationSec <= 0 ||
+                kotlin.math.abs(song.durationSec - v.durationSec) > 3 ||
+                bare(song.title).isEmpty() || bare(song.title) != bare(v.title) ||
+                CLEAN_LABEL.containsMatchIn(v.title) || CLEAN_LABEL.containsMatchIn(v.album?.title.orEmpty()) ||
+                EDIT_LABEL.containsMatchIn(v.title) || EDIT_LABEL.containsMatchIn(v.album?.title.orEmpty()) ||
+                com.prism.music.data.foryou.RecommendationQuality.alternateRecording(v)) return false
+            val originalArtists = song.artists
+            val candidateArtists = v.artists
+            if (originalArtists.isEmpty() || originalArtists.size != candidateArtists.size) return false
+            fun sameArtist(a: com.prism.music.data.model.ArtistRef, b: com.prism.music.data.model.ArtistRef): Boolean =
+                if (!a.id.isNullOrBlank() && !b.id.isNullOrBlank()) a.id == b.id
+                else a.name.isNotBlank() && a.name.trim().equals(b.name.trim(), ignoreCase = true)
+            return originalArtists.all { a -> candidateArtists.count { b -> sameArtist(a, b) } == 1 } &&
+                candidateArtists.all { b -> originalArtists.count { a -> sameArtist(a, b) } == 1 }
         }
 
         /** [v] is [song]'s own recording put up again (same album and length): "Another upload" in the list. */

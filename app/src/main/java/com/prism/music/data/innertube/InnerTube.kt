@@ -73,7 +73,7 @@ class InnerTube(
     /**
      * Set when YouTube refused a request as "Request contains an invalid argument" and the plain version of it went
      * through: from then on requests leave out the parts that can trip it (the brand-account delegation, a stale
-     * visitor id, an unusual region), for this session.
+     * visitor id), for this session. An explicitly selected content country is preserved.
      */
     @Volatile
     private var plainContext = false
@@ -85,9 +85,8 @@ class InnerTube(
      * The country picked in Settings (for places YouTube Music isn't offered), else the phone's. Regions that aren't
      * countries ("419" in es-419, Latin America) make YouTube refuse requests.
      */
-    private val gl: String get() = if (plainContext) "US" else
-        current.contentCountry.uppercase().takeIf { it.matches(Regex("[A-Z]{2}")) }
-            ?: locale.country.uppercase().takeIf { it.matches(Regex("[A-Z]{2}")) } ?: "US"
+    private val gl: String get() = current.contentCountry.uppercase(Locale.ROOT).takeIf { it.matches(Regex("[A-Z]{2}")) }
+        ?: if (plainContext) "US" else locale.country.uppercase(Locale.ROOT).takeIf { it.matches(Regex("[A-Z]{2}")) } ?: "US"
 
     /** A brand account's id when the signed-in session is one (DATASYNC_ID "brand||user"), else null. */
     private fun onBehalfOfUser(): String? {

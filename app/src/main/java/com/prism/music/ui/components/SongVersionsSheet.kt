@@ -55,7 +55,12 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
     val picks by c.versions.picks.collectAsState()
     val picked = picks[song.id]?.id
     // null while looking; a failure when the search didn't answer.
-    val found by produceState<Result<List<Song>>?>(null, song.id) {
+    val settings = com.prism.music.ui.theme.LocalAppSettings.current
+    val country = settings.contentCountry
+    val explicitMode = settings.behavior.explicitContent
+    val preferExplicit = explicitMode == com.prism.music.data.prefs.ExplicitContent.SHOW
+    val found by produceState<Result<List<Song>>?>(null, song.id, country, explicitMode) {
+        value = null
         value = withContext(Dispatchers.IO) {
             runCatching {
                 val query = "${song.title} ${song.primaryArtist}".trim()
@@ -65,7 +70,11 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                     val all = (songs.await() + videos.await()).filterIsInstance<SongItem>().map { it.song }
                     // Neither search answered (offline, or refused): shown as "couldn't look".
                     if (all.isEmpty()) throw java.io.IOException()
-                    SongVersions.candidates(song, all)
+                    SongVersions.candidates(
+                        song,
+                        all.filter { com.prism.music.data.ExplicitFilter.plays(explicitMode, it) },
+                        preferExplicit = preferExplicit,
+                    )
                 }
             }
         }
@@ -123,7 +132,11 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                 r.isFailure -> Quiet(tr(R.string.couldn_t_look_for_other_versions))
                 r.getOrThrow().isEmpty() -> Quiet(tr(R.string.youtube_has_no_other_version_of))
                 else -> r.getOrThrow().forEach { v ->
-                    VersionRow(v, if (SongVersions.sameRecording(song, v)) tr(R.string.another_upload) else null, picked == v.id, Modifier.testTag("version:${v.id}")) {
+                    VersionRow(v, when {
+                        preferExplicit && SongVersions.preferredOriginal(song, v) -> tr(R.string.prism_version_explicit_match)
+                        SongVersions.sameRecording(song, v) -> tr(R.string.another_upload)
+                        else -> null
+                    }, picked == v.id, Modifier.testTag("version:${v.id}")) {
                         // The version itself is kept too: the song shows as it from now on (#328).
                         choose(SongVersions.Pick(v.id, versionLabel(v), v))
                     }
