@@ -39,8 +39,7 @@ android {
         // recordings (PrismTestRunner), each test in a fresh app with its data cleared (the orchestrator).
         testInstrumentationRunner = "com.prism.music.PrismTestRunner"
         testInstrumentationRunnerArguments["clearPackageData"] = "true"
-        // Tests that need the real internet (@Live) only run when asked for. Prism TV's (@TvTest, 1.8.0) are left out by
-        // PrismTestRunner unless a run asks for them (a second name here only works without the orchestrator).
+        // Tests that need the real internet (@Live) only run when asked for.
         testInstrumentationRunnerArguments["notAnnotation"] = "com.prism.music.Live"
         // Optional: `lastfm.apiKey=…` in local.properties lets genre detection ask Last.fm too.
         val localProps = Properties().apply {

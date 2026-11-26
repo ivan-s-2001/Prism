@@ -15,7 +15,6 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import com.prism.music.connect.TvInstall
 import com.prism.music.data.prefs.AppSettings
 import com.prism.music.data.prefs.ThemeMode
 import com.prism.music.ui.screens.SettingsIndex
@@ -51,11 +50,8 @@ class SpeakersTvsBrowserPageTest : ListeningPageHarness(SettingsPageId.SPEAKERS_
     private fun t(id: Int, vararg args: Any) = tr(id, *args)
     private val me = SettingsPageId.SPEAKERS_TVS_BROWSER
 
-    private val tvGroup = t(R.string.prism_on_a_tv)
     private val browserGroup = t(R.string.cn_browser_remote)
     private val handoffGroup = t(R.string.handoff)
-    private val share = t(R.string.share_prism_with_a_tv)
-    private val downloader = t(R.string.downloader_code)
     private val remote = t(R.string.control_from_a_browser)
     private val addressAndCode = t(R.string.cn_address_and_code)
     private val handoff = t(R.string.available_for_handoff)
@@ -83,19 +79,16 @@ class SpeakersTvsBrowserPageTest : ListeningPageHarness(SettingsPageId.SPEAKERS_
         runCatching { compose.waitUntil(5_000) { !container.webRemote.running.value } }
     }
 
-    @Test fun threeGroupsWithinTheBudgets() {
+    @Test fun twoGroupsWithinTheBudgets() {
         show()
         assertBudgets("defaults")
-        assertEquals(listOf(tvGroup, browserGroup, handoffGroup), groupTitles())
+        assertEquals(listOf(browserGroup, handoffGroup), groupTitles())
         // Share Prism with a TV and the Downloader code; the remote's switch; handoff's switch.
-        assertEquals(listOf(if (TvInstall.DOWNLOADER_CODE.isBlank()) 1 else 2, 1, 1), groupSizes())
+        assertEquals(listOf(1, 1), groupSizes())
         assertEquals(0, changedRows())
         assertTrue("no group repeats the page's name", groupTitles().none { it == me.title })
-        assertEquals(SettingsTags.ROW_SWITCH, typeOf(share))
         assertEquals(SettingsTags.ROW_SWITCH, typeOf(remote))
         assertEquals(SettingsTags.ROW_SWITCH, typeOf(handoff))
-        assertEquals(SettingsTags.ROW_LINK, typeOf(downloader))
-        assertTrue(valueOf(downloader), TvInstall.DOWNLOADER_CODE in valueOf(downloader))
         // §2.7: the row that did nothing is gone, with the group that held only it and its line in search.
         val cast = t(R.string.play_on_a_speaker_or_tv)
         assertFalse(hasRow(cast))
@@ -122,7 +115,7 @@ class SpeakersTvsBrowserPageTest : ListeningPageHarness(SettingsPageId.SPEAKERS_
             assertEquals(SettingsTags.ROW_PICK, typeOf(addressAndCode))
             assertTrue("the row says the address, or why there is none", valueOf(addressAndCode).isNotBlank())
             assertBudgets("the browser remote on")
-            assertEquals(2, groupSizes()[1])
+            assertEquals(2, groupSizes()[0])
             // handoff_available
             tap(handoff)
             until("handoff_available") { it.handoffAvailable }
@@ -159,7 +152,7 @@ class SpeakersTvsBrowserPageTest : ListeningPageHarness(SettingsPageId.SPEAKERS_
             assertEquals(3, auth.browsers().size)
             show()
             assertBudgets("three browsers paired")
-            assertEquals("the group doesn't grow with the browsers", 2, groupSizes()[1])
+            assertEquals("the group doesn't grow with the browsers", 2, groupSizes()[0])
             assertEquals(0, lines())
 
             tap(addressAndCode)
@@ -205,7 +198,7 @@ class SpeakersTvsBrowserPageTest : ListeningPageHarness(SettingsPageId.SPEAKERS_
         container.handoff.savePairing("device-2", "Living room TV", "k2")
         show()
         assertBudgets("two devices paired")
-        assertEquals(2, groupSizes()[2])
+        assertEquals(2, groupSizes()[1])
         assertEquals(SettingsTags.ROW_PICK, typeOf(pairedDevices))
         assertEquals("Living room TV, Pixel Tablet", valueOf(pairedDevices))
         assertEquals(0, compose.onAllNodes(hasText("k1", substring = true)).fetchSemanticsNodes().size)
@@ -219,32 +212,14 @@ class SpeakersTvsBrowserPageTest : ListeningPageHarness(SettingsPageId.SPEAKERS_
         assertEquals(1, lines())
         compose.onNode(hasContentDescription(t(R.string.forget, "Living room TV"))).performClick()
         compose.waitUntil(5_000) { !hasRow(pairedDevices) }
-        assertEquals("the row goes with the last device", 1, groupSizes()[2])
+        assertEquals("the row goes with the last device", 1, groupSizes()[1])
         assertEquals(0, sheets())
     }
 
-    /** "Share Prism with a TV" isn't kept: it says how it went, and the Downloader code is copied by a tap. */
-    @Test fun sharingWithATvAndTheDownloaderCode() {
+    @Test fun removedTvInstallerIsNotOffered() {
         show()
-        val address = t(R.string.address)
-        val before = stored
-        tap(share)
-        // A copy of Prism that can't be handed over (a test's has no APK) says so and stays off; else the address shows.
-        if (container.tvInstall.running) {
-            assertTrue(hasRow(address))
-            assertEquals(SettingsTags.ROW_LINK, typeOf(address))
-            assertBudgets("sharing")
-            tap(share)
-            assertFalse("off again", container.tvInstall.running)
-        } else {
-            assertEquals(t(R.string.this_copy_can_t_be_shared), valueOf(share))
-        }
-        assertFalse(hasRow(address))
-        assertEquals("nothing is stored for it", before, stored)
-
-        tap(downloader)
-        val clip = (RuntimeEnvironment.getApplication().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).primaryClip
-        assertEquals(TvInstall.DOWNLOADER_CODE, clip?.getItemAt(0)?.text?.toString())
+        assertFalse(hasRow(t(R.string.share_prism_with_a_tv)))
+        assertFalse(hasRow(t(R.string.downloader_code)))
     }
 
     /** The old links land, and every line of the page's search names a group the page draws. */
@@ -253,11 +228,10 @@ class SpeakersTvsBrowserPageTest : ListeningPageHarness(SettingsPageId.SPEAKERS_
         // "Control from a browser" was the group's title; it is the group's switch now.
         assertEquals(SettingsTarget(me, browserGroup), SettingsMap.resolve("connect", remote))
         assertEquals(SettingsTarget(me, handoffGroup), SettingsMap.resolve("connect", handoffGroup))
-        assertEquals(SettingsTarget(me, tvGroup), SettingsMap.resolve(me.key, tvGroup))
 
         show()
         val mine = SettingsIndex.entries.filter { it.page == me && !it.isPage }
-        assertEquals(mine.joinToString { it.group }, setOf(tvGroup, browserGroup, handoffGroup), mine.map { it.group }.toSet())
+        assertEquals(mine.joinToString { it.group }, setOf(browserGroup, handoffGroup), mine.map { it.group }.toSet())
         assertTrue(mine.map { it.group }.toSet() == groupTitles().toSet())
         // What only shows with the remote on says so.
         val off = AppSettings(webRemote = false)
@@ -265,12 +239,12 @@ class SpeakersTvsBrowserPageTest : ListeningPageHarness(SettingsPageId.SPEAKERS_
             val needs = mine.single { it.title == title }.needs
             assertTrue(title, needs != null && !needs.on(off) && needs.on(off.copy(webRemote = true)))
         }
-        for (title in listOf(share, downloader, remote, handoff)) assertEquals(title, null, mine.single { it.title == title }.needs)
+        for (title in listOf(remote, handoff)) assertEquals(title, null, mine.single { it.title == title }.needs)
         // Found by the words of before, and by what people call it.
         assertTrue(SettingsIndex.search("web remote").any { it.title == remote })
         assertTrue(SettingsIndex.search("browser pairing code").any { it.page == me && it.group == browserGroup })
         assertTrue(SettingsIndex.search("handoff").any { it.title == handoff })
-        assertTrue(SettingsIndex.search("downloader").any { it.title == downloader })
+        assertTrue(SettingsIndex.search("downloader").none { it.page == me && !it.isPage })
         // The page is its own code now.
         val source = File("src/main/java/com/prism/music/ui/screens/settings/SpeakersTvsBrowserPage.kt").readText()
         assertTrue("ConnectSettings(" !in source && "InterimPage(" !in source)
