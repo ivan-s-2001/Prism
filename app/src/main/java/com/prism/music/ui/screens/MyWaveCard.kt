@@ -253,7 +253,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
 
     // Feed refresh never blocks starting playback; only actual playback work does.
-    val djOn by c.dj.on.collectAsState()
     val ui = LocalUi.current
     val scheme = MaterialTheme.colorScheme
     fun depthName(v: MyWave.Depth) = when (v) {
@@ -279,13 +278,9 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 if (openCustomize != null) openCustomize(CustomizeTarget.VIBE, null)
                 else nav.go(com.prism.music.ui.Routes.settings("home_library", tr(R.string.stream)))
             }
-            if (wave) RoundAction(if (djOn) PrismIcons.TurntableFilled else PrismIcons.Turntable,
-                tr(if (djOn) R.string.dj_mode_off else R.string.dj_mode),
-                modifier = Modifier.testTag("wave:dj")) { c.player.setDjMode(!djOn) }
             if ((wave && !contextual) || onRetry != null && !wave) RoundAction(PrismIcons.Shuffle, tr(R.string.prism_stream_refresh_stream),
                 enabled = !starting, modifier = Modifier.testTag("home:my_wave:refresh")) {
-                if (wave && djOn) c.player.toggleShuffle()
-                else if (onRetry != null && !wave) onRetry() else start()
+                if (onRetry != null && !wave) onRetry() else start()
             }
         }
     }

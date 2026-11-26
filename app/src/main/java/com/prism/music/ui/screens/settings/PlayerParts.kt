@@ -396,7 +396,7 @@ internal val playerSettings: List<PlayerSetting<*>> by lazy {
         ps(
             listOf("queue_headings", "queue_dj_chip", "queue_lengths", "queue_played_moves", "queue_tidy"), g.onIt, R.string.settings_player_in_the_queue,
             { listOf(it.view.queueHeadings, it.view.queueDjChip, it.view.queueLengths, it.view.queuePlayedMoves, it.view.queueTidy) },
-            { v -> QueueChip.toMerged(v).joinToString(" · ") { it.label }.ifEmpty { tr(R.string.none) } },
+            { v -> QueueChip.toMerged(v).filterNot { it == QueueChip.DJ }.joinToString(" · ") { it.label }.ifEmpty { tr(R.string.none) } },
         ) { p, v -> p.setQueueHeadings(v[0]); p.setQueueDjChip(v[1]); p.setQueueLengths(v[2]); p.setQueuePlayedMoves(v[3]); p.setQueueTidy(v[4]) },
         // Modes
         ps(listOf("visualizer"), g.modes, R.string.visualizer, { it.visualizer }, { it.label }) { p, v -> p.setVisualizer(v) },

@@ -228,17 +228,6 @@ fun PlayActionsSheet(target: Playable, extra: List<SheetItem> = emptyList(), ext
                 Toast.makeText(context, if (ok) tr(R.string.removed_from_your_library) else tr(R.string.couldn_t_update_your_library), Toast.LENGTH_SHORT).show()
             }
         }) else emptyList()
-        // Played in the order that blends best, mixed and beat-matched (DJ mode).
-        val djSet = if (item is ArtistItem) emptyList() else listOf(ActionItem(PrismIcons.Album, tr(R.string.play_as_a_dj_set)) {
-            c.scope.launch(Dispatchers.Main) {
-                val loaded = runCatching { whileLoading(context, title) { songsFor(c, target, shuffle = false, mix = false) } }.getOrNull()
-                if (loaded == null || loaded.first.size < 2) {
-                    Toast.makeText(context, if (loaded == null) tr(R.string.couldn_t_load, title) else tr(R.string.a_dj_set_needs_more_than), Toast.LENGTH_SHORT).show()
-                    return@launch
-                }
-                c.player.playDjSet(loaded.first, loaded.second)
-            }
-        })
         // Every song of it into one of your playlists, as a song's menu does for one (Reddit R8).
         val addTo = if (item is ArtistItem) emptyList() else listOf(ActionItem(PrismIcons.PlaylistAdd, tr(R.string.add_to_playlist), keepOpen = true) {
             c.scope.launch(Dispatchers.Main) {
@@ -304,9 +293,9 @@ fun PlayActionsSheet(target: Playable, extra: List<SheetItem> = emptyList(), ext
             coverFor = CoverFor.OfAlbum(item.id, item.title, item.thumbnail, c.covers.albumKey(item.id))
         }) else emptyList()
         if (extraTitle != null) {
-            ActionGroup(null, vibe + addTo + djSet + copy + pin + cover + remove) { runAction(it, close) }
+            ActionGroup(null, vibe + addTo + copy + pin + cover + remove) { runAction(it, close) }
             ActionGroup(extraTitle, extra.map { it.toAction() }) { runAction(it, close) }
-        } else ActionGroup(null, vibe + addTo + djSet + copy + pin + cover + extra.map { it.toAction() } + remove) { runAction(it, close) }
+        } else ActionGroup(null, vibe + addTo + copy + pin + cover + extra.map { it.toAction() } + remove) { runAction(it, close) }
     }
 }
 

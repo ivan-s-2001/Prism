@@ -202,7 +202,7 @@ internal fun RowButtons() {
             modifier = mod, grip = Modifier.dragHandle(),
         )
     }
-    val rest = PlayerButton.entries.filter { it !in chosen }
+    val rest = PlayerButton.entries.filter { it != PlayerButton.DJ && it !in chosen }
     if (rest.isNotEmpty() && chosen.size < PlayerButton.MAX) {
         Label(tr(R.string.add_a_button))
         androidx.compose.foundation.layout.FlowRow(

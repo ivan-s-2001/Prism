@@ -30,10 +30,11 @@ class DjMode {
     private val _rescan = MutableStateFlow(0)
     val rescan: StateFlow<Int> = _rescan
 
+    // Legacy compatibility for saved settings and the playback service; DJ is retired.
     fun setOn(v: Boolean) {
-        onNow = v
-        _on.value = v
-        if (!v) _progress.value = null
+        onNow = false
+        _on.value = false
+        _progress.value = null
     }
 
     /**

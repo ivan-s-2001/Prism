@@ -128,22 +128,9 @@ fun InlineQueue(onRevealPlayer: () -> Unit, onHidePlayer: () -> Unit, modifier: 
     }
     adding?.let { songs -> com.prism.music.ui.components.PlaylistPicker(songs, tr(R.string.from_your_queue)) { adding = null } }
 
-    // DJ mode: its switch, energy curve and how far the scans have got; each song's key and tempo as badges.
-    val dj by c.dj.on.collectAsState()
-    val djProgress by c.dj.progress.collectAsState()
-    val djRevision by c.dj.revision.collectAsState()
-    // #493: why the last two songs didn't blend, behind an ⓘ by the DJ chip.
-    val lastWhy by c.mixState.why.collectAsState()
-    // Smart Shuffle's picks are marked ✦.
     val smartPicks by c.queue.smartPicks.collectAsState()
-    val badge: (Song) -> String? = remember(dj, djRevision, smartPicks) {
-        { song ->
-            when {
-                dj -> if (!c.mixTempo.keyed(song.id)) "…" else djBadge(c.mixTempo.key(song.id), c.mixTempo.djBpm(song.id))
-                song.id in smartPicks -> tr(R.string.pick)
-                else -> null
-            }
-        }
+    val badge: (Song) -> String? = remember(smartPicks) {
+        { song -> if (song.id in smartPicks) tr(R.string.pick) else null }
     }
 
     var saving by remember { mutableStateOf(false) }
@@ -190,33 +177,12 @@ fun InlineQueue(onRevealPlayer: () -> Unit, onHidePlayer: () -> Unit, modifier: 
             }
         } else QueueHeader(
             title = tr(R.string.queue),
-            dj = if (order.size > 1 && settings.view.queueDjChip) dj else null, onDj = { pc.setDjMode(!dj) },
-            djWhy = queueDjWhy(lastWhy?.why, dj || settings.mix.on),
+            dj = null, onDj = {},
             onSave = if (queue.size > 1) ({ saving = true }) else null,
             onClear = if (order.isNotEmpty()) ({ pc.clearUpcoming() }) else null,
             locked = locked, onLock = { c.settings.setQueueLocked(!locked) },
             modifier = pullToClose,
         )
-        if (dj) {
-            Spacer(Modifier.height(10.dp))
-            Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                for (flow in com.prism.music.playback.DjFlow.entries) {
-                    QueueChip(flow.label, selected = settings.djFlow == flow) { c.settings.setDjFlow(flow) }
-                    Spacer(Modifier.width(8.dp))
-                }
-            }
-            Spacer(Modifier.height(6.dp))
-            // Only an order it has: how far the scans are, songs waiting for Wi-Fi (with mobile data offered), or how many are in order.
-            val (status, offerData) = com.prism.music.playback.DjStatus.of(djProgress)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(status, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.weight(1f, fill = false))
-                if (offerData) {
-                    Spacer(Modifier.width(8.dp))
-                    // For this DJ set only (until Prism closes): "Measure songs on mobile data" stays as the listener set it.
-                    QueueChip(tr(R.string.use_mobile_data)) { c.dj.rescan(allowData = true) }
-                }
-            }
-        }
         undo?.let { (title, putBack) ->
             Row(
                 Modifier.padding(top = 10.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.12f))

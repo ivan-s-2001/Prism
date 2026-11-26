@@ -78,7 +78,6 @@ internal fun TvWavePlace(nav: TvNav) {
     val now = rememberTvNow(c).takeIf { source.continuousRecommendations }
     val current = song.takeIf { source.continuousRecommendations }
     val contextual = current != null && source.isSongRadio
-    val djOn by c.dj.on.collectAsState()
 
     val title = tr(R.string.stream)
     fun restored() = MyWave.restore(source.originId, appSettings.streamStyleOrigin, appSettings.streamRussianPercent)
@@ -346,13 +345,10 @@ internal fun TvWavePlace(nav: TvNav) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(title, Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium)
                     TvIconButton(PrismIcons.Palette, tr(R.string.customize_prism), { toggleAppearance(true) }, Modifier.tvItem("tv_wave/appearance"))
-                    if (current != null) TvIconButton(if (djOn) PrismIcons.TurntableFilled else PrismIcons.Turntable,
-                        tr(if (djOn) R.string.dj_mode_off else R.string.dj_mode), { c.player.setDjMode(!djOn) },
-                        Modifier.tvItem("tv_wave/dj"), on = djOn)
                     val status = tr(if (starting) R.string.prism_stream_finding_music else if (now?.playing == true) R.string.prism_stream_playing else if (now != null) R.string.prism_stream_paused else R.string.prism_stream_personal_stream)
                     val subtitle = status.takeIf { appSettings.streamShowStatus }.orEmpty()
                     if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (current != null && !contextual) TvIconButton(PrismIcons.Shuffle, tr(R.string.prism_stream_refresh), { if (!starting) { if (djOn) c.player.toggleShuffle() else start() } }, Modifier.tvItem("tv_wave/refresh"))
+                    if (current != null && !contextual) TvIconButton(PrismIcons.Shuffle, tr(R.string.prism_stream_refresh), { if (!starting) start() }, Modifier.tvItem("tv_wave/refresh"))
                 }
                 Box(Modifier.weight(1f, fill = true).fillMaxWidth(), propagateMinConstraints = true) {
                     com.prism.music.ui.screens.VibeStationOverlay(appSettings,

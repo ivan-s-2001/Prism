@@ -772,7 +772,7 @@ data class ViewLook(
     /** The queue's "Played" and "Up next" headings (#197). */
     val queueHeadings: Boolean = true,
     /** #275 (1.8.1.1): the DJ button in the queue's header (off: more room there; DJ can be one of the player's buttons). */
-    val queueDjChip: Boolean = true,
+    val queueDjChip: Boolean = false,
     /** The cast mark after the output's name under the player (#149, R13). */
     val castMark: Boolean = true,
     /** Immersive mode shows the playing video behind the lyrics instead of the cover (#170). */
@@ -988,7 +988,7 @@ fun AppSettings.episodeMenuFromPlayer(): List<MenuAction> = listOfNotNull(MenuAc
 
 /** The bottom row's buttons as they show on the player (none while the row is hidden). */
 fun AppSettings.rowButtons(): List<PlayerButton> =
-    if (!shows(PlayerPart.BUTTONS)) emptyList() else player.buttons.filter { it != PlayerButton.VIDEO || showVideoSwitch }
+    if (!shows(PlayerPart.BUTTONS)) emptyList() else player.buttons.filter { it != PlayerButton.DJ && (it != PlayerButton.VIDEO || showVideoSwitch) }
 
 /**
  * The ⋯ menu's [MenuAction.fromPlayer] actions: what the player no longer shows, so hiding never takes a feature away.
@@ -1002,7 +1002,6 @@ fun AppSettings.menuFromPlayer(): List<MenuAction> {
         MenuAction.VIDEO_SWITCH.takeIf { PlayerButton.VIDEO !in row && showVideoSwitch },
         MenuAction.PREVIOUS.takeIf { !shows(PlayerPart.PREV_NEXT) },
         MenuAction.NEXT.takeIf { !shows(PlayerPart.PREV_NEXT) },
-        MenuAction.DJ.takeIf { PlayerButton.DJ in player.buttons && PlayerButton.DJ !in row },
         MenuAction.EQUALIZER.takeIf { PlayerButton.EQUALIZER in player.buttons && PlayerButton.EQUALIZER !in row },
     )
 }
@@ -2853,7 +2852,7 @@ class SettingsRepository(
             view = ViewLook(
                 panelPlayer = p.enum(K.panelPlayer, d.view.panelPlayer),
                 queueHeadings = p[K.queueHeadings] ?: d.view.queueHeadings,
-                queueDjChip = p[K.queueDjChip] ?: d.view.queueDjChip,
+                queueDjChip = false,
                 castMark = p[K.castMark] ?: d.view.castMark,
                 immersiveVideo = p[K.immersiveVideo] ?: d.view.immersiveVideo,
                 bleedFit = p.enum(K.bleedFit, d.view.bleedFit),
@@ -3065,7 +3064,7 @@ class SettingsRepository(
                 artCorners = p[K.playerArtCorners] ?: d.player.artCorners,
                 layout = p.enum(K.playerLayout, d.player.layout),
                 deck = p.enumList(K.playerDeck, d.player.deck).let { it + (DeckPart.entries - it.toSet()) },
-                buttons = p.enumList(K.playerButtons, d.player.buttons),
+                buttons = p.enumList(K.playerButtons, d.player.buttons).filterNot { it == PlayerButton.DJ }.ifEmpty { PlayerButton.DEFAULT },
                 titleAlign = p.enum(K.playerTitleAlign, d.player.titleAlign),
                 titleSize = p.enum(K.playerTitleSize, d.player.titleSize),
                 titleScroll = p[K.playerTitleScroll] ?: d.player.titleScroll,
@@ -3730,7 +3729,7 @@ class SettingsRepository(
     fun setPlayerLayout(v: PlayerLayout) = edit { it[K.playerLayout] = v.name }
     fun setVinylTonearm(v: Boolean) = edit { it[K.vinylTonearm] = v }
     fun setPlayerDeck(v: List<DeckPart>) = edit { it[K.playerDeck] = v.joinToString(",") { p -> p.name } }
-    fun setPlayerButtons(v: List<PlayerButton>) = edit { it[K.playerButtons] = v.joinToString(",") { b -> b.name } }
+    fun setPlayerButtons(v: List<PlayerButton>) = edit { it[K.playerButtons] = v.filterNot { b -> b == PlayerButton.DJ }.joinToString(",") { b -> b.name } }
     fun setSessionButtons(v: List<SessionButton>) = edit { it[K.sessionButtons] = v.joinToString(",") { b -> b.name } }
     fun setScrubberColor(v: ScrubberColor) = edit { it[K.scrubberColor] = v.name }
     fun setPlayerTitleAlign(v: PlayerTitleAlign) = edit { it[K.playerTitleAlign] = v.name }

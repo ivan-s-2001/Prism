@@ -406,14 +406,12 @@ internal fun PlayerOnItRows() {
         tr(R.string.settings_player_in_the_queue),
         listOf(
             ShowOption(QueueChip.HEADINGS.label, s.view.queueHeadings) { prefs.setQueueHeadings(it) },
-            ShowOption(QueueChip.DJ.label, s.view.queueDjChip) { prefs.setQueueDjChip(it) },
             ShowOption(QueueChip.LENGTHS.label, s.view.queueLengths) { prefs.setQueueLengths(it) },
             ShowOption(QueueChip.MOVE_PLAYED.label, s.view.queuePlayedMoves) { prefs.setQueuePlayedMoves(it) },
             ShowOption(QueueChip.TIDIER.label, s.view.queueTidy) { prefs.setQueueTidy(it) },
         ),
         info = chipInfo(
             QueueChip.HEADINGS.label to tr(R.string.off_the_queue_is_one_list),
-            QueueChip.DJ.label to tr(R.string.dj_in_the_queue_info),
             QueueChip.MOVE_PLAYED.label to tr(R.string.move_songs_you_have_played_info),
             QueueChip.TIDIER.label to tr(R.string.tidier_queue_info),
         ),
@@ -743,7 +741,7 @@ val playerIndex: List<SettingEntry> by lazy {
             ),
             SettingEntry(
                 page, g.onIt, tr(R.string.settings_player_in_the_queue),
-                listOf(R.string.queue_headings, R.string.played_now_playing_up_next_headings, R.string.dj_in_the_queue, R.string.dj_in_the_queue_keywords, R.string.song_lengths_in_the_queue,
+                listOf(R.string.queue_headings, R.string.played_now_playing_up_next_headings, R.string.song_lengths_in_the_queue,
                     R.string.song_lengths_in_the_queue_keywords, R.string.move_songs_you_have_played, R.string.move_songs_you_have_played_keywords, R.string.tidier_queue, R.string.tidier_queue_keywords,
                 ).joinToString(" ") { tr(it) },
             ),

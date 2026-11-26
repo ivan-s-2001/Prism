@@ -590,7 +590,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         c.queue.filling = rest != null
         val token = playToken
         // DJ mode is for the queue it was turned on in; "Play as a DJ set" turns it on for the new one.
-        val dj = requestedDj && !shuffle && songs.size > 1
+        val dj = false
         c.dj.setOn(false)
         // A new queue starts as plain shuffle (or none); Smart Shuffle is turned on per queue. With "Keep shuffle on for
         // the next list" (#416) a list takes over what the queue before it had, Smart Shuffle too ([carryShuffle], below).
@@ -676,19 +676,11 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
 
     /** Plays [songs] as a DJ set (DJ mode on): from the first, then in the order that blends best (album/playlist menus). */
     fun playDjSet(songs: List<Song>, source: QueueSource) {
-        if (songs.size < 2) return
-        playQueueRequested(songs, 0, source, shuffle = false, rest = null, dj = true)
+        playQueue(songs, 0, source)
     }
 
     /** DJ mode on or off for the queue playing (the queue's switch). */
-    fun setDjMode(on: Boolean) = withPlayer { p ->
-        if (on) {
-            c.queue.smartShuffle.value = false
-            c.queue.smartPicks.value = emptySet()
-            if (p.shuffleModeEnabled) p.shuffleModeEnabled = false
-        }
-        c.dj.setOn(on)
-    }
+    fun setDjMode(on: Boolean) { c.dj.setOn(false) }
 
     /** Plays a lone song; autoplay then continues with similar music. */
     fun playSingle(song: Song) = playQueue(listOf(song), 0, QueueSource(QueueKind.SINGLE, tr(R.string.autoplay), seedId = song.id))

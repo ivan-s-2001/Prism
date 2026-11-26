@@ -195,7 +195,6 @@ fun PlayerOptionsSheet(
     // Says which language, so turning it on for a song already in it explains itself.
     val translateInto = translateTargetName(settings)
     val singOn = c.sing.on.collectAsState().value
-    val djOn = c.dj.on.collectAsState().value
     val cover = com.prism.music.data.canvas.CanvasRepository.albumKey(song)
     val musicSpeed by c.player.musicSpeed.collectAsState()
     val musicPitch by c.player.musicPitch.collectAsState()
@@ -260,7 +259,6 @@ fun PlayerOptionsSheet(
     )
     if (MenuAction.PREVIOUS in fromPlayer) put(MenuAction.PREVIOUS, ActionItem(PrismIcons.Previous, tr(R.string.previous_song), keepOpen = true) { c.player.previous() })
     if (MenuAction.NEXT in fromPlayer && hasNext) put(MenuAction.NEXT, ActionItem(PrismIcons.Next, tr(R.string.next_song), keepOpen = true) { c.player.next() })
-    if (MenuAction.DJ in fromPlayer) put(MenuAction.DJ, ActionItem(if (djOn) PrismIcons.TurntableFilled else PrismIcons.Turntable, tr(R.string.dj_mode), active = djOn, keepOpen = true) { c.player.setDjMode(!djOn) })
     if (MenuAction.EQUALIZER in fromPlayer) put(MenuAction.EQUALIZER, ActionItem(PrismIcons.Equalizer, tr(R.string.equalizer)) { onButton(PlayerButton.EQUALIZER) })
     put(MenuAction.SLEEP, sleepItem)
     if (!local && !song.isLive) put(
