@@ -798,6 +798,9 @@ class AppContainer(val app: Application) {
      * plays through [com.prism.music.data.imports.HistoryImports.replay], the mixes through its `taste`.
      */
     val imports by lazy { com.prism.music.data.imports.HistoryImports(this) }
+    internal val censorshipReports by lazy {
+        com.prism.music.data.censorship.CensorshipReports(File(app.filesDir, "censorship_reports"), http)
+    }
 
     /**
      * The optional Spotify connection (1.8.1): Spotify's official Web API through the listener's own developer app.

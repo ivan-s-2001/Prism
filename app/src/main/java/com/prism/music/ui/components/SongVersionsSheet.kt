@@ -59,7 +59,13 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
     val country = settings.contentCountry
     val explicitMode = settings.behavior.explicitContent
     val preferExplicit = explicitMode == com.prism.music.data.prefs.ExplicitContent.SHOW
-    val found by produceState<Result<List<Song>>?>(null, song.id, country, explicitMode) {
+    val report by produceState<com.prism.music.data.censorship.CensorshipReports.Report?>(null, song.id, preferExplicit) {
+        value = null
+        if (preferExplicit) value = withContext(Dispatchers.IO) {
+            c.censorshipReports.reports(c.db.imports().yandexSourceIds(song.id))
+        }
+    }
+    val found by produceState<Result<List<Song>>?>(null, song.id, country, explicitMode, report != null) {
         value = null
         value = withContext(Dispatchers.IO) {
             runCatching {
@@ -67,7 +73,14 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                 coroutineScope {
                     val songs = async { runCatching { c.ytm.search(query, SearchFilter.SONGS).items }.getOrDefault(emptyList()) }
                     val videos = async { runCatching { c.ytm.search(query, SearchFilter.VIDEOS).items }.getOrDefault(emptyList()) }
-                    val all = (songs.await() + videos.await()).filterIsInstance<SongItem>().map { it.song }
+                    val additional = if (report != null) {
+                        listOf("original", "explicit").flatMap { label ->
+                            try { c.ytm.search("$query $label", SearchFilter.SONGS).items }
+                            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                            catch (_: Exception) { emptyList() }
+                        }
+                    } else emptyList()
+                    val all = (songs.await() + videos.await() + additional).filterIsInstance<SongItem>().map { it.song }
                     // Neither search answered (offline, or refused): shown as "couldn't look".
                     if (all.isEmpty()) throw java.io.IOException()
                     SongVersions.candidates(
@@ -112,6 +125,12 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
             Column(Modifier.padding(horizontal = 22.dp).padding(bottom = 8.dp)) {
                 Text(tr(R.string.play_a_different_version), style = MaterialTheme.typography.titleLarge)
                 Text(tr(R.string.the_one_you_pick_plays_for), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            report?.let { r ->
+                val sources = listOfNotNull("FckCensorData".takeIf { r.fck }, "YM Liberty".takeIf { r.liberty }).joinToString(" · ")
+                Text(tr(R.string.prism_censorship_report_title), Modifier.padding(horizontal = 22.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.titleMedium)
+                Quiet(tr(R.string.prism_censorship_report_note, sources))
             }
             VersionRow(song, tr(R.string.version_original), picked == null, Modifier.testTag("version:own")) { choose(null) }
             // A file of the song on the phone plays from the file (a FLAC of an album bought elsewhere, say).

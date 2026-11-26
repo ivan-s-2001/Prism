@@ -5790,4 +5790,6 @@
     <string name="prism_sc_versions_note">Free public recordings. Audio may differ; listen to verify. Streaming only.</string>
     <string name="prism_sc_no_versions">No matching full stream found</string>
     <string name="prism_sc_stream_only">This SoundCloud version is streaming only</string>
+    <string name="prism_censorship_report_title">Reported Yandex recording</string>
+    <string name="prism_censorship_report_note">Community report: %1$s. This refers to the linked Yandex track, not proof of censorship in the current audio. Listen before choosing a version.</string>
 </resources>

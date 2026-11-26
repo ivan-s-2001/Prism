@@ -113,6 +113,10 @@ interface ImportDao {
     @Query("SELECT * FROM import_matches WHERE songKey IN (:keys)")
     suspend fun matches(keys: List<String>): List<ImportMatchEntity>
 
+    /** Source identities only: never treat a Yandex ID as a YouTube ID. */
+    @Query("SELECT DISTINCT sourceId FROM import_matches WHERE matchedId = :songId AND sourceId LIKE 'yandex:%' AND status IN ('SURE', 'FIXED')")
+    suspend fun yandexSourceIds(songId: String): List<String>
+
     @Query("SELECT * FROM import_matches WHERE songKey = :key")
     suspend fun match(key: String): ImportMatchEntity?
 
