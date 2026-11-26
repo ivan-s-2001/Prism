@@ -1133,19 +1133,35 @@ class StreamResolver(
     fun bandcampVersions(song: com.prism.music.data.model.Song): List<com.prism.music.data.model.Song> {
         if (song.isLocal || song.isEpisode || song.isLive || song.isUpload || song.durationSec <= 0 ||
             song.artists.size != 1) return emptyList()
-        val queries = com.prism.music.data.SongVersions.searchQueries(song, false).take(3)
         val service = ServiceList.Bandcamp
-        val hits = queries.flatMap { query ->
+        val album = song.album?.title?.takeIf { it.isNotBlank() }
+        val queries = (listOfNotNull(album?.let { "${song.primaryArtist} $it" }) +
+            com.prism.music.data.SongVersions.searchQueries(song, false)).distinct().take(4)
+        val results = queries.mapNotNull { query ->
             runCatching { org.schabi.newpipe.extractor.search.SearchInfo.getInfo(service.getSearchExtractor(query)).relatedItems }
-                .getOrDefault(emptyList())
-        }.filterIsInstance<org.schabi.newpipe.extractor.stream.StreamInfoItem>()
+                .getOrNull()
+        }
+        if (results.isEmpty()) throw java.io.IOException("Bandcamp search unavailable")
+        val items = results.flatten()
+        val albumHits = items.filterIsInstance<org.schabi.newpipe.extractor.playlist.PlaylistInfoItem>()
+            .filter { album != null && com.prism.music.data.imports.ImportKeys.norm(it.name) ==
+                com.prism.music.data.imports.ImportKeys.norm(album) }
+            .mapNotNull { BandcampVersion.albumUrl(it.url) }.distinct().take(4)
+        val albumTracks = albumHits.flatMap { url ->
+            runCatching {
+                val release = org.schabi.newpipe.extractor.playlist.PlaylistInfo.getInfo(service, url)
+                if (!release.uploaderName.trim().equals(song.primaryArtist.trim(), ignoreCase = true)) emptyList()
+                else release.relatedItems
+            }.getOrDefault(emptyList())
+        }
+        val hits = (albumTracks + items.filterIsInstance<org.schabi.newpipe.extractor.stream.StreamInfoItem>())
             .filter { com.prism.music.data.SongVersions.recordingTitle(it.name) ==
                 com.prism.music.data.SongVersions.recordingTitle(song.title) }
             .distinctBy { it.url }.take(12)
         return hits.mapNotNull { item ->
             runCatching {
                 val id = BandcampVersion.id(item.url) ?: return@runCatching null
-                val info = StreamInfo.getInfo(service, item.url)
+                val info = StreamInfo.getInfo(service, BandcampVersion.url(id)!!)
                 val candidate = com.prism.music.data.model.Song(
                     id, info.name, listOf(com.prism.music.data.model.ArtistRef(info.uploaderName.orEmpty())),
                     durationSec = info.duration.takeIf { it in 1..Int.MAX_VALUE.toLong() }?.toInt() ?: 0,

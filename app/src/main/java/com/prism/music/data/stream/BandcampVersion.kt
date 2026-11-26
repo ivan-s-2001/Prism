@@ -6,6 +6,13 @@ import java.net.URI
 internal object BandcampVersion {
     private val host = Regex("[a-z0-9-]+\\.bandcamp\\.com")
     private val track = Regex("/track/[a-zA-Z0-9_-]+")
+    fun albumUrl(url: String): String? {
+        val uri = runCatching { URI(url) }.getOrNull() ?: return null
+        if (uri.scheme != "https" || !host.matches(uri.host ?: "") ||
+            !Regex("/album/[a-zA-Z0-9_-]+").matches(uri.path ?: "") ||
+            uri.port != -1 || uri.userInfo != null || uri.query != null || uri.fragment != null) return null
+        return url
+    }
     fun id(url: String): String? {
         val uri = runCatching { URI(url) }.getOrNull() ?: return null
         val h = uri.host ?: return null
