@@ -1168,7 +1168,8 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                     val shownSong = com.prism.music.data.SongVersions.shownOf(song)
                     val titleStyle = playerTitleStyle(MaterialTheme.typography, settings)
                     val artistStyle = playerArtistStyle(MaterialTheme.typography, settings)
-                    val headerHeight = playerHeaderHeight(shownSong.title, titleStyle, shownSong.artistText, artistStyle)
+                    val stackedCredits = settings.player.titleAlign == com.prism.music.data.prefs.PlayerTitleAlign.CENTER && !collapsePastHalf && maxWidth < 420.dp
+                    val headerHeight = playerHeaderHeight(shownSong.title, titleStyle, shownSong.artistText, artistStyle) + if (stackedCredits) 48.dp else 0.dp
                     val (artWidth, fullArt) = coverBox(maxWidth, maxHeight, extra.dp, fullWidth, titleRoom = ART_TITLE_GAP + headerHeight)
                     // Room the cover can't use (a tall screen) is shared above and below it, as before 1.6.4 (all of it
                     // above pushed the whole player down). The title drops into part of the room below, so no blank
@@ -1325,7 +1326,7 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                         Modifier.fillMaxWidth().height(headerHeight).offset { IntOffset(0, titleTop().roundToPx()) }.graphicsLayer { alpha = 1f - 2f * p() }.inked(),
                     )
                     // ---- Credits: title, artist, like, menu
-                    Row(
+                    Box(
                         Modifier
                             .fillMaxWidth()
                             .offset { IntOffset(0, (titleTop() - lerp(0.dp, (headerHeight - THUMB_SIZE) / 2, p())).roundToPx()) }
@@ -1341,24 +1342,24 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                             .then(sleeveGesture)
                             // #320: dark over the White background.
                             .inked(),
-                        verticalAlignment = Alignment.CenterVertically,
+                        contentAlignment = Alignment.Center,
                     ) {
                         // Settings → Player → Title (1.7.4): centred titles sit in the middle of the screen (a space as wide
                         // as the buttons on the right balances them), until the cover shrinks into the header.
-                        val centred = settings.player.titleAlign == com.prism.music.data.prefs.PlayerTitleAlign.CENTER && !collapsePastHalf && sleeveMaxWidth >= 420.dp
+                        val centred = settings.player.titleAlign == com.prism.music.data.prefs.PlayerTitleAlign.CENTER && !collapsePastHalf
                         // Like picked for the buttons row: one heart is enough while that row is on screen (the
                         // header keeps its own over the lyrics and the queue, and with Cover / Minimal, which hide the row).
-                        val heartBelow = com.prism.music.data.prefs.PlayerButton.LIKE in settings.player.buttons &&
+                        val heartBelow = deckOwnsPlayerReactions(settings.player.buttons, settings.shows(PlayerPart.LIKE)) &&
                             settings.shows(PlayerPart.BUTTONS) &&
                             layout != com.prism.music.data.prefs.PlayerLayout.MINIMAL && layout != com.prism.music.data.prefs.PlayerLayout.COVER &&
                             !lyricsOpen && !queueOpen && !statsOpen
-                        if (centred) Spacer(Modifier.width(if (heartBelow) TITLE_BUTTONS_WIDTH - LIKE_GLYPH_ROOM else TITLE_BUTTONS_WIDTH))
                         val scrolls = collapse.value < 0.01f && !covered && settings.player.titleScroll
                         // "Cover and title blend too" (1.8.8): the song before's title and artist fade out over the new ones.
                         val titleFrom = blendingFrom(song.id)
+                        @Composable fun Credits(creditsModifier: Modifier) {
                         TitleBlend(
                             titleFrom?.second, centred,
-                            Modifier.weight(1f).graphicsLayer {
+                            creditsModifier.graphicsLayer {
                                 val s = 1f - 0.2f * p()
                                 scaleX = s; scaleY = s
                                 transformOrigin = TransformOrigin(if (centred) 0.5f else 0f, 0.5f)
@@ -1404,6 +1405,8 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                                 }
                             }
                         }
+                        }
+                        @Composable fun Actions() {
                         // The title's buttons go with the controls over a full-screen canvas; the title and the artist stay.
                         Row(Modifier.graphicsLayer { alpha = ctl() }, verticalAlignment = Alignment.CenterVertically) {
                         Spacer(Modifier.width(10.dp))
@@ -1423,6 +1426,19 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                             Spacer(Modifier.width(8.dp))
                         }
                         if (settings.showsMenuButton() || collapsePastHalf) CircleGlyph(PrismIcons.More, tr(R.string.song_options)) { showActions = true }
+                        }
+                        }
+                        if (stackedCredits) {
+                            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Credits(Modifier.fillMaxWidth())
+                                Actions()
+                            }
+                        } else {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                if (centred) Spacer(Modifier.width(if (heartBelow) TITLE_BUTTONS_WIDTH - LIKE_GLYPH_ROOM else TITLE_BUTTONS_WIDTH))
+                                Credits(Modifier.weight(1f))
+                                Actions()
+                            }
                         }
                     }
                     // The thin progress line kept under the title while the controls are away.
