@@ -117,7 +117,10 @@ fun TvHomePlace(nav: TvNav, onSearch: () -> Unit) {
         }
     }
     val recent by c.library.recent.collectAsState()
-    val mostPlayed by produceState(emptyList<BrowseItem>(), recent.firstOrNull()?.id) {
+    val wantDial = TvHomeLayout.isShown(KEY_DIAL, settings.tv.homeLayout, settings.home.layout, settings.autoAddSections)
+    val mostPlayed by produceState(emptyList<BrowseItem>(), recent.firstOrNull()?.id, wantDial, account) {
+        if (!wantDial) { value = emptyList(); return@produceState }
+        if (value.isNotEmpty()) kotlinx.coroutines.delay(2_000)
         value = withContext(Dispatchers.IO) { runCatching { com.prism.music.ui.screens.speedDialFromHistory(c) }.getOrDefault(emptyList()) }
     }
     val titles = TvHomeTitles(tr(R.string.quick_picks), tr(R.string.section_speed_dial), tr(R.string.recently_played))
@@ -206,7 +209,14 @@ internal fun open(
     launch: (suspend () -> Unit) -> Unit,
 ): Boolean {
     when (item) {
-        is SongItem -> { TvPlay.song(c, row, index, rowTitle, radio); nav.go(TvRoute.Player) }
+        is SongItem -> {
+            if (radio && com.prism.music.ui.player.canStartTrackVibe(item.song)) {
+                c.player.playTrackVibe(item.song, announce = true)
+            } else {
+                TvPlay.song(c, row, index, rowTitle, false)
+                nav.go(TvRoute.Player)
+            }
+        }
         is PlaylistItem -> if (item.isMix) launch { if (TvPlay.mix(c, item) && !c.queue.source.value.isVibe) nav.go(TvRoute.Player) } else nav.go(TvRoute.Collection(item))
         is AlbumItem -> nav.go(TvRoute.Collection(item))
         is ArtistItem -> nav.go(TvRoute.Artist(item.id))

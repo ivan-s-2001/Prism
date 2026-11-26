@@ -134,13 +134,15 @@ internal fun rememberTvOwnRows(
     // Quick picks as the phone makes them: around the artists you play (favorites, new songs from radios of your top
     // artists, YouTube's own that fit), once a session; until then (or offline) YouTube's own.
     val wantPicks = online && want(HomeSections.QUICK_PICKS)
-    val youtubePicks = remember(shelves, owner) {
-        shelves.quickPicks(owner)?.items?.filterIsInstance<com.prism.music.data.model.SongItem>()?.map { it.song }.orEmpty()
+    val picksFromYouTube = settings.behavior.quickPicksSource == com.prism.music.data.prefs.QuickPicksSource.YOUTUBE
+    val youtubePicks = remember(shelves, owner, wantPicks) {
+        if (wantPicks) shelves.quickPicks(owner)?.items?.filterIsInstance<com.prism.music.data.model.SongItem>()?.map { it.song }.orEmpty()
+        else emptyList()
     }
     // Made again for another account, and once YouTube's shelves come if they were first made without them.
-    val picks by produceState(TvHomeOwn.picks, wantPicks, youtubePicks.isNotEmpty(), recent.isNotEmpty(), account) {
-        value = TvHomeOwn.picks
-        if (!wantPicks || !TvHomeOwn.picksDue(youtubePicks.isNotEmpty()) || (youtubePicks.isEmpty() && recent.isEmpty())) return@produceState
+    val picks by produceState(TvHomeOwn.picks, wantPicks, picksFromYouTube, youtubePicks.isNotEmpty(), recent.isNotEmpty(), account) {
+        value = if (picksFromYouTube) null else TvHomeOwn.picks
+        if (picksFromYouTube || !wantPicks || !TvHomeOwn.picksDue(youtubePicks.isNotEmpty()) || (youtubePicks.isEmpty() && recent.isEmpty())) return@produceState
         val withShelves = youtubePicks.isNotEmpty()
         val made = withContext(Dispatchers.IO) {
             runCatching { c.yourMusic.quickPicks(youtubePicks, radioOf = { seed: Song -> c.ytm.next(seed.id, playlistId = "RDAMVM${seed.id}").songs }) }.getOrNull()
@@ -168,7 +170,12 @@ internal fun rememberTvOwnRows(
     LaunchedEffect(wantMixes) { if (wantMixes) c.scope.launch { runCatching { c.forYou.refresh() } } }
     val yours by produceState(TvHomeOwn.yours, wantYours, lastPlayed, online, account) {
         if (!wantYours) return@produceState
-        runCatching { c.yourMusic.sections(offlineOnly = !online) }.getOrNull()?.let { value = it; TvHomeOwn.yours = it }
+        value = TvHomeOwn.yours
+        if (value != null) kotlinx.coroutines.delay(2_000)
+        val result = try { c.yourMusic.sections(offlineOnly = !online) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { null }
+        if (result != null) { value = result; TvHomeOwn.yours = result }
     }
 
     // New from your artists (online, as on the phone).
@@ -202,8 +209,8 @@ internal fun rememberTvOwnRows(
     val dls by c.downloadState.collectAsState()
     val wantDownloads = want(HomeSections.DOWNLOADS) || (want(HomeSections.GREETING) && HomeShortcut.DOWNLOADS in settings.home.shortcuts)
     val downloads by produceState(emptyList<Song>(), wantDownloads, dls.size) {
-        if (!wantDownloads || dls.isEmpty()) return@produceState
-        value = withContext(Dispatchers.Default) { runCatching { c.downloads.completedSongs() }.getOrDefault(emptyList()) }
+        if (!wantDownloads || dls.isEmpty()) { value = emptyList(); return@produceState }
+        value = withContext(Dispatchers.IO) { runCatching { c.downloads.completedSongs() }.getOrDefault(emptyList()) }
     }
     val wantGenres = want(HomeSections.GENRES)
     val genres by produceState(TvHomeOwn.genres, wantGenres, liked.size) {
@@ -226,9 +233,9 @@ internal fun rememberTvOwnRows(
     }
 
     val year = remember { Calendar.getInstance().get(Calendar.YEAR) }
-    return remember(holidayCovers, wantHoliday, picks, mixes, yours, releases, replay, moods, liked, downloads, genres, prismLists, recent, own, phone, online, settings.home.playlists, settings.home.shortcuts, settings.home.recentTiles) {
+    return remember(holidayCovers, wantHoliday, picks, picksFromYouTube, wantPicks, mixes, yours, releases, replay, moods, liked, downloads, genres, prismLists, recent, own, phone, stored, online, settings.autoAddSections, settings.home.playlists, settings.home.shortcuts, settings.home.recentTiles) {
         buildList {
-            if (wantPicks) picks?.let { tvSongRow(HomeSections.QUICK_PICKS, tvRowTitle(phone, HomeSections.QUICK_PICKS), it) }?.let(::add)
+            if (wantPicks && !picksFromYouTube) picks?.let { tvSongRow(HomeSections.QUICK_PICKS, tvRowTitle(phone, HomeSections.QUICK_PICKS), it) }?.let(::add)
             if (wantHoliday) {
                 val section = c.seasonal.holiday()?.section?.let { tr(it) }
                 tvHolidayRow(tvRowTitle(phone, HomeSections.SEASONAL, section), holidayMixes, { tr(it.name) }, { tr(it.blurb) }) { holidayCovers[it.id] }?.let(::add)
