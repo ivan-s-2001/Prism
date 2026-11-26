@@ -16,7 +16,12 @@ internal fun canStartTrackVibe(song: Song): Boolean = !song.isEpisode && !song.i
 
 /** When Like is moved to the customizable deck, keep the two reactions adjacent there.
  * Otherwise the credits own the pair; do not repeat a previously saved dislike button. */
+internal fun deckOwnsPlayerReactions(buttons: List<PlayerButton>, headerLike: Boolean): Boolean =
+    PlayerButton.LIKE in buttons && (!headerLike || PlayerButton.DISLIKE in buttons || buttons.size < PlayerButton.MAX)
+
 internal fun pairedPlayerReactions(buttons: List<PlayerButton>, headerLike: Boolean): List<PlayerButton> {
+    if (headerLike && PlayerButton.LIKE in buttons && !deckOwnsPlayerReactions(buttons, true))
+        return buttons.filter { it != PlayerButton.LIKE && it != PlayerButton.DISLIKE }
     if (PlayerButton.LIKE in buttons) return buttons.filter { it != PlayerButton.DISLIKE }.flatMap {
         if (it == PlayerButton.LIKE) listOf(it, PlayerButton.DISLIKE) else listOf(it)
     }
