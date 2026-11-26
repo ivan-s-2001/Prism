@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.prism.music.R
 import com.prism.music.tr
 import com.prism.music.ui.components.PrismButton
+import com.prism.music.ui.components.PrismFilledTonalButton
 import com.prism.music.ui.components.PrismChip
 import com.prism.music.ui.theme.PrismIcons
 import androidx.compose.foundation.rememberScrollState
@@ -74,7 +75,7 @@ internal fun VibePageLayout(
 }
 
 internal fun vibeFillsViewport(width: Dp, height: Dp): Boolean =
-    height != Dp.Infinity && height >= if (width >= 620.dp) 400.dp else 540.dp
+    height != Dp.Infinity && height >= if (width >= 620.dp) 360.dp else 440.dp
 
 /** One visual slot: pass the allocated viewport to the station instead of losing its minimum constraints. */
 @Composable
@@ -89,8 +90,8 @@ internal fun VibeFlowField(
 
 /** Mobile Vibe is a discovery surface. The global mini player owns all track transport. */
 @Composable
-internal fun VibeDiscoveryStage(settings: AppSettings, title: String, active: Boolean, starting: Boolean,
-    onStart: () -> Unit, modifier: Modifier = Modifier,
+internal fun VibeDiscoveryStage(settings: AppSettings, title: String, active: Boolean, playing: Boolean, starting: Boolean,
+    onStart: () -> Unit, onTune: () -> Unit, modifier: Modifier = Modifier,
     visual: @Composable (Modifier) -> Unit) {
     val ui = LocalUi.current
     BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -107,11 +108,22 @@ internal fun VibeDiscoveryStage(settings: AppSettings, title: String, active: Bo
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 10.dp else 20.dp))) {
                 VibeIdentity(title, compact, height >= 320.dp)
-                if (!active) {
-                    VibeStationAction(false, starting, false, onStart)
-                }
+                VibeStationAction(playing, starting, active, onStart)
+                VibeTunePill(onTune)
             }
         }
+    }
+}
+
+/** One quiet tuning action, directly below the station's play/pause button. */
+@Composable
+internal fun VibeTunePill(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val ui = LocalUi.current
+    PrismFilledTonalButton(onClick = onClick, modifier = modifier.testTag("home:my_wave:settings"),
+        shape = CircleShape, contentPadding = PaddingValues(horizontal = ui.gap(16.dp), vertical = 8.dp)) {
+        Icon(PrismIcons.Customize, null, Modifier.size(18.dp))
+        Spacer(Modifier.width(ui.gap(8.dp)))
+        Text(tr(R.string.prism_stream_tune), style = MaterialTheme.typography.labelLarge, maxLines = 1)
     }
 }
 
@@ -137,6 +149,7 @@ internal fun VibeStationOverlay(
     progress: @Composable () -> Unit = {},
     visual: @Composable (Modifier) -> Unit = {},
     artist: String? = null,
+    tune: @Composable () -> Unit = {},
 ) {
     val ui = LocalUi.current
     BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -190,6 +203,8 @@ internal fun VibeStationOverlay(
                 StationTitle()
                 Spacer(Modifier.height(ui.gap(if (compact) 8.dp else 16.dp)))
                 Transport()
+                Spacer(Modifier.height(ui.gap(8.dp)))
+                tune()
                 if (hasTrack) {
                     if (expanded) Spacer(Modifier.weight(0.65f))
                     else Spacer(Modifier.height(ui.gap(12.dp)))
@@ -216,6 +231,7 @@ internal fun VibeStationOverlay(
                         verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 6.dp else 12.dp))) {
                         StationTitle()
                         Transport()
+                        tune()
                     }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 6.dp else 14.dp))) {

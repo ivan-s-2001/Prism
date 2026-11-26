@@ -159,7 +159,7 @@ private fun MiniVibe(c: ThemeColors, song: Song?) {
             }, player = { panel ->
                 VibeFlowField(panel, preview = true) { visual ->
                     VibeDiscoveryStage(s, tr(R.string.prism_stream_station_default), active = true,
-                        starting = false, onStart = {}, visual = visual)
+                        playing = true, starting = false, onStart = {}, onTune = {}, visual = visual)
                 }
             }, scenarios = {
                 val scenarios = com.prism.music.data.foryou.WaveScenarios.visibleOrder(com.prism.music.data.foryou.WaveScenarios.all, s.streamScenarioOrder)

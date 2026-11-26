@@ -34,7 +34,6 @@ internal fun vibeShortcuts(
     val personal = personalVibe(style)
     add(VibeShortcut("personal", tr(R.string.prism_stream_station_default), PrismIcons.Stream,
         activeSavedId == null && activeScenarioId == null && style == personal, personal))
-    add(VibeShortcut("tune", tr(R.string.prism_stream_tune), PrismIcons.Customize))
     saved.forEach { preset ->
         add(VibeShortcut("custom:${preset.id}", preset.name, PrismIcons.Bookmark,
             activeSavedId == preset.id, MyWave.style(preset.origin), preset.id))

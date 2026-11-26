@@ -168,7 +168,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     LaunchedEffect(savedPresets, revealPresetId) {
         val index = savedPresets.indexOfFirst { it.id == revealPresetId }
         if (index >= 0) {
-            scenarioScroll.scrollToItem(index + 2)
+            scenarioScroll.scrollToItem(index + 1)
             revealPresetId = null
         }
     }
@@ -280,7 +280,9 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         VibeFlowField(modifier.testTag("home:my_wave").customizable(CustomizeTarget.VIBE),
             animated = wave && playing && !buffering, energy = style.diversity / 100f) { visual ->
             VibeDiscoveryStage(settings, vibeStationTitle(activeSaved, activeScenario),
-                active = wave, starting = starting, onStart = { if (!starting) start() }, visual = visual)
+                active = wave, playing = wave && playing, starting = starting && !wave,
+                onStart = { if (wave) c.player.togglePlay() else if (!starting) start() },
+                onTune = { openSettings() }, visual = visual)
         }
     }
 
@@ -297,12 +299,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             items(shortcuts, key = { it.key }) { shortcut ->
                 ScenarioTile(shortcut.label, shortcut.icon, shortcut.selected, onClick = {
                     val target = shortcut.style
-                    if (target == null) openSettings()
-                    else if (!wave || !shortcut.selected) start(target, shortcut.scenarioId)
-                }, modifier = Modifier.testTag(when (shortcut.key) {
-                    "tune" -> "home:my_wave:settings"
-                    else -> "wave:${shortcut.key}"
-                }))
+                    if (target != null && (!wave || !shortcut.selected)) start(target, shortcut.scenarioId)
+                }, modifier = Modifier.testTag("wave:${shortcut.key}"))
             }
         }
     }
