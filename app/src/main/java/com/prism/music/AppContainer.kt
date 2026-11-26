@@ -666,8 +666,9 @@ class AppContainer(val app: Application) {
             kotlinx.coroutines.delay(12_000)
             if (artistPrefs.starsRepaired) return@launch
             val signedIn = settings.current.isLoggedIn
-            val followed = if (signedIn) runCatching { ytm.librarySubscriptions().map { it.id }.toSet() }.getOrNull() else null
-            artistPrefs.repairBroughtStars(followed, signedIn)
+            val owner = musicPreferenceAccount()
+            val followed = if (signedIn) runCatching { ytm.librarySubscriptions(requireComplete = true).map { it.id }.toSet() }.getOrNull() else null
+            if (owner == musicPreferenceAccount()) artistPrefs.repairBroughtStars(followed, signedIn)
         }
     }
     val downloads by lazy { DownloadRepository(app, this, scope) }
