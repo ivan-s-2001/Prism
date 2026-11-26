@@ -561,8 +561,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         // A changed positive taste should also influence the personal Wave's already generated future,
         // not just the next refill. Coalesce bulk likes and library sync into one refresh.
         scope.launch {
-            kotlinx.coroutines.flow.combine(c.library.likedIds, c.library.profileArtists) { likes, artists ->
-                likes to artists.mapTo(hashSetOf()) { it.id }
+            kotlinx.coroutines.flow.combine(c.library.likedIds, c.library.profileArtists, c.exclusions.playlists) { likes, artists, playlists ->
+                Triple(likes, artists.mapTo(hashSetOf()) { it.id }, playlists.mapTo(hashSetOf()) { it.id })
             }.distinctUntilChanged().drop(1).collectLatest {
                 val source = c.queue.source.value
                 if (!source.isMyWave || c.queue.followingHost) return@collectLatest
@@ -966,13 +966,31 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         // Disliked songs are passed over when the queue reaches them on its own (tapping one still plays it), and so are
         // artists the listener doesn't want played when a radio or autoplay brought them (a playlist they picked plays as it is).
         val queueSource = c.queue.source.value
-        val picked = song.id !in c.queue.userQueued.value &&
-            (queueSource.isMyWave || (queueSource.isContextVibe && song.id != queueSource.seedId) ||
-                player.currentMediaItemIndex >= c.queue.autoplayStart.value.let { if (it < 0) Int.MAX_VALUE else it })
-        val unwanted = c.library.isDisliked(song.id) || (picked && c.exclusions.blocks(song))
-        if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && !c.queue.followingHost && unwanted && player.hasNextMediaItem()) {
+        fun pickedAt(candidate: Song, index: Int): Boolean =
+            candidate.id !in c.queue.userQueued.value &&
+                (queueSource.isMyWave || (queueSource.isContextVibe && candidate.id != queueSource.seedId) ||
+                    index >= c.queue.autoplayStart.value.let { if (it < 0) Int.MAX_VALUE else it })
+        fun unwantedAt(candidate: Song, index: Int): Boolean =
+            candidate.id !in c.queue.userQueued.value &&
+                (c.library.isDisliked(candidate.id) || (pickedAt(candidate, index) &&
+                    (c.exclusions.blocks(candidate) || c.exclusions.isSongExcluded(candidate.id))))
+        val picked = pickedAt(song, player.currentMediaItemIndex)
+        if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && !c.queue.followingHost && unwantedAt(song, player.currentMediaItemIndex)) {
+            // A seek reports SEEK rather than AUTO, so jumping just one item can let a second blocked song play.
+            // Walk the actual shuffle order and preserve explicitly queued songs.
             untrack()
-            player.seekToNextMediaItem()
+            val timeline = player.currentTimeline
+            var index = timeline.getNextWindowIndex(player.currentMediaItemIndex, Player.REPEAT_MODE_OFF, player.shuffleModeEnabled)
+            while (index != C.INDEX_UNSET) {
+                val candidate = player.getMediaItemAt(index).toSong()
+                if (candidate == null || !unwantedAt(candidate, index)) {
+                    player.seekTo(index, 0)
+                    return
+                }
+                index = timeline.getNextWindowIndex(index, Player.REPEAT_MODE_OFF, player.shuffleModeEnabled)
+            }
+            player.pause()
+            maybeAutoplay()
             return
         }
         // #216: with the explicit filter on, an explicit song that got into the queue anyway (a mix, the DJ, a Look's
