@@ -19,10 +19,20 @@ internal fun removalRuns(from: Int, until: Int, remove: (Int) -> Boolean): List<
     return runs
 }
 
-internal fun Player.removeMatchingRuns(from: Int, until: Int, remove: (Int, MediaItem) -> Boolean) {
+internal fun Player.removeMatchingRuns(from: Int, until: Int, remove: (Int, MediaItem) -> Boolean): List<IntRange> {
     val start = from.coerceIn(0, mediaItemCount)
     val end = until.coerceIn(start, mediaItemCount)
     // Snapshot the predicates before mutating the timeline; listener callbacks cannot change these indices.
     val runs = removalRuns(start, end) { index -> remove(index, getMediaItemAt(index)) }
     for (run in runs) removeMediaItems(run.first, run.last + 1)
+    return runs
+}
+
+/** Keep a queue boundary attached to its original position after disjoint ranges are removed. -1 means unset. */
+internal fun boundaryAfterRemoval(boundary: Int, runs: List<IntRange>): Int {
+    if (boundary < 0) return boundary
+    val removedBefore = runs.sumOf { range ->
+        (minOf(boundary, range.last + 1) - range.first).coerceAtLeast(0)
+    }
+    return (boundary - removedBefore).coerceAtLeast(0)
 }

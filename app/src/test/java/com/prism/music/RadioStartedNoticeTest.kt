@@ -47,6 +47,26 @@ class RadioStartedNoticeTest {
         assertTrue(n.take(second, 25))
     }
 
+    @Test fun concurrentConsumersCanOnlyTakeOneNotice() {
+        val n = VibeNotice()
+        val source = radio("a")
+        n.asked(source)
+        val start = java.util.concurrent.CountDownLatch(1)
+        val done = java.util.concurrent.CountDownLatch(8)
+        val consumed = java.util.concurrent.atomic.AtomicInteger()
+        repeat(8) {
+            Thread {
+                try {
+                    start.await()
+                    if (n.take(source, 1)) consumed.incrementAndGet()
+                } finally { done.countDown() }
+            }.start()
+        }
+        start.countDown()
+        assertTrue(done.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        assertEquals(1, consumed.get())
+    }
+
     /** The three Radio buttons ask for it (the player's button, the player's ⋯ menu, a song's menu); Quick picks and the TV don't. */
     @Test fun theRadioButtonsAskForIt() {
         fun src(p: String) = File("src/main/java/com/prism/music/$p").readText()

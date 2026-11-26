@@ -6,16 +6,13 @@ package com.prism.music.playback
  * never gets going (no connection, the explicit filter, another queue started meanwhile) says nothing new.
  */
 class VibeNotice {
-    @Volatile private var waiting: QueueSource? = null
+    private val waiting = java.util.concurrent.atomic.AtomicReference<QueueSource?>(null)
 
-    fun asked(source: QueueSource) { waiting = source }
+    fun asked(source: QueueSource) { waiting.set(source) }
 
-    /** True once: when [source] is the radio asked for and [added] songs joined it. */
-    fun take(source: QueueSource, added: Int): Boolean {
-        if (added <= 0 || waiting !== source) return false
-        waiting = null
-        return true
-    }
+    /** Consume the notice exactly once, without clearing a newer request. */
+    fun take(source: QueueSource, added: Int): Boolean =
+        added > 0 && waiting.compareAndSet(source, null)
 }
 
 @Deprecated("Use VibeNotice")

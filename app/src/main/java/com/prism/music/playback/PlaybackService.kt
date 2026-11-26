@@ -1842,13 +1842,11 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         if (c.queue.source.value !== src || offline == c.network.isOnline()) return
         dropAutoplay()
         if (offline) {
-            val manual = c.queue.userQueued.value
-            val generatedStart = if (src.isMyWave || src.isContextVibe) 0 else c.queue.autoplayStart.value
-            if (generatedStart >= 0) for (i in player.mediaItemCount - 1 downTo maxOf(generatedStart, player.currentMediaItemIndex + 1)) {
-                val id = player.getMediaItemAt(i).mediaId
-                if (id in manual) continue
+            val generatedStart = if (src.isVibe) 0 else c.queue.autoplayStart.value
+            if (generatedStart >= 0) removeFutureRecommendations(generatedStart) { item ->
+                val id = item.mediaId
                 val available = if (src.isMyWave) id in downloads && c.availableOffline(id) else c.availableOffline(id)
-                if (!available) player.removeMediaItem(i)
+                !available
             }
         }
         maybeAutoplay()
@@ -1858,28 +1856,30 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         if (!c.queue.source.value.isVibe || c.queue.followingHost || c.queue.filling) return
         val current = player.currentMediaItemIndex
         if (current !in 0 until player.mediaItemCount) return
-        val manual = c.queue.userQueued.value
         dropAutoplay()
+        removeFutureRecommendations(current + 1) { item ->
+            val song = item.toSong()
+            song != null && (rebuild || c.library.isDisliked(song.id) ||
+                c.exclusions.blocks(song) || c.exclusions.isSongExcluded(song.id))
+        }
+        maybeAutoplay()
+    }
+
+    /** One mutation path for network changes, preferences and disabling autoplay.
+     * Keep manually queued tracks, suppress refills during the edit and maintain both queue boundaries. */
+    private fun removeFutureRecommendations(from: Int, remove: (MediaItem) -> Boolean) {
+        val manual = c.queue.userQueued.value
+        val wasFilling = c.queue.filling
+        val auto = c.queue.autoplayStart.value
+        val quota = c.queue.waveQuotaStart
         c.queue.filling = true
         try {
-            val auto = c.queue.autoplayStart.value
-            val quota = c.queue.waveQuotaStart
-            var removedBeforeAuto = 0
-            var removedBeforeQuota = 0
-            player.removeMatchingRuns(current + 1, player.mediaItemCount) { index, item ->
-                val song = item.toSong()
-                val remove = song != null && item.mediaId !in manual &&
-                    (rebuild || c.library.isDisliked(song.id) || c.exclusions.blocks(song) || c.exclusions.isSongExcluded(song.id))
-                if (remove) {
-                    if (index < auto) removedBeforeAuto++
-                    if (index < quota) removedBeforeQuota++
-                }
-                remove
+            val runs = player.removeMatchingRuns(maxOf(from, player.currentMediaItemIndex + 1), player.mediaItemCount) { _, item ->
+                item.mediaId !in manual && remove(item)
             }
-            c.queue.autoplayStart.value = auto - removedBeforeAuto
-            c.queue.waveQuotaStart = quota - removedBeforeQuota
-        } finally { c.queue.filling = false }
-        maybeAutoplay()
+            c.queue.autoplayStart.value = boundaryAfterRemoval(auto, runs)
+            c.queue.waveQuotaStart = boundaryAfterRemoval(quota, runs)
+        } finally { c.queue.filling = wasFilling }
     }
 
     fun maybeAutoplay() {
@@ -1967,10 +1967,11 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 if (c.queue.autoplayStart.value < 0) c.queue.autoplayStart.value = player.mediaItemCount
                 player.addMediaItems(accepted.map { it.toMediaItem() })
                 c.recFeedback.served(accepted.map { it.id })
+                val started = c.player.vibeNotice.take(src, accepted.size)
                 if (!offline && c.settings.current.behavior.autoplayNoRepeats &&
                     accepted.any { com.prism.music.data.foryou.LocalRadio.sameSong(it) in pastKeys })
                     c.player.reportError(tr(R.string.no_repeats_ran_out))
-                else if (c.player.vibeNotice.take(src, accepted.size)) c.player.reportError(tr(R.string.prism_vibe_started))
+                else if (started) c.player.reportError(tr(R.string.prism_vibe_started))
             }
         }
         autoplayJob = job
@@ -2034,6 +2035,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
     fun dropAutoplay() {
         val job = autoplayJob
         autoplayJob = null
+        autoplayFor = null
         job?.cancel()
         vibeRetryJob?.cancel()
         vibeRetryJob = null
@@ -2048,11 +2050,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         if (c.queue.source.value.continuousRecommendations) return
         dropAutoplay()
         val start = c.queue.autoplayStart.value
-        if (start >= 0 && start < player.mediaItemCount) {
-            val manual = c.queue.userQueued.value
-            val from = maxOf(start, player.currentMediaItemIndex + 1)
-            player.removeMatchingRuns(from, player.mediaItemCount) { _, item -> item.mediaId !in manual }
-        }
+        if (start >= 0 && start < player.mediaItemCount) removeFutureRecommendations(start) { true }
         c.queue.autoplayStart.value = -1
         c.queue.autoplayContinuation = null
     }
@@ -3512,8 +3510,6 @@ private const val LATE_VIDEO_SEEK_MS = 3_000L
 /** How far what plays may run from the song's own length before diagnostics note it ([PlaybackService.checkLength]). */
 private const val LENGTH_MISMATCH_SEC = 8
 
-/** Songs heard this recently aren't added by radio or autoplay again (1.7.9, Reddit: "the same songs over and over"). */
-private const val RADIO_REST_MS = 4 * 3_600_000L
 /** How long after a spoken request found its songs they may still come in and start playing. */
 private const val VOICE_START_MS = 10_000L
 /** How many songs ahead (in play order) Smart Shuffle places its picks among. */

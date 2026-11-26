@@ -1073,9 +1073,13 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         p.play()
     }
     fun removeAt(index: Int) = withPlayer {
-        it.removeMediaItem(index)
+        if (index !in 0 until it.mediaItemCount) return@withPlayer
+        val runs = listOf(index..index)
         val auto = c.queue.autoplayStart.value
-        if (auto > index) c.queue.autoplayStart.value = auto - 1
+        val quota = c.queue.waveQuotaStart
+        it.removeMediaItem(index)
+        c.queue.autoplayStart.value = boundaryAfterRemoval(auto, runs)
+        c.queue.waveQuotaStart = boundaryAfterRemoval(quota, runs)
     }
 
     /**

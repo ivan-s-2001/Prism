@@ -71,7 +71,7 @@ class QueueState {
         operator fun contains(id: String): Boolean {
             val t = at[id] ?: return false
             if (System.currentTimeMillis() - t < RETRY_MS) return true
-            at.remove(id)
+            at.remove(id, t)
             return false
         }
         private companion object { const val RETRY_MS = 60 * 60_000L }
