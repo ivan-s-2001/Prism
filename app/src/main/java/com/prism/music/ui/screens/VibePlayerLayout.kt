@@ -3,6 +3,9 @@ package com.prism.music.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -66,18 +69,15 @@ internal fun VibeFlowField(
     }
 }
 
-/** The visual field's size never depends on track title, artwork or whether playback has started. */
-internal fun vibeHeroSize(width: Dp, height: Dp, layout: StreamLayout, sideBySide: Boolean, fraction: Float): Dp {
-    val widthBudget = if (sideBySide) width * 0.43f else width
+/** Only the foreground sets the stage size. Visual scale never changes layout or focus positions. */
+internal fun vibeStageMinHeight(width: Dp, height: Dp, layout: StreamLayout, visible: Boolean): Dp {
     val preferred = when {
-        sideBySide -> widthBudget.coerceAtMost(420.dp)
-        layout == StreamLayout.COMPACT -> (widthBudget * 0.40f).coerceIn(104.dp, 154.dp)
-        layout == StreamLayout.SEPARATE -> (widthBudget * 0.64f).coerceIn(144.dp, 250.dp)
-        else -> (widthBudget * 0.82f).coerceIn(188.dp, 340.dp)
+        !visible -> 0.dp
+        layout == StreamLayout.COMPACT -> (width * 0.48f).coerceIn(160.dp, 208.dp)
+        width >= 620.dp -> 260.dp
+        else -> (width * 0.84f).coerceIn(244.dp, 340.dp)
     }
-    val heightBudget = if (height == Dp.Infinity) preferred else
-        (height * if (sideBySide) 0.95f else 0.50f).coerceAtLeast(0.dp)
-    return minOf(preferred * fraction.coerceIn(0.6f, 1f), widthBudget, heightBudget).coerceAtLeast(0.dp)
+    return if (height == Dp.Infinity) preferred else minOf(preferred, height).coerceAtLeast(0.dp)
 }
 
 @Composable
@@ -96,9 +96,8 @@ internal fun VibeStationOverlay(
         val layout = settings.streamLayout
         val compact = layout == StreamLayout.COMPACT
         val showVisual = settings.streamVisualStyle != StreamVisualStyle.OFF
-        val split = layout == StreamLayout.SEPARATE && showVisual
-        val sideBySide = split && maxWidth >= 620.dp
-        val hero = vibeHeroSize(maxWidth, maxHeight, layout, sideBySide, settings.streamVisualSize.fraction)
+        val wide = maxWidth >= 620.dp
+        val stage = vibeStageMinHeight(maxWidth, maxHeight, layout, showVisual)
         val sideWidth = if (maxWidth < 300.dp) 44.dp else 52.dp
         val playGap = ui.gap(if (compact || maxWidth < 300.dp) 8.dp else 18.dp)
         @Composable fun StationTitle() {
@@ -131,35 +130,42 @@ internal fun VibeStationOverlay(
         @Composable fun Controls() {
             Column(Modifier.widthIn(max = 416.dp).fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 4.dp else 10.dp))) {
+                verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 6.dp else 16.dp))) {
                 StationTitle()
-                if (showVisual && !split) {
-                    // Align the membrane with PLAY, not with the entire group of track controls.
-                    Box(Modifier.fillMaxWidth().heightIn(min = hero), contentAlignment = Alignment.Center) {
-                        visual(Modifier.size(hero))
-                        Transport()
-                    }
-                } else {
-                    Transport()
-                }
+                Transport()
                 TrackDetails()
             }
         }
-        if (sideBySide) {
-            Row(Modifier.widthIn(max = 1000.dp).fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(ui.gap(20.dp))) {
-                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    visual(Modifier.size(hero))
+
+        // The wave is an ambient layer behind the entire station, never a separate layout item.
+        Box(Modifier.fillMaxWidth().heightIn(min = stage).clipToBounds(), contentAlignment = Alignment.Center) {
+            if (showVisual) {
+                BoxWithConstraints(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
+                    val fraction = settings.streamVisualSize.fraction
+                    visual(Modifier.fillMaxSize(fraction))
+                    // A quiet edge fade lets the wave dissolve into Prism's actual screen backdrop.
+                    val bg = MaterialTheme.colorScheme.background
+                    Box(Modifier.matchParentSize().background(Brush.verticalGradient(
+                        0f to bg.copy(alpha = 0.20f), 0.18f to Color.Transparent,
+                        0.80f to Color.Transparent, 1f to bg.copy(alpha = 0.30f)
+                    )))
                 }
-                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { Controls() }
             }
-        } else {
-            Column(Modifier.widthIn(max = 520.dp).fillMaxWidth().padding(vertical = ui.gap(4.dp)),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 2.dp else 6.dp))) {
-                if (split) visual(Modifier.size(hero))
-                Controls()
+            if (wide && layout == StreamLayout.SEPARATE && hasTrack) {
+                Row(Modifier.widthIn(max = 820.dp).fillMaxWidth().padding(horizontal = ui.gap(16.dp), vertical = ui.gap(18.dp)),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(ui.gap(24.dp))) {
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
+                        StationTitle()
+                        Transport()
+                    }
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(ui.gap(6.dp))) { TrackDetails() }
+                }
+            } else {
+                Box(Modifier.fillMaxWidth().padding(vertical = ui.gap(if (compact) 6.dp else 18.dp)),
+                    contentAlignment = Alignment.Center) { Controls() }
             }
         }
     }

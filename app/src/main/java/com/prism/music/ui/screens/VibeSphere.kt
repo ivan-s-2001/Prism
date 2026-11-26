@@ -80,7 +80,9 @@ float fbm(float2 p) {
 }
 
 half4 main(float2 fc) {
-    float2 uv = (fc - center) / min(size.x, size.y);
+    float shortest = min(size.x, size.y);
+    // The backdrop breathes across the stage, including wide TV compositions.
+    float2 uv = (fc - center) / float2(min(size.x, shortest * 1.65), shortest);
     uv -= float2(sin(time * 0.37), cos(time * 0.29)) * 0.026;
     float t = time * (0.42 + energy * 0.36);
     // Two independently travelling distortion fields make the light fold, rather than rotate as a flat picture.
@@ -96,10 +98,10 @@ half4 main(float2 fc) {
     float fold = (0.042 + 0.027 * frequencies.y) * sin(angle * 3.0 + t * 1.15)
                + (0.025 + 0.021 * frequencies.z) * sin(angle * 5.0 - t * 0.82)
                + (0.010 + 0.012 * frequencies.w) * sin(angle * 9.0 + t * 1.7);
-    float radius = 0.315 + 0.019 * sin(t * 1.08) + 0.037 * bass + 0.018 * frequencies.x;
+    float radius = 0.345 + 0.024 * sin(t * 1.08) + 0.044 * bass + 0.024 * frequencies.x;
     float edge = r + (cloud - 0.5) * (0.11 + 0.10 * energy) + (detail - 0.5) * 0.042 + fold;
     float outer = 1.0 - smoothstep(radius * 0.91, radius * 1.48, edge);
-    float inner = smoothstep(radius * 0.56, radius * 0.94, edge);
+    float inner = 0.24 + 0.76 * smoothstep(radius * 0.16, radius * 0.92, edge);
     float ribbon = 0.5 + 0.5 * sin(angle * 2.0 + detail * 6.2 + t * 0.9);
     float silk = 0.5 + 0.5 * cos((edge - radius) * 96.0 + 4.0 * cloud + angle * 3.0 - t * 0.8);
     float litRim = smoothstep(0.30, 0.95, 0.5 + 0.5 * sin(angle + t * 0.32 + cloud * 1.8));
@@ -112,13 +114,13 @@ half4 main(float2 fc) {
     float n = (edge - radius * 0.79 + 0.013 * sin(angle * 4.0 - t)) * 36.0;
     float membrane = exp(-m * m);
     float secondary = exp(-n * n);
-    float light = outer * inner * (0.23 + 0.40 * cloud + sheen * 0.42)
+    float light = outer * inner * (0.30 + 0.38 * cloud + sheen * 0.28)
         + membrane * (0.22 + 0.40 * sheen + 0.12 * frequencies.w)
         + secondary * (0.08 + 0.20 * detail)
         + outer * inner * silk * (0.045 + 0.08 * frequencies.z) * litRim;
     col = mix(col, colB, membrane * litRim * 0.32);
     light *= 0.88 + 0.29 * bass;
-    float clipEdge = 1.0 - smoothstep(0.42, 0.50, r);
+    float clipEdge = 1.0 - smoothstep(0.35, 0.53, r);
     float al = clamp(light * opacity * clipEdge, 0.0, 0.95);
     return half4(half3(clamp(col, 0.0, 1.0) * al), half(al));
 }
@@ -201,7 +203,7 @@ internal fun VibeSphere(
         }
     }
     val bass = { frame.longValue; if (motion) level.floatValue else 0f }
-    val opacity = if (dark) 0.90f else 0.70f
+    val opacity = if (dark) 0.72f else 0.48f
     if (style == StreamVisualStyle.GLOW) {
         Canvas(modifier) { drawVibeGlow(a, b, bass(), opacity, if (motion) time.floatValue else 7f) }
     } else if (style == StreamVisualStyle.RING || style == StreamVisualStyle.EQUALIZER) {

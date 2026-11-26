@@ -3,30 +3,26 @@ package com.prism.music
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.prism.music.data.prefs.StreamLayout
-import com.prism.music.ui.screens.vibeHeroSize
+import com.prism.music.ui.screens.vibeStageMinHeight
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class VibeLayoutTest {
-    @Test fun compactDoesNotConsumeTheScreen() {
-        val center = vibeHeroSize(360.dp, Dp.Infinity, StreamLayout.CENTERED, false, 1f)
-        val compact = vibeHeroSize(360.dp, Dp.Infinity, StreamLayout.COMPACT, false, 1f)
+    @Test fun compactUsesLessSpace() {
+        val center = vibeStageMinHeight(360.dp, Dp.Infinity, StreamLayout.CENTERED, true)
+        val compact = vibeStageMinHeight(360.dp, Dp.Infinity, StreamLayout.COMPACT, true)
         assertTrue(compact < center)
-        assertTrue(compact <= 154.dp)
     }
-
-    @Test fun smallScreensAndTvStayInsideConstraints() {
+    @Test fun stageNeverExceedsAvailableHeight() {
         for (layout in StreamLayout.entries) {
-            val narrow = vibeHeroSize(240.dp, 300.dp, layout, false, 1f)
-            assertTrue(narrow <= 150.dp)
-            val wide = vibeHeroSize(900.dp, 260.dp, layout, true, 1f)
-            assertTrue(wide <= 260.dp && wide <= 387.dp)
+            assertTrue(vibeStageMinHeight(240.dp, 180.dp, layout, true) <= 180.dp)
+            assertTrue(vibeStageMinHeight(900.dp, 220.dp, layout, true) <= 220.dp)
         }
     }
-
-    @Test fun scaleNeverExceedsTheLayoutBudget() {
-        val full = vibeHeroSize(360.dp, Dp.Infinity, StreamLayout.CENTERED, false, 1f)
-        val small = vibeHeroSize(360.dp, Dp.Infinity, StreamLayout.CENTERED, false, 0.6f)
-        assertTrue(small < full)
+    @Test fun disabledBackdropReservesNoSpace() {
+        for (layout in StreamLayout.entries) {
+            assertEquals(0.dp, vibeStageMinHeight(360.dp, Dp.Infinity, layout, false))
+        }
     }
 }
