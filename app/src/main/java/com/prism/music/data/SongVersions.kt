@@ -143,6 +143,10 @@ class SongVersions(private val prefs: SharedPreferences) {
                 kotlin.math.abs(song.durationSec - v.durationSec) > 3 ||
                 bare(song.title).isEmpty() || bare(song.title) != bare(v.title) ||
                 CLEAN_LABEL.containsMatchIn(v.title) || CLEAN_LABEL.containsMatchIn(v.album?.title.orEmpty()) ||
+                com.prism.music.data.imports.ImportKeys.cleanRelease(v.title, v.album?.title) ||
+                com.prism.music.data.imports.ImportKeys.versionMarks(v.title).any {
+                    it in com.prism.music.data.imports.ImportKeys.KNOCKOFFS || it in setOf("live", "acoustic", "remix", "demo", "edit", "extended")
+                } ||
                 EDIT_LABEL.containsMatchIn(v.title) || EDIT_LABEL.containsMatchIn(v.album?.title.orEmpty()) ||
                 com.prism.music.data.foryou.RecommendationQuality.alternateRecording(v)) return false
             val originalArtists = song.artists

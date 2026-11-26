@@ -46,30 +46,36 @@ object ImportKeys {
         return MARKS.filter { (_, words) -> words.any { t.contains(" $it ") } }.keys
     }
 
+    /** A declared edited/clean release, not a guess from the explicit flag (many catalogs omit it). */
+    fun cleanRelease(title: String, album: String? = null): Boolean =
+        "clean" in versionMarks(title) || album?.let {
+            "clean" in versionMarks(it) || MARKS.getValue("clean").contains(norm(it))
+        } == true
+
     /** Version marks that are never the song itself: a candidate with one the track hasn't is a knock-off. */
     val KNOCKOFFS = setOf("karaoke", "cover", "instrumental", "sped up", "slowed", "tribute", "8d")
 
     private val MARKS: Map<String, List<String>> = linkedMapOf(
-        "live" to listOf("live", "en vivo", "ao vivo", "en directo", "live at", "concert"),
-        "acoustic" to listOf("acoustic", "acustico", "acoustique", "stripped"),
+        "live" to listOf("live", "en vivo", "ao vivo", "en directo", "live at", "concert", "концертная версия", "живое исполнение", "концерт"),
+        "acoustic" to listOf("acoustic", "acustico", "acoustique", "stripped", "акустика", "акустическая версия"),
         "remaster" to listOf("remaster", "remastered", "remasterizado", "remasterise"),
         "demo" to listOf("demo"),
         // Not "mix" alone: "Original Mix" is the song.
-        "remix" to listOf("remix", "rmx", "vip mix", "rework", "flip"),
-        "edit" to listOf("edit", "radio edit"),
+        "remix" to listOf("remix", "rmx", "vip mix", "rework", "flip", "ремикс", "ремикса"),
+        "edit" to listOf("edit", "radio edit", "радиоверсия", "радио версия"),
         "extended" to listOf("extended", "club mix"),
-        "instrumental" to listOf("instrumental"),
+        "instrumental" to listOf("instrumental", "инструментал", "инструментальная версия"),
         "unplugged" to listOf("unplugged"),
         "acapella" to listOf("acapella", "a cappella"),
         "orchestral" to listOf("orchestral", "symphonic"),
         "rerecorded" to listOf("taylors version", "rerecorded", "re recorded"),
-        "sped up" to listOf("sped up", "speed up", "nightcore"),
-        "slowed" to listOf("slowed", "reverb"),
-        "karaoke" to listOf("karaoke", "made famous"),
-        "cover" to listOf("cover"),
+        "sped up" to listOf("sped up", "speed up", "nightcore", "ускоренная версия", "ускорено"),
+        "slowed" to listOf("slowed", "reverb", "замедленная версия", "замедлено"),
+        "karaoke" to listOf("karaoke", "made famous", "караоке"),
+        "cover" to listOf("cover", "кавер"),
         "tribute" to listOf("tribute"),
         "8d" to listOf("8d"),
         "mono" to listOf("mono"),
-        "clean" to listOf("clean"),
+        "clean" to listOf("clean", "censored", "цензура", "с цензурой", "цензурированная версия", "цензурная версия", "без мата", "без ненормативной лексики", "без нецензурной лексики"),
     )
 }

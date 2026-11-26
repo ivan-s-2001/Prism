@@ -19,6 +19,10 @@ class OriginalVersionMatchTest {
         listOf(
             explicit.copy(title = "Night Drive (Remix)"),
             explicit.copy(title = "Night Drive (Clean)"),
+            explicit.copy(title = "Night Drive (с цензурой)"),
+            explicit.copy(title = "Night Drive (без ненормативной лексики)"),
+            explicit.copy(title = "Night Drive (ускоренная версия)"),
+            explicit.copy(title = "Night Drive (ремикс)"),
             explicit.copy(durationSec = 210),
             explicit.copy(durationSec = 0),
             explicit.copy(artists = listOf(ArtistRef("Band", "other"))),

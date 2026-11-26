@@ -42,6 +42,16 @@ class TrackMatcher(private val search: suspend (String) -> List<Song>) {
         val found = search(queryFor(t))
         if (t.youtubeId != null) return byId(t, found)
         val r = judge(t, found)
+        // A catalog can return only a labelled clean recording in its normal search.
+        // Retry for the original, but do not turn a weak or unrelated result into a sure match.
+        if (r.status != MatchStatus.SURE && !ImportKeys.cleanRelease(t.title, t.album) &&
+            r.candidates.any { ImportKeys.cleanRelease(it.title, it.album?.title) }) {
+            val more = try { search("${plainQuery(t)} explicit") }
+                catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (_: Exception) { emptyList() }
+            val original = judge(t, found + more)
+            if (original.status == MatchStatus.SURE) return original
+        }
         // A title with words in brackets YouTube writes otherwise: once more with the title alone.
         if (r.status == MatchStatus.NONE && ImportKeys.core(t.title) != ImportKeys.norm(t.title)) {
             val again = judge(t, runCatching { search(plainQuery(t)) }.getOrDefault(emptyList()))
@@ -96,11 +106,11 @@ class TrackMatcher(private val search: suspend (String) -> List<Song>) {
         /** Judges [candidates] (YouTube's order) against [t]. */
         fun judge(t: TrackToMatch, candidates: List<Song>): MatchResult {
             val tCore = ImportKeys.core(t.title)
-            val tMarks = ImportKeys.versionMarks(t.title)
+            val tMarks = ImportKeys.versionMarks(t.title) + if (ImportKeys.cleanRelease(t.title, t.album)) setOf("clean") else emptySet()
             val tArtists = (ImportKeys.artists(t.artist) + t.artist).map(::artistKey).filter { it.isNotEmpty() }.toSet()
             val scored = candidates.filter { !it.isLive && !it.isEpisode && !it.isUpload }.distinctBy { it.id }.mapIndexed { i, s ->
                 val cCore = ImportKeys.core(s.title)
-                val cMarks = ImportKeys.versionMarks(s.title)
+                val cMarks = ImportKeys.versionMarks(s.title) + if (ImportKeys.cleanRelease(s.title, s.album?.title)) setOf("clean") else emptySet()
                 val ms = s.durationSec * 1000L
                 Scored(
                     song = s, rank = i, artistOk = sameArtist(tArtists, s), titleOk = cCore == tCore,

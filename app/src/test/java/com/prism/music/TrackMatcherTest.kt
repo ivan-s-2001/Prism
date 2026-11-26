@@ -94,6 +94,32 @@ class TrackMatcherTest {
         assertEquals("l", r.song?.id)
     }
 
+    @Test fun russianCleanReleasesNeedReviewRatherThanSilentReplacement() {
+        val t = TrackToMatch("Ночной город", "Группа", durationMs = 200_000)
+        val clean = song("clean", "Ночной город (без мата)", "Группа", 200)
+        val albumClean = song("album-clean", "Ночной город", "Группа", 200, "Альбом (с цензурой)")
+        val original = song("original", "Ночной город", "Группа", 200, explicit = true)
+        assertEquals(MatchStatus.REVIEW, judge(t, clean).status)
+        assertEquals(MatchStatus.REVIEW, judge(t, albumClean).status)
+        assertEquals("original", judge(t, clean, albumClean, original).song?.id)
+        assertEquals(MatchStatus.NONE, judge(t, song("cover", "Ночной город (кавер)", "Группа", 200)).status)
+        assertEquals(MatchStatus.REVIEW, judge(t, song("remix", "Ночной город (ремикс)", "Группа", 200)).status)
+    }
+
+    @Test fun retriesWhenOnlyALabelledCleanVersionIsFound() = runBlocking {
+        val t = TrackToMatch("Ночной город", "Группа", durationMs = 200_000)
+        val queries = mutableListOf<String>()
+        val matcher = TrackMatcher { q ->
+            queries += q
+            if (q.endsWith(" explicit")) listOf(song("original", "Ночной город", "Группа", 200, explicit = true))
+            else listOf(song("clean", "Ночной город (без мата)", "Группа", 200))
+        }
+        val r = matcher.match(t)
+        assertEquals(MatchStatus.SURE, r.status)
+        assertEquals("original", r.song?.id)
+        assertEquals(2, queries.size)
+    }
+
     @Test fun musicVideosAreNeverSure() {
         assertEquals(MatchStatus.REVIEW, judge(blinding, song("v", "Blinding Lights", "The Weeknd", 200, video = true)).status)
     }
