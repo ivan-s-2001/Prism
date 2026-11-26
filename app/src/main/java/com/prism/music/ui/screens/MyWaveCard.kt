@@ -285,6 +285,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         val current = song.takeIf { wave }
         VibeStationOverlay(settings, activeVibeTitle(source, activeSaved, activeScenario),
             hasTrack = current != null,
+            origin = activeVibeOrigin(source, current),
             modifier = modifier.testTag("home:my_wave").customizable(CustomizeTarget.VIBE),
             play = {
                 VibeStationAction(wave && playing, starting && !wave, wave,
