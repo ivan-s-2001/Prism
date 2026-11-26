@@ -164,16 +164,22 @@ class LibraryRepository(private val c: AppContainer) {
      * songs playlist go, and the new one's are synced. Replay and the phone's own history stay: they're this phone's.
      */
     suspend fun switchAccount(a: com.prism.music.data.model.YtAccount, cookie: String? = null) = withContext(Dispatchers.IO) {
+        remoteReactionLock.withLock {
+        artistSyncLock.withLock {
+        reactionLock.withLock {
         c.settings.saveIdentity(a.authUser, a.dataSyncId, cookie)
         c.settings.flow.first { it.authUser == a.authUser && it.dataSyncId == a.dataSyncId && (cookie == null || it.cookie == cookie) }
         c.settings.saveAccountInfo(a.name, listOfNotNull(a.byline, a.email).distinct().joinToString(" · "), a.avatar)
         // Before the likes go: the playlist mirror would take them out of the old channel's playlist.
         c.likedPlaylist.forget()
         val kept = c.imports.keptLikes() // imported likes kept in Prism are this phone's, not the channel's
-        likedIds.value.filterNot { it.startsWith(Song.LOCAL_PREFIX) || it in kept }.forEach { songs.setLiked(it, false, 0) }
+        songs.liked().map { it.id }.filterNot { it.startsWith(Song.LOCAL_PREFIX) || it in kept }.forEach { songs.setLiked(it, false, 0) }
         forgetAccount()
         val artistKey = remoteReactionKey() + ":artists"
         cachedSubscriptions(artistKey)?.let { subscribedArtists.value = it; artistLibraryReady.value = true }
+        }
+        }
+        }
         syncInBackground()
     }
 
@@ -217,13 +223,36 @@ class LibraryRepository(private val c: AppContainer) {
     private val remoteReactionWake = Channel<Unit>(Channel.CONFLATED)
     private val reactionRequests = Channel<ReactionRequest>(Channel.UNLIMITED)
     private val pendingReactions = mutableMapOf<String, ReactionRequest>()
+    private data class AcknowledgedReaction(val target: SongReaction, val at: Long)
+    // Guard against the brief delay between a write ACK and its appearance in the remote liked playlist.
+    private val acknowledgedReactions = mutableMapOf<String, MutableMap<String, AcknowledgedReaction>>()
 
     // One ordered local writer. Remote operations are serialized independently, never holding the local lock during I/O.
     private val reactionWriter by lazy {
         c.scope.launch(Dispatchers.IO) {
             for (request in reactionRequests) {
                 try {
-                    reactionLock.withLock { applyReaction(request.song, request.target, request.remoteKey) }
+                    val applied = reactionLock.withLock {
+                        // A queued edit from the previous channel must never change the new channel's local mirror.
+                        if (request.remoteKey != null && !request.song.isLocal &&
+                            (!c.settings.current.isLoggedIn || request.remoteKey != remoteReactionKey())) {
+                            savePendingRemote(request.remoteKey, pendingRemote(request.remoteKey) + (request.song.id to request.target))
+                            false
+                        } else {
+                            applyReaction(request.song, request.target, request.remoteKey)
+                            true
+                        }
+                    }
+                    if (applied) {
+                        // Room publishes its query result asynchronously. Keep the last requested state until
+                        // collectors see the committed value, so a fast second tap cannot toggle a stale like.
+                        kotlinx.coroutines.withTimeoutOrNull(500L) {
+                            likedIds.first { ids ->
+                                (request.song.id in ids) == (request.target == SongReaction.LIKE) &&
+                                    (request.song.id in dislikedIds.value) == (request.target == SongReaction.DISLIKE)
+                            }
+                        }
+                    }
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -317,7 +346,11 @@ class LibraryRepository(private val c: AppContainer) {
             } == true
             if (sent) reactionLock.withLock {
                 val latest = pendingRemote(key)
-                if (latest[id] == target) savePendingRemote(key, latest - id)
+                if (latest[id] == target) {
+                    savePendingRemote(key, latest - id)
+                    acknowledgedReactions.getOrPut(key) { mutableMapOf() }[id] =
+                        AcknowledgedReaction(target, android.os.SystemClock.elapsedRealtime())
+                }
             }
             sent
         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
@@ -380,9 +413,14 @@ class LibraryRepository(private val c: AppContainer) {
             for ((id, reaction) in beforeFetch) sendPendingReaction(key, id, reaction)
             val fetched = c.ytm.likedSongs(requireComplete = true)
             reactionLock.withLock {
-            val localEdits = beforeFetch + pendingRemote(key)
+            val nowElapsed = android.os.SystemClock.elapsedRealtime()
+            val acknowledged = acknowledgedReactions[key]
+            acknowledged?.entries?.removeAll { nowElapsed - it.value.at >= 60_000L }
+            val localEdits = beforeFetch + acknowledged.orEmpty().mapValues { it.value.target } + pendingRemote(key)
             val remote = fetched.filterNot { it.id in dislikedIds.value || localEdits[it.id]?.let { reaction -> reaction != SongReaction.LIKE } == true }
             if (remoteReactionKey() != key || !c.settings.current.isLoggedIn) { syncState.value = SyncState.IDLE; return@withContext }
+            val fetchedIds = fetched.mapTo(hashSetOf()) { it.id }
+            acknowledged?.entries?.removeAll { (id, ack) -> (id in fetchedIds) == (ack.target == SongReaction.LIKE) }
             val before = songs.liked().mapTo(hashSetOf()) { it.id } - dislikedIds.value
             val now = System.currentTimeMillis()
             // Chunked: SQLite caps bound parameters at 999 on older Android versions.
