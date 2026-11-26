@@ -90,6 +90,17 @@ class QueueResumeTest {
         assertEquals(2, r.autoplayStart)
     }
 
+    @Test fun contextualVibeRestoresOriginalArtworkAfterTrackChanges() {
+        val origin = com.prism.music.playback.VibeOrigin(
+            com.prism.music.playback.VibeOriginKind.ARTIST, "Original artist", "https://example.com/artist.jpg")
+        val q = SavedQueue(songs, 1, 5000, "Vibe · Original artist", sourceKind = "RADIO",
+            vibeAnchors = listOf(songs.first()), vibeOrigin = origin)
+        val resumed = resumptionOf(InnerTube.json.encodeToString(SavedQueue.serializer(), q), null)!!
+        assertTrue(resumed.source.isSongRadio)
+        assertEquals(origin, resumed.source.vibeOrigin)
+        assertEquals(origin, com.prism.music.ui.screens.activeVibeOrigin(resumed.source, songs[2]))
+    }
+
     @Test fun oldQueueFileRemainsReadableWithoutInventingContext() {
         val r = resumptionOf(saved(), null)!!
         assertFalse(r.source.continuousRecommendations)
