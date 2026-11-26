@@ -72,7 +72,7 @@ class LibraryRepository(private val c: AppContainer) {
         val rows = ids.toList().chunked(400).flatMap { songs.getAll(it) }.associateBy { it.id }
         ids.map { id -> rows[id]?.toSong() ?: Song(id, id) }
             .sortedBy { it.title.lowercase() }
-    }.flowOn(Dispatchers.IO).stateIn(c.scope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.resilient("disliked songs").flowOn(Dispatchers.IO).stateIn(c.scope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val likedIds: StateFlow<Set<String>> = combine(songs.likedIdsFlow().resilient("liked ids"), dislikedIds) { ids, disliked ->
         ids.toSet() - disliked
@@ -390,6 +390,9 @@ class LibraryRepository(private val c: AppContainer) {
             c.likedPlaylist.syncInBackground(full = true)
             // New songs in playlists kept downloaded (#298).
             if (c.settings.current.behavior.keptPlaylists.isNotEmpty()) c.scope.launch(Dispatchers.IO) { runCatching { c.keptPlaylists.syncAll() } }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            syncState.value = SyncState.IDLE
+            throw e
         } catch (e: Exception) {
             lastError.value = e.friendlyMessage()
             syncState.value = SyncState.ERROR
@@ -565,6 +568,8 @@ class LibraryRepository(private val c: AppContainer) {
         c.artistPrefs.setFavorite(artist.copy(channelId = channelId ?: artist.channelId), on)
         if (on && artists.value.none { it.id == artist.id }) {
             artists.value = listOf(ArtistItem(artist.id, artist.name, "Artist", artist.thumbnail)) + artists.value
+        } else if (!on) {
+            artists.value = artists.value.filterNot { it.id == artist.id }
         }
         if (c.settings.current.isLoggedIn) {
             val key = remoteReactionKey() + ":artists"
@@ -581,16 +586,30 @@ class LibraryRepository(private val c: AppContainer) {
     private val artistEditLock = Any()
     private val artistSyncLock = Mutex()
 
+    private suspend fun flushRemoteReactions() = reactionLock.withLock {
+        if (!c.settings.current.isLoggedIn || !c.network.isOnline()) return@withLock
+        val key = remoteReactionKey()
+        for ((id, reaction) in pendingRemote(key)) {
+            if (!c.settings.current.isLoggedIn || remoteReactionKey() != key) break
+            sendPendingReaction(key, id, reaction)
+        }
+    }
+
     init {
         c.scope.launch(Dispatchers.IO) {
             c.network.online.collect { online ->
-                if (online && c.settings.current.isLoggedIn) {
-                    reactionLock.withLock {
-                        val key = remoteReactionKey()
-                        for ((id, reaction) in pendingRemote(key)) sendPendingReaction(key, id, reaction)
-                    }
+                if (online) {
+                    flushRemoteReactions()
                     flushArtistEdits()
                 }
+            }
+        }
+        // Retry transient server errors even when the network never disconnects.
+        c.scope.launch(Dispatchers.IO) {
+            while (isActive) {
+                kotlinx.coroutines.delay(60_000L)
+                flushRemoteReactions()
+                flushArtistEdits()
             }
         }
     }
