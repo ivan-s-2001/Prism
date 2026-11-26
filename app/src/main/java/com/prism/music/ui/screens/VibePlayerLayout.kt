@@ -191,7 +191,7 @@ internal fun VibeDiscoveryStage(settings: AppSettings, title: String, active: Bo
                 VibeSceneAnchor(Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 10.dp else 20.dp))) {
-                        VibeIdentity(title, compact, height >= 320.dp)
+                        VibeIdentity(source = title, origin = null, compact = compact, roomy = height >= 320.dp)
                         VibeStationAction(playing, starting, active, onStart, compact = compact)
                         VibeTunePill(onTune)
                     }

@@ -78,7 +78,7 @@ private fun VibePreferencesContent(modifier: Modifier, onClose: () -> Unit, onAd
         }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PreferenceTab.entries.forEachIndexed { index, type ->
-                com.prism.music.ui.components.PrismChip(selected = type == selected, label = labels[index]) { tab = type.name; query = "" }
+                com.prism.music.ui.components.PrismChip(selected = type == selected, label = labels[index], onClick = { tab = type.name; query = "" })
             }
         }
         com.prism.music.ui.components.PrismTextField(query, { query = it }, Modifier.fillMaxWidth(), singleLine = true,
