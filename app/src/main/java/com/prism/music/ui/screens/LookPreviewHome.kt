@@ -100,7 +100,7 @@ fun MiniHome(c: ThemeColors, song: Song?) {
 
 /** The mini player in its style ([MiniPlayerStyle]), with its buttons and progress. */
 @Composable
-internal fun MiniBar(c: ThemeColors, song: Song?) {
+internal fun MiniBar(c: ThemeColors, song: Song?, waveReactions: Boolean = false) {
     val s = LocalAppSettings.current
     val ui = LocalUi.current
     val scheme = c.scheme
@@ -109,6 +109,9 @@ internal fun MiniBar(c: ThemeColors, song: Song?) {
     val light = Brush.horizontalGradient(*c.run.toTypedArray())
     Box(Modifier.fillMaxWidth().height(height).clip(shape).background(frostFill(2.6f)).border(1.dp, c.line, shape)) {
         if (s.miniProgress == MiniProgress.FILL) Box(Modifier.fillMaxHeight().fillMaxWidth(0.42f).background(scheme.onBackground.copy(alpha = 0.08f)))
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+        val skips = com.prism.music.ui.player.miniWaveSkips(maxWidth, height - 20.dp, 20.dp,
+            s.miniPrevButton, s.miniSkipButtons, s.view.miniPlayButton, waveReactions)
         Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             StandIn(song, Modifier.size(height - 20.dp), if (s.miniPlayerStyle == MiniPlayerStyle.PILL) CircleShape else ui.smallArt, standIns[0])
             Spacer(Modifier.width(10.dp))
@@ -116,11 +119,19 @@ internal fun MiniBar(c: ThemeColors, song: Song?) {
                 Text(song?.title ?: tr(R.string.northern_lights), style = MaterialTheme.typography.bodyMedium, color = scheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(song?.artistText ?: tr(R.string.prism_sample), style = MaterialTheme.typography.bodySmall, color = c.ink2, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (s.miniPrevButton) Icon(PrismIcons.Previous, null, Modifier.size(22.dp), tint = scheme.onBackground)
+            if (skips.previous) Icon(PrismIcons.Previous, null, Modifier.size(22.dp), tint = scheme.onBackground)
+            if (waveReactions) {
+                listOf(PrismIcons.Heart, PrismIcons.ThumbDown).forEach { glyph ->
+                    Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                        Icon(glyph, null, Modifier.size(23.dp), tint = scheme.onSurfaceVariant)
+                    }
+                }
+            }
             if (s.view.miniPlayButton) Box(Modifier.padding(horizontal = 6.dp).size(36.dp).clip(CircleShape).border(1.5.dp, Brush.sweepGradient(c.ring), CircleShape), contentAlignment = Alignment.Center) {
                 Icon(PrismIcons.Play, null, Modifier.size(16.dp), tint = scheme.onBackground)
             }
-            if (s.miniSkipButtons) Icon(PrismIcons.Next, null, Modifier.size(22.dp), tint = scheme.onBackground)
+            if (skips.next) Icon(PrismIcons.Next, null, Modifier.size(22.dp), tint = scheme.onBackground)
+        }
         }
         if (s.miniProgress == MiniProgress.LINE) Box(Modifier.align(Alignment.BottomStart).padding(horizontal = 14.dp).fillMaxWidth(0.42f).height(2.dp).clip(CircleShape).background(light))
     }

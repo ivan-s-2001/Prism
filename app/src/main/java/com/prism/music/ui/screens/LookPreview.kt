@@ -169,7 +169,7 @@ private fun MiniVibe(c: ThemeColors, song: Song?, live: Boolean) {
                 }
             }, backdrop = { VibeSphere(it, animated = live, energy = 0.5f, preview = !live) }, footer = {
                 Column(Modifier.fillMaxWidth()) {
-                    Box(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) { MiniBar(c, song) }
+                    Box(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) { MiniBar(c, song, waveReactions = s.streamShowReactions) }
                     Box(Modifier.padding(horizontal = 12.dp).padding(bottom = 14.dp)) { TabBarPreview(c) }
                 }
             })

@@ -17,6 +17,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -51,6 +52,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.prism.music.data.prefs.MiniPlayerStyle
@@ -93,6 +95,8 @@ fun MiniPlayer(
     var menu by remember { mutableStateOf(false) }
     if (menu) com.prism.music.ui.components.SongActionsSheet(s) { menu = false }
     val container = LocalContainer.current
+    val queueSource by container.queue.source.collectAsState()
+    val waveReactions = queueSource.isMyWave && settings.streamShowReactions && !s.isRss
     var sleep by remember { mutableStateOf(false) }
     if (sleep) SleepTimerDialog { sleep = false }
     // The mini player's swipes (Settings → Player → Gestures): what doesn't need the full player.
@@ -230,10 +234,15 @@ fun MiniPlayer(
                 )
             },
         )
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+        val startPadding = if (style == MiniPlayerStyle.PILL) 6.dp else if (bar) 16.dp else 8.dp
+        val endPadding = if (style == MiniPlayerStyle.PILL) 8.dp else if (bar) 8.dp else 4.dp
+        val skips = miniWaveSkips(maxWidth, artSize, startPadding + endPadding, settings.miniPrevButton,
+            settings.miniSkipButtons, settings.view.miniPlayButton, waveReactions)
         Row(
             // Holding it brings up the song's actions (like, add to playlist, share…) without opening the player.
             Modifier.fillMaxSize().combinedClickable(onClick = onOpen, onLongClick = { haptics.click(); menu = true })
-                .padding(start = if (style == MiniPlayerStyle.PILL) 6.dp else if (bar) 16.dp else 8.dp, end = if (style == MiniPlayerStyle.PILL) 8.dp else if (bar) 8.dp else 4.dp),
+                .padding(start = startPadding, end = endPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Artwork(com.prism.music.data.PlaylistCovers.artOf(s), with(CoverFlight) { Modifier.size(artSize).miniCover().graphicsLayer { alpha = if (returning) 0f else 1f } }, artShape, size = 226)
@@ -254,12 +263,13 @@ fun MiniPlayer(
                     )
                 }
             }
-            if (settings.miniPrevButton) {
+            if (skips.previous) {
                 IconButton(onClick = { haptics.click(); pc.previous() }, modifier = Modifier.size(40.dp)) { Icon(PrismIcons.Previous, tr(R.string.widget_previous)) }
             }
+            if (waveReactions) MiniWaveReactions(s)
             // Play / pause can be left off (Reddit, 1.8.1): a tap still opens the player.
             if (!settings.view.miniPlayButton) {
-                if (!settings.miniSkipButtons) Spacer(Modifier.width(8.dp))
+                if (!skips.next && !waveReactions) Spacer(Modifier.width(8.dp))
             } else if (style == MiniPlayerStyle.PILL) {
                 Box(
                     Modifier.size(40.dp).clip(CircleShape).background(scheme.onSurface).clickable { haptics.click(); pc.togglePlay() },
@@ -270,9 +280,10 @@ fun MiniPlayer(
                     Icon(if (playing) PrismIcons.Pause else PrismIcons.Play, tr(R.string.play_pause), Modifier.size(if (style == MiniPlayerStyle.SLIM) 26.dp else 28.dp))
                 }
             }
-            if (settings.miniSkipButtons) {
+            if (skips.next) {
                 IconButton(onClick = { haptics.click(); pc.next() }, modifier = Modifier.size(40.dp)) { Icon(PrismIcons.Next, tr(R.string.widget_next)) }
             }
+        }
         }
         if (settings.miniProgress == MiniProgress.LINE) {
             Canvas(Modifier.fillMaxWidth().height(2.dp).align(Alignment.BottomCenter).padding(horizontal = if (style == MiniPlayerStyle.PILL) 28.dp else 18.dp)) {
@@ -284,6 +295,54 @@ fun MiniPlayer(
                 )
             }
         }
+    }
+}
+
+internal data class MiniWaveSkips(val previous: Boolean, val next: Boolean)
+
+/** Keep the normal mini player unchanged. In Vibe preserve the reaction pair and at least
+ * 88dp for credits; when both skips will not fit, keep Next first. */
+internal fun miniWaveSkips(width: Dp, artwork: Dp, horizontalPadding: Dp,
+    previous: Boolean, next: Boolean, play: Boolean, reactions: Boolean): MiniWaveSkips {
+    if (!reactions) return MiniWaveSkips(previous, next)
+    val remaining = width - artwork - horizontalPadding - 12.dp - 88.dp -
+        (if (play) 44.dp else 0.dp) - 88.dp
+    val showNext = next && remaining >= 40.dp
+    val showPrevious = previous && remaining >= (if (showNext) 80.dp else 40.dp)
+    return MiniWaveSkips(showPrevious, showNext)
+}
+
+/** The same saved reaction state and recommendation feedback as the full player. */
+@Composable
+private fun MiniWaveReactions(song: com.prism.music.data.model.Song) {
+    val c = LocalContainer.current
+    val liked by c.library.likedIds.collectAsState()
+    val disliked by c.library.dislikedIds.collectAsState()
+    val haptics = com.prism.music.ui.theme.rememberHaptics()
+    val scheme = MaterialTheme.colorScheme
+    val likeOn = song.id in liked && song.id !in disliked
+    val dislikeOn = song.id in disliked
+    IconButton(onClick = {
+        haptics.click()
+        val wasDisliked = c.library.isDisliked(song.id)
+        if (wasDisliked) {
+            c.library.setDisliked(song, false)
+            c.library.setLiked(song, true)
+        } else c.library.toggleLike(song)
+    }, modifier = Modifier.size(44.dp).testTag("miniPlayer:like")) {
+        Icon(if (likeOn) PrismIcons.HeartFilled else PrismIcons.Heart,
+            tr(if (likeOn) R.string.unlike else R.string.like), Modifier.size(23.dp),
+            tint = if (likeOn) scheme.primary else scheme.onSurfaceVariant)
+    }
+    IconButton(onClick = {
+        haptics.click()
+        val on = !c.library.isDisliked(song.id)
+        c.library.setDisliked(song, on)
+        if (on && c.player.currentSong.value?.id == song.id && c.player.hasNext.value) c.player.next()
+    }, modifier = Modifier.size(44.dp).testTag("miniPlayer:dislike")) {
+        Icon(if (dislikeOn) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown,
+            tr(R.string.not_for_me), Modifier.size(23.dp),
+            tint = if (dislikeOn) scheme.primary else scheme.onSurfaceVariant)
     }
 }
 
