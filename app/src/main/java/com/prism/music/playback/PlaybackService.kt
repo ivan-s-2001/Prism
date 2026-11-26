@@ -547,9 +547,17 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         // Smart Shuffle: picks go in when it's turned on, and leave when it's turned off.
         scope.launch { c.queue.smartOn.collect { on -> if (on) smartAhead() else dropSmartPicks() } }
         // Explicit preference edits apply to the unplayed generated portion, not to the current or manually queued songs.
-        scope.launch { c.library.dislikedIds.drop(1).collect { refreshVibePreferences() } }
-        scope.launch { c.exclusions.artists.drop(1).collect { refreshVibePreferences() } }
-        scope.launch { c.exclusions.songs.drop(1).collect { refreshVibePreferences() } }
+        scope.launch {
+            kotlinx.coroutines.flow.combine(c.library.dislikedIds, c.exclusions.artists, c.exclusions.songs) { dislikes, artists, songs ->
+                Triple(dislikes, artists, songs)
+            }.distinctUntilChanged().drop(1).collectLatest {
+                val source = c.queue.source.value
+                if (!source.isVibe || c.queue.followingHost) return@collectLatest
+                // Edits made during queue construction must not be silently lost.
+                while (c.queue.filling && c.queue.source.value === source) delay(50)
+                if (c.queue.source.value === source) refreshVibePreferences()
+            }
+        }
         // Another network (or back online): songs that failed on the old one may play now (plan 4.4), and the one coming up
         // is looked up afresh too (its lookup ahead of time may have failed, and a link can be bound to the old address).
         scope.launch {
