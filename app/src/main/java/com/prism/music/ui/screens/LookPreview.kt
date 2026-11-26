@@ -156,7 +156,7 @@ private fun MiniVibe(c: ThemeColors, song: Song?) {
                 Icon(PrismIcons.Shuffle, null, Modifier.size(24.dp))
             }
         }, player = { panel ->
-            VibeFlowField(panel, palette = c.ring) {
+            VibeFlowField(panel, preview = true) {
                 VibeStationOverlay(s, tr(R.string.prism_stream_station_default), hasTrack = song != null,
                     modifier = Modifier.align(Alignment.Center),
                     play = { VibeStationAction(song != null, starting = false, active = song != null, onPlay = {}) },
@@ -167,9 +167,10 @@ private fun MiniVibe(c: ThemeColors, song: Song?) {
                         VibeTrackAction(PrismIcons.Previous, tr(R.string.widget_previous), {})
                     }, next = {
                         VibeTrackAction(PrismIcons.Next, tr(R.string.prism_stream_next), {})
-                    }, actions = {
-                        if (s.streamShowReactions) VibeTrackAction(PrismIcons.ThumbDown, tr(R.string.prism_stream_not_for_me), {})
-                        if (s.streamShowReactions) VibeTrackAction(PrismIcons.Heart, tr(R.string.prism_stream_like), {})
+                    }, dislike = {
+                        VibeTrackAction(PrismIcons.ThumbDown, tr(R.string.prism_stream_not_for_me), {})
+                    }, like = {
+                        VibeTrackAction(PrismIcons.Heart, tr(R.string.prism_stream_like), {})
                     }, progress = { PreviewBar(s, Brush.horizontalGradient(c.ring), ink = scheme.onSurface) })
             }
         }, scenarios = {

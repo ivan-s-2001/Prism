@@ -347,9 +347,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     next = {
                         VibeTrackAction(PrismIcons.Next, tr(R.string.prism_stream_next), { c.player.next() }, enabled = hasNext)
                     },
-                    actions = {
-                        if (settings.streamShowReactions) { Reaction(false); Reaction(true) }
-                    },
+                    dislike = { Reaction(false) },
+                    like = { Reaction(true) },
                     progress = {
                         val item = current
                         if (item != null) {

@@ -293,15 +293,15 @@ internal fun TvWavePlace(nav: TvNav) {
                         }, next = {
                             TvIconButton(PrismIcons.Next, tr(R.string.prism_stream_next),
                                 { if (c.player.hasNext.value) c.player.next() }, Modifier.tvItem("tv_wave/next"))
-                        }, actions = {
-                            if (current != null) {
-                                if (appSettings.streamShowReactions) TvIconButton(if (current.id in disliked) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown, tr(R.string.prism_stream_not_for_me),
-                                    { val on = current.id in disliked; c.library.setDisliked(current, !on); if (!on && c.player.hasNext.value) c.player.next() },
-                                    Modifier.tvItem("tv_wave/dislike"), on = current.id in disliked)
-                                if (appSettings.streamShowReactions) TvIconButton(if (now?.liked == true) PrismIcons.HeartFilled else PrismIcons.Heart, tr(R.string.prism_stream_like),
-                                    { c.library.toggleLike(current) }, Modifier.tvItem("tv_wave/like"), on = now?.liked == true)
-                                TvIconButton(PrismIcons.ChevronRight, tr(R.string.prism_stream_player), { nav.go(TvRoute.Player) }, Modifier.tvItem("tv_wave/player"))
-                            }
+                        }, dislike = {
+                            if (current != null) TvIconButton(if (current.id in disliked) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown, tr(R.string.prism_stream_not_for_me),
+                                { val on = current.id in disliked; c.library.setDisliked(current, !on); if (!on && c.player.hasNext.value) c.player.next() },
+                                Modifier.tvItem("tv_wave/dislike"), on = current.id in disliked)
+                        }, like = {
+                            if (current != null) TvIconButton(if (now?.liked == true) PrismIcons.HeartFilled else PrismIcons.Heart, tr(R.string.prism_stream_like),
+                                { c.library.toggleLike(current) }, Modifier.tvItem("tv_wave/like"), on = now?.liked == true)
+                        }, extra = {
+                            TvIconButton(PrismIcons.ChevronRight, tr(R.string.prism_stream_player), { nav.go(TvRoute.Player) }, Modifier.tvItem("tv_wave/player"))
                         }, progress = {
                             if (now != null && now.total.isNotEmpty()) TvSeekLine(now, onSeek = { c.player.seekBy(it) }, onPlayPause = { c.player.togglePlay() },
                                 modifier = Modifier.fillMaxWidth().tvItem("tv_wave/seek"))

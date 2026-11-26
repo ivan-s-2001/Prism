@@ -62,10 +62,10 @@ internal fun VibePageLayout(
 @Composable
 internal fun VibeFlowField(
     modifier: Modifier = Modifier, animated: Boolean = false, energy: Float = 0.5f,
-    palette: List<Color>? = null, content: @Composable BoxScope.() -> Unit,
+    preview: Boolean = false, content: @Composable BoxScope.() -> Unit,
 ) {
     BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
-        VibeSphere(Modifier.size(minOf(maxWidth, maxHeight, 520.dp)), animated, energy, palette)
+        VibeSphere(Modifier.size(minOf(maxWidth, maxHeight, 520.dp)), animated, energy, preview)
         content()
     }
 }
@@ -76,7 +76,8 @@ internal fun VibeStationOverlay(
     modifier: Modifier = Modifier, play: @Composable () -> Unit,
     credits: @Composable () -> Unit,
     previous: @Composable () -> Unit, next: @Composable () -> Unit,
-    actions: @Composable RowScope.() -> Unit,
+    dislike: @Composable () -> Unit, like: @Composable () -> Unit,
+    extra: (@Composable () -> Unit)? = null,
     progress: @Composable () -> Unit = {},
 ) {
     val ui = LocalUi.current
@@ -86,19 +87,27 @@ internal fun VibeStationOverlay(
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(gap)) {
             Text(title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            play()
+            Row(horizontalArrangement = Arrangement.spacedBy(ui.gap(16.dp)), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(52.dp), contentAlignment = Alignment.Center) {
+                    if (hasTrack && settings.streamShowReactions) dislike()
+                }
+                play()
+                Box(Modifier.width(52.dp), contentAlignment = Alignment.Center) {
+                    if (hasTrack && settings.streamShowReactions) like()
+                }
+            }
             if (hasTrack) {
-                @Composable fun Actions() {
-                    Row(horizontalArrangement = Arrangement.spacedBy(ui.gap(4.dp)), verticalAlignment = Alignment.CenterVertically, content = actions)
+                @Composable fun TrackRow() {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.width(52.dp), contentAlignment = Alignment.Center) { previous() }
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { credits() }
+                        Box(Modifier.width(52.dp), contentAlignment = Alignment.Center) { next() }
+                    }
                 }
-                if (settings.streamReverseLayout) Actions()
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.width(52.dp), contentAlignment = Alignment.Center) { previous() }
-                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { credits() }
-                    Box(Modifier.width(52.dp), contentAlignment = Alignment.Center) { next() }
-                }
-                if (!settings.streamReverseLayout) Actions()
-                if (settings.streamShowProgress) progress()
+                if (settings.streamReverseLayout && settings.streamShowProgress) progress()
+                TrackRow()
+                if (!settings.streamReverseLayout && settings.streamShowProgress) progress()
+                extra?.invoke()
             }
         }
     }

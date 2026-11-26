@@ -5784,6 +5784,6 @@
     <string name="prism_stream_appearance_all_scenarios">All scenarios</string>
     <string name="prism_stream_appearance_no_scenarios">No built-in scenarios</string>
     <string name="prism_stream_appearance_auto_order">Automatic order</string>
-    <string name="prism_stream_appearance_reverse_info">Track actions before credits</string>
+    <string name="prism_stream_appearance_reverse_info">Progress before track credits</string>
     <string name="prism_stream_station_default">My mix</string>
 </resources>

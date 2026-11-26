@@ -10,6 +10,7 @@ package com.prism.music.ui.screens
 
 import android.graphics.RuntimeShader
 import android.os.Build
+import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
@@ -21,6 +22,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.geometry.Offset
@@ -29,8 +31,6 @@ import kotlin.math.cos
 import com.prism.music.ui.player.rememberVisualizer
 import com.prism.music.ui.theme.LocalAppSettings
 import com.prism.music.ui.theme.LocalIsDark
-import com.prism.music.ui.theme.LocalUi
-import com.prism.music.ui.theme.PrismTokens
 import androidx.compose.material3.MaterialTheme
 
 private const val SPHERE_AGSL = """
@@ -99,20 +99,19 @@ internal fun VibeSphere(
     modifier: Modifier = Modifier,
     animated: Boolean,
     energy: Float,
-    palette: List<Color>? = null,
+    preview: Boolean = false,
 ) {
     val settings = LocalAppSettings.current
-    val ui = LocalUi.current
     val dark = LocalIsDark.current
     val scheme = MaterialTheme.colorScheme
-    val colors = if (ui.classicControls) listOf(scheme.primary, scheme.secondary)
-        else palette?.takeIf { it.size >= 2 } ?: PrismTokens.spectrumColors(dark).map { it.second }
-    val a = colors.firstOrNull() ?: scheme.primary
-    // Spectrum often ends with its starting color; choose a hue within it instead.
-    val b = colors.getOrElse((colors.size * 2 / 3).coerceAtMost(colors.lastIndex)) { scheme.secondary }
-    val c = colors.getOrElse(colors.size / 3) { scheme.tertiary }
-    val motion = animated && !settings.reduceMotion && !settings.performanceMode
-    val visualizer = rememberVisualizer(motion)
+    // Follow the resolved Material accent, including dynamic wallpaper, custom accent and preview themes.
+    // Vary its brightness rather than injecting unrelated hues.
+    val a = scheme.primary
+    val b = lerp(a, scheme.onSurface, if (dark) 0.36f else 0.22f)
+    val c = lerp(a, scheme.background, if (dark) 0.28f else 0.18f)
+    val motion = !preview && !settings.reduceMotion && !settings.performanceMode
+    val visualizer = rememberVisualizer(motion && animated)
+    val playing = rememberUpdatedState(animated)
     val time = remember { mutableFloatStateOf(7f) }
     val level = remember { mutableFloatStateOf(0f) }
     val liveLevel = rememberUpdatedState(visualizer?.level)
@@ -128,7 +127,7 @@ internal fun VibeSphere(
                 // Update the GPU field at most ~30 fps, and never jump on returning from background.
                 val dt = now - last
                 if (dt >= 30_000_000L) {
-                    time.floatValue += (dt / 1e9f).coerceIn(0f, 0.1f)
+                    time.floatValue += (dt / 1e9f).coerceIn(0f, 0.1f) * if (playing.value) 2.2f else 0.75f
                     level.floatValue = liveLevel.value?.floatValue?.coerceIn(0f, 1f) ?: 0f
                     last = now
                 }
@@ -151,12 +150,11 @@ private fun ShaderSphere(
     time: () -> Float, bass: () -> Float,
 ) {
     // RuntimeShader compilation can fail on a device's Skia implementation. Keep the screen usable.
-    val shader = remember { runCatching { RuntimeShader(SPHERE_AGSL) }.getOrNull() }
-    val brush = remember(shader) { shader?.let { ShaderBrush(it) } }
+    val shader = remember { runCatching { RuntimeShader(SPHERE_AGSL) }.onFailure { Log.w("PrismVibe", "AGSL unavailable; using animated gradients", it) }.getOrNull() }
     Canvas(modifier) {
         if (size.minDimension <= 0f) return@Canvas
         val level = bass()
-        if (shader == null || brush == null) {
+        if (shader == null) {
             drawSoftSphere(a, b, c, level, opacity, time())
         } else {
             shader.setFloatUniform("size", size.width, size.height)
@@ -168,7 +166,8 @@ private fun ShaderSphere(
             shader.setFloatUniform("colA", a.red, a.green, a.blue)
             shader.setFloatUniform("colB", b.red, b.green, b.blue)
             shader.setFloatUniform("colC", c.red, c.green, c.blue)
-            drawRect(brush)
+            // Create a fresh brush after writing uniforms, avoiding a cached native shader snapshot.
+            drawRect(ShaderBrush(shader))
         }
     }
 }
@@ -178,11 +177,11 @@ private fun DrawScope.drawSoftSphere(a: Color, b: Color, c: Color, bass: Float, 
     if (size.minDimension <= 0f) return
     val r = size.minDimension * (0.44f + 0.018f * bass)
     listOf(a, b, c).forEachIndexed { i, color ->
-        val phase = time * (0.26f + i * 0.08f) + i * 2.09f
-        val at = center + Offset(cos(phase) * r * 0.10f, sin(phase) * r * 0.10f)
+        val phase = time * (0.72f + i * 0.17f) + i * 2.09f
+        val at = center + Offset(cos(phase) * r * 0.17f, sin(phase) * r * 0.17f)
         drawCircle(Brush.radialGradient(
             0f to Color.Transparent, 0.49f to Color.Transparent,
-            0.76f to color.copy(alpha = (0.39f + bass * 0.14f) * opacity),
+            0.76f to color.copy(alpha = (0.42f + 0.11f * sin(phase) + bass * 0.14f) * opacity),
             1f to Color.Transparent, center = at, radius = r
         ), radius = r, center = at)
     }
