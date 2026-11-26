@@ -29,6 +29,18 @@ class RecFeedbackTest {
         assertTrue(RecFeedback(app).turnedDown("new", known = false))
     }
 
+    @Test fun explicitReactionEditRemovesOnlyThatTracksSkipPenalty() {
+        val fb = RecFeedback(app).apply { clear() }
+        fb.skipped("edited", "Artist")
+        fb.skipped("other", "Artist")
+        fb.forgiveTrack("edited")
+        assertFalse(fb.turnedDown("edited", known = false))
+        assertTrue(fb.turnedDown("other", known = false))
+        val restored = RecFeedback(app)
+        assertFalse(restored.turnedDown("edited", known = false))
+        assertTrue(restored.turnedDown("other", known = false))
+    }
+
     @Test fun waveEvidenceLearnsFromActualOutcomesNotExposure() {
         val fb = RecFeedback(app).apply { clear() }
         fb.served(listOf("a", "b"))
