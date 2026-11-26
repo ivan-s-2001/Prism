@@ -111,8 +111,10 @@ class LibraryRepository(private val c: AppContainer) {
     val playlists = MutableStateFlow<List<BrowseItem>>(emptyList())
     val albums = MutableStateFlow<List<BrowseItem>>(emptyList())
     val artists = MutableStateFlow<List<BrowseItem>>(emptyList())
-    val artistLibraryReady = MutableStateFlow(false)
-    private val subscribedArtists = MutableStateFlow<List<BrowseItem>>(emptyList())
+    private val subscribedArtists = MutableStateFlow<List<BrowseItem>>(
+        if (c.settings.current.isLoggedIn) cachedSubscriptions(remoteReactionKey() + ":artists").orEmpty() else emptyList()
+    )
+    val artistLibraryReady = MutableStateFlow(c.settings.current.isLoggedIn && cachedSubscriptions(remoteReactionKey() + ":artists") != null)
     /** One view of local stars and the account's subscriptions, shared by both profile editors and Wave. */
     val profileArtists: StateFlow<List<FavoriteArtist>> by lazy {
         combine(c.artistPrefs.favorites, subscribedArtists, c.exclusions.artists) { local, remote, blocked ->
@@ -143,7 +145,7 @@ class LibraryRepository(private val c: AppContainer) {
                 if (!isActive) return@launch
                 if (playlists.value.isEmpty()) playlists.value = saved.playlists
                 if (albums.value.isEmpty()) albums.value = saved.albums
-                if (artists.value.isEmpty()) artists.value = saved.artists.filterNot { pendingArtists(remoteReactionKey() + ":artists")[it.id]?.on == false }
+                if (artists.value.isEmpty()) artists.value = saved.artists
             }
         }
     }
@@ -170,6 +172,8 @@ class LibraryRepository(private val c: AppContainer) {
         val kept = c.imports.keptLikes() // imported likes kept in Prism are this phone's, not the channel's
         likedIds.value.filterNot { it.startsWith(Song.LOCAL_PREFIX) || it in kept }.forEach { songs.setLiked(it, false, 0) }
         forgetAccount()
+        val artistKey = remoteReactionKey() + ":artists"
+        cachedSubscriptions(artistKey)?.let { subscribedArtists.value = it; artistLibraryReady.value = true }
         syncInBackground()
     }
 
@@ -374,12 +378,12 @@ class LibraryRepository(private val c: AppContainer) {
             val key = remoteReactionKey()
             val beforeFetch = reactionLock.withLock { pendingRemote(key) }
             for ((id, reaction) in beforeFetch) sendPendingReaction(key, id, reaction)
-            val fetched = c.ytm.likedSongs()
+            val fetched = c.ytm.likedSongs(requireComplete = true)
             reactionLock.withLock {
             val localEdits = beforeFetch + pendingRemote(key)
             val remote = fetched.filterNot { it.id in dislikedIds.value || localEdits[it.id]?.let { reaction -> reaction != SongReaction.LIKE } == true }
             if (remoteReactionKey() != key || !c.settings.current.isLoggedIn) { syncState.value = SyncState.IDLE; return@withContext }
-            val before = likedIds.value
+            val before = songs.liked().mapTo(hashSetOf()) { it.id } - dislikedIds.value
             val now = System.currentTimeMillis()
             // Chunked: SQLite caps bound parameters at 999 on older Android versions.
             val existing = remote.map { it.id }.chunked(500).flatMap { songs.getAll(it) }.associateBy { it.id }
@@ -405,14 +409,17 @@ class LibraryRepository(private val c: AppContainer) {
             reloadPlaylists()
             runCatching { albums.value = c.ytm.libraryAlbums() }
             runCatching {
-                val remote = c.ytm.subscribedArtists()
+                artistSyncLock.withLock {
+                val remote = c.ytm.librarySubscriptions(requireComplete = true)
                 synchronized(artistEditLock) {
                     if (c.settings.current.isLoggedIn && artistKey == remoteReactionKey() + ":artists") {
                         val edits = artistEdits + pendingArtists(artistKey)
                         val kept = subscribedArtists.value.filter { edits[it.id]?.on == true }
                         subscribedArtists.value = (remote.filter { edits[it.id]?.on != false } + kept).distinctBy { it.id }
+                        cacheSubscriptions(artistKey)
                         artistLibraryReady.value = true
                     }
+                }
                 }
             }
             runCatching {
@@ -617,6 +624,7 @@ class LibraryRepository(private val c: AppContainer) {
                 val edits = pendingArtists(key).toMutableMap()
                 edits[artist.id] = ArtistEdit(channelId ?: artist.channelId, on)
                 saveArtistEdits(key, edits)
+                cacheSubscriptions(key)
             }
             c.scope.launch(Dispatchers.IO) { flushArtistEdits() }
         }
@@ -657,6 +665,22 @@ class LibraryRepository(private val c: AppContainer) {
                 flushArtistEdits()
             }
         }
+    }
+
+    private fun cachedSubscriptions(key: String): List<BrowseItem>? =
+        dislikePrefs.getString("$key:snapshot", null)?.let { raw ->
+            runCatching {
+                com.prism.music.data.innertube.InnerTube.json.decodeFromString(
+                    kotlinx.serialization.builtins.ListSerializer(FavoriteArtist.serializer()), raw
+                ).map { ArtistItem(it.id, it.name, "Artist", it.thumbnail) }
+            }.getOrNull()
+        }
+
+    private fun cacheSubscriptions(key: String) {
+        val list = subscribedArtists.value.filterIsInstance<ArtistItem>().map { FavoriteArtist(it.id, it.title, it.thumbnail) }
+        dislikePrefs.edit().putString("$key:snapshot", com.prism.music.data.innertube.InnerTube.json.encodeToString(
+            kotlinx.serialization.builtins.ListSerializer(FavoriteArtist.serializer()), list
+        )).apply()
     }
 
     private fun pendingArtists(key: String): Map<String, ArtistEdit> =

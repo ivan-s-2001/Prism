@@ -1070,13 +1070,14 @@ class YouTubeMusic(
         return out.distinctBy { it.authUser to it.dataSyncId }
     }
 
-    suspend fun likedSongs(limit: Int = 5000): List<Song> = playlistAll("LM", limit).songs
+    suspend fun likedSongs(limit: Int = 5000, requireComplete: Boolean = false): List<Song> =
+        playlistAll("LM", limit) { if (requireComplete) throw java.io.IOException("Incomplete liked songs snapshot") }.songs
 
     /** Every playlist in the library, following its continuations (YouTube sends the first ~25, Reddit R5). */
     suspend fun libraryPlaylists(): List<BrowseItem> = libraryItems("FEmusic_liked_playlists")
 
     /** A library page plus its continuations (they come 25 at a time). */
-    private suspend fun libraryItems(browseId: String, maxPages: Int = 20): List<BrowseItem> {
+    private suspend fun libraryItems(browseId: String, maxPages: Int = 20, requireComplete: Boolean = false): List<BrowseItem> {
         val out = mutableListOf<BrowseItem>()
         var res = browse(browseId)
         var pages = 0
@@ -1084,8 +1085,11 @@ class YouTubeMusic(
             out += res.findAll("musicTwoRowItemRenderer").mapNotNull { Parser.twoRow(it) }
             out += res.findAll("musicResponsiveListItemRenderer").mapNotNull { Parser.responsive(it) }
             val token = Parser.continuation(res) ?: break
-            if (++pages >= maxPages) break
-            res = runCatching { continueBrowse(token) }.getOrNull() ?: break
+            if (++pages >= maxPages) {
+                if (requireComplete) throw java.io.IOException("Incomplete library snapshot: $browseId")
+                break
+            }
+            res = if (requireComplete) continueBrowse(token) else runCatching { continueBrowse(token) }.getOrNull() ?: break
         }
         return out.distinctBy { it.id }
     }
@@ -1093,14 +1097,10 @@ class YouTubeMusic(
     suspend fun libraryAlbums(): List<BrowseItem> =
         libraryItems("FEmusic_liked_albums").filterIsInstance<com.prism.music.data.model.AlbumItem>()
 
-    /** Only actual channel subscriptions, never artists inferred from saved songs. */
-    suspend fun subscribedArtists(): List<BrowseItem> =
-        libraryItems("FEmusic_library_corpus_artists").filterIsInstance<com.prism.music.data.model.ArtistItem>()
-
     /** Artists of songs in the library, then artists the account subscribes to. */
     suspend fun libraryArtists(): List<BrowseItem> {
         val tracks = runCatching { libraryItems("FEmusic_library_corpus_track_artists") }.getOrDefault(emptyList())
-        val subs = runCatching { subscribedArtists() }.getOrDefault(emptyList())
+        val subs = runCatching { librarySubscriptions() }.getOrDefault(emptyList())
         return (tracks + subs).filterIsInstance<com.prism.music.data.model.ArtistItem>().distinctBy { it.id }
     }
 
@@ -1219,8 +1219,8 @@ class YouTubeMusic(
     }
 
     /** Only the artists the account subscribes to (follows) on YouTube Music. */
-    suspend fun librarySubscriptions(): List<com.prism.music.data.model.ArtistItem> =
-        libraryItems("FEmusic_library_corpus_artists").filterIsInstance<com.prism.music.data.model.ArtistItem>().distinctBy { it.id }
+    suspend fun librarySubscriptions(requireComplete: Boolean = false): List<com.prism.music.data.model.ArtistItem> =
+        libraryItems("FEmusic_library_corpus_artists", requireComplete = requireComplete).filterIsInstance<com.prism.music.data.model.ArtistItem>().distinctBy { it.id }
 
     suspend fun history(): List<Song> = songsFrom(browse("FEmusic_history"))
 
