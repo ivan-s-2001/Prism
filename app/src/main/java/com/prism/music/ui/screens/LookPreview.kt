@@ -156,15 +156,28 @@ private fun MiniVibe(c: ThemeColors, song: Song?, live: Boolean) {
                     Icon(PrismIcons.Palette, null, Modifier.size(24.dp))
                 }
             }, player = { panel ->
-                VibeDiscoveryStage(s, tr(R.string.prism_stream_station_default), active = true,
-                    playing = true, starting = false, onStart = {}, onTune = {}, modifier = panel)
+                VibeStationOverlay(s, tr(R.string.prism_stream_station_default), hasTrack = true, modifier = panel,
+                    play = { VibeStationAction(true, false, true, {}) },
+                    tune = { VibeTunePill({}) },
+                    credits = {
+                        VibeCredits(s, song?.title ?: tr(R.string.song), song?.primaryArtist ?: tr(R.string.artist),
+                            artwork = { StandIn(song, it, com.prism.music.ui.theme.CoverShapes.of(s.shapes.player, s.player.artCorners.dp), standIns.first()) })
+                    },
+                    previous = { VibeTrackAction(PrismIcons.Previous, tr(R.string.widget_previous), {}) },
+                    next = { VibeTrackAction(PrismIcons.Next, tr(R.string.prism_stream_next), {}) },
+                    progress = { Box(Modifier.fillMaxWidth().height(3.dp).background(scheme.onSurface.copy(alpha = 0.18f))) {
+                        Box(Modifier.fillMaxWidth(0.42f).fillMaxHeight().background(scheme.primary))
+                    } })
             }, scenarios = {
                 val scenarios = com.prism.music.data.foryou.WaveScenarios.visibleOrder(com.prism.music.data.foryou.WaveScenarios.all, s.streamScenarioOrder)
                 Row(Modifier.fillMaxWidth().padding(horizontal = ui.gap(12.dp), vertical = ui.gap(2.dp)),
                     horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp)), verticalAlignment = Alignment.CenterVertically) {
                     val style = com.prism.music.data.foryou.MyWave.restore(null, s.streamStyleOrigin, s.streamRussianPercent)
-                    vibeShortcuts(style, s.streamPresets, scenarios, s.streamScenarioStyles, null, null).take(3).forEach { tile ->
-                        VibeScenarioTile(s.streamCompactScenarios, tile.label, tile.icon, tile.selected, {}, Modifier.weight(1f))
+                    vibeShortcuts(style, s.streamPresets, scenarios, s.streamScenarioStyles, null, null).take(3).forEachIndexed { i, tile ->
+                        val orbit = if (s.streamCompactScenarios) Modifier else Modifier.vibeOrbit { (i - 1).toFloat() }
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            VibeScenarioTile(s.streamCompactScenarios, tile.label, tile.icon, tile.selected, {}, orbit)
+                        }
                     }
                 }
             }, backdrop = { VibeSphere(it, animated = live, energy = 0.5f, preview = !live) }, footer = {

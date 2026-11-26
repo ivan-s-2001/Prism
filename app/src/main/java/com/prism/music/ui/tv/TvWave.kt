@@ -5,6 +5,7 @@ import com.prism.music.tr
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.focusGroup
@@ -30,6 +31,9 @@ import com.prism.music.playback.QueueSource
 import com.prism.music.ui.components.Artwork
 import com.prism.music.ui.screens.vibeShortcuts
 import com.prism.music.ui.screens.vibeStationTitle
+import com.prism.music.ui.screens.vibeOrbit
+import com.prism.music.ui.screens.vibeActionDiameter
+import com.prism.music.data.prefs.TransportStyle
 import com.prism.music.ui.components.scenarioEdgeFade
 import com.prism.music.ui.components.WavePresetNameDialog
 import com.prism.music.ui.components.WaveTuningScale
@@ -171,6 +175,8 @@ internal fun TvWavePlace(nav: TvNav) {
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
                             TvWaveChoices(tr(R.string.visualizer), StreamVisualStyle.entries, appSettings.streamVisualStyle, "visual", { it.label }) { c.settings.setStreamVisualStyle(it) }
                             TvWaveChoices(tr(R.string.layout), StreamLayout.entries, appSettings.streamLayout, "layout", { it.label }) { c.settings.setStreamLayout(it) }
+                            TvWaveChoices(tr(R.string.play_button) + " · " + tr(R.string.style), TransportStyle.entries, appSettings.streamActionStyle, "play_style", { it.label }) { c.settings.setStreamActionStyle(it) }
+                            TvWaveChoices(tr(R.string.play_button) + " · " + tr(R.string.size), StreamCoverSize.entries, appSettings.streamActionSize, "play_size", { it.label }) { c.settings.setStreamActionSize(it) }
                             if (appSettings.streamVisualStyle != StreamVisualStyle.OFF) {
                             TvWaveChoices(tr(R.string.size), StreamCoverSize.entries, appSettings.streamVisualSize, "size", { it.label }) { c.settings.setStreamVisualSize(it) }
                             TvWaveAdjust(tr(R.string.opacity), appSettings.streamOpacity, "opacity", maximum = 1f, step = 0.1f) { c.settings.setStreamOpacity(it) }
@@ -195,7 +201,7 @@ internal fun TvWavePlace(nav: TvNav) {
                                 com.prism.music.ui.screens.VibeStationOverlay(appSettings,
                                     tr(R.string.prism_stream_station_default), hasTrack = true, visual = visual,
                                     artist = current?.primaryArtist ?: tr(R.string.artist),
-                                    play = { PreviewIcon(PrismIcons.Play, 44.dp) },
+                                    play = { com.prism.music.ui.screens.VibeStationAction(false, false, true, {}) },
                                     tune = { androidx.compose.material3.Text(tr(R.string.prism_stream_tune), style = androidx.compose.material3.MaterialTheme.typography.labelLarge) },
                                     credits = {
                                         com.prism.music.ui.screens.VibeCredits(appSettings, current?.title ?: tr(R.string.song),
@@ -205,7 +211,10 @@ internal fun TvWavePlace(nav: TvNav) {
                                                     com.prism.music.ui.screens.standIns.first())
                                             })
                                     },
-                                    previous = { PreviewIcon(PrismIcons.Previous) }, next = { PreviewIcon(PrismIcons.Next) })
+                                    previous = { PreviewIcon(PrismIcons.Previous) }, next = { PreviewIcon(PrismIcons.Next) },
+                                    progress = { Box(Modifier.fillMaxWidth().height(3.dp).background(scheme.onSurface.copy(alpha = 0.18f))) {
+                                        Box(Modifier.fillMaxWidth(0.42f).fillMaxHeight().background(scheme.primary))
+                                    } })
                             }
                         }
                     }
@@ -345,7 +354,9 @@ internal fun TvWavePlace(nav: TvNav) {
                                 current != null -> R.string.widget_play
                                 else -> R.string.prism_stream_start_listening
                             }), { if (current != null) c.player.togglePlay() else if (!starting) start() },
-                                Modifier.tvItem("tv_wave/play", entry = true), big = true)
+                                Modifier.tvItem("tv_wave/play", entry = true), big = true,
+                                vibeStyle = appSettings.streamActionStyle,
+                                diameter = vibeActionDiameter(ui.gap(if (appSettings.streamLayout == StreamLayout.COMPACT) 68.dp else 84.dp), appSettings.streamActionSize.fraction))
                         }, tune = {
                             if (!contextual) WaveTvButton(tr(R.string.prism_stream_tune), { toggleTuning(true) },
                                 Modifier.tvItem("tv_wave/tune"), icon = PrismIcons.Customize)
@@ -367,13 +378,21 @@ internal fun TvWavePlace(nav: TvNav) {
                         })
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(16.dp)), verticalAlignment = Alignment.CenterVertically) {
-                    Row(Modifier.weight(1f).scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward })
-                        .horizontalScroll(scenarioScroll).padding(vertical = 4.dp, horizontal = 14.dp)
+                    BoxWithConstraints(Modifier.weight(1f)) {
+                    val compactScenarios = appSettings.streamCompactScenarios
+                    val slotWidth = 112.dp
+                    val spacing = ui.gap(16.dp)
+                    val padding = if (compactScenarios) 14.dp else ((maxWidth - slotWidth) / 2).coerceAtLeast(0.dp)
+                    val stride = with(androidx.compose.ui.platform.LocalDensity.current) { (slotWidth + spacing).toPx() }.coerceAtLeast(1f)
+                    Row(Modifier.fillMaxWidth().scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward })
+                        .horizontalScroll(scenarioScroll).padding(vertical = if (compactScenarios) 4.dp else 12.dp, horizontal = padding)
                         .rememberedFocus().focusGroup(),
                         horizontalArrangement = Arrangement.spacedBy(ui.gap(16.dp)), verticalAlignment = Alignment.CenterVertically) {
                         vibeShortcuts(style, savedPresets, scenarioOrder, appSettings.streamScenarioStyles, activeSaved?.id, activeScenario?.id)
-                            .forEach { shortcut ->
+                            .forEachIndexed { index, shortcut ->
                                 key(shortcut.key) {
+                                    val orbit = if (compactScenarios) Modifier else Modifier.vibeOrbit { index - scenarioScroll.value / stride }
+                                    Box(orbit, contentAlignment = Alignment.Center) {
                                     ScenarioTile(shortcut.label, shortcut.icon, shortcut.selected && !contextual, onClick = {
                                         val target = shortcut.style
                                         if (target != null && (current == null || contextual || !shortcut.selected)) start(target, shortcut.scenarioId)
@@ -382,8 +401,10 @@ internal fun TvWavePlace(nav: TvNav) {
                                         shortcut.key.startsWith("custom:") -> "custom/" + shortcut.scenarioId
                                         else -> shortcut.key
                                     }))
+                                    }
                                 }
                             }
+                    }
                     }
                 }
             }

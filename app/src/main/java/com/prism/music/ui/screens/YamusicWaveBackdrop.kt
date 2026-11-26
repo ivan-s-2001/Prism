@@ -129,6 +129,8 @@ internal fun YamusicWaveBackdrop(
         val w = if (aspect >= 1f) 192 else (192 * aspect).roundToInt().coerceAtLeast(1)
         val h = if (aspect <= 1f) 192 else (192 / aspect).roundToInt().coerceAtLeast(1)
         val buffers = if (useGpu) null else WaveLightBuffers(w, h)
+        // Discard the previous backend's output on a switch; the next emission supplies its own frame.
+        if (value?.gpu != null && !useGpu) value = null
         snapshotFlow {
             WaveInput(if (moving) signal.value else VibeWaveSignal(7f, 0f, EMPTY_BANDS),
                 scene?.anchor, targetColors.value)

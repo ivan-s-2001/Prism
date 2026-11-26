@@ -142,23 +142,30 @@ fun TvButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, i
  * TalkBack reads.
  */
 @Composable
-fun TvIconButton(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier, big: Boolean = false, on: Boolean = false) {
+fun TvIconButton(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier, big: Boolean = false, on: Boolean = false,
+    vibeStyle: com.prism.music.data.prefs.TransportStyle? = null, diameter: androidx.compose.ui.unit.Dp? = null) {
     val scheme = MaterialTheme.colorScheme
-    val size = if (big) 72.dp else 52.dp
+    val size = diameter ?: if (big) 72.dp else 52.dp
     val ring = big && com.prism.music.ui.theme.LocalAppSettings.current.view.playRing
     val light = tvRing()
     IconButton(
         onClick = onClick,
-        modifier = modifier.size(size).then(if (ring) Modifier.border(TV_RING_THIN, light, CircleShape) else Modifier),
+        modifier = modifier.size(size)
+            .then(if (ring) Modifier.border(TV_RING_THIN, light, CircleShape) else Modifier)
+            .then(if (vibeStyle == com.prism.music.data.prefs.TransportStyle.OUTLINE) Modifier.border(1.dp, scheme.outline, CircleShape) else Modifier),
         scale = IconButtonDefaults.scale(focusedScale = 1.1f),
         colors = IconButtonDefaults.colors(
-            containerColor = if (big) TvGlassFill else Color.Transparent,
-            contentColor = if (on) scheme.primary else scheme.onSurface,
+            containerColor = when (vibeStyle) {
+                com.prism.music.data.prefs.TransportStyle.BUTTON -> scheme.primary
+                com.prism.music.data.prefs.TransportStyle.OUTLINE, com.prism.music.data.prefs.TransportStyle.GLYPHS -> Color.Transparent
+                null -> if (big) TvGlassFill else Color.Transparent
+            },
+            contentColor = if (vibeStyle == com.prism.music.data.prefs.TransportStyle.BUTTON) scheme.onPrimary else if (on) scheme.primary else scheme.onSurface,
             focusedContainerColor = scheme.onSurface, focusedContentColor = scheme.surface,
         ),
         border = IconButtonDefaults.border(focusedBorder = tvFocusBorder(CircleShape, TV_RING_THIN)),
     ) {
-        Icon(icon, label, Modifier.size(if (big) 36.dp else 26.dp))
+        Icon(icon, label, Modifier.size(if (diameter != null) size * 0.43f else if (big) 36.dp else 26.dp))
     }
 }
 

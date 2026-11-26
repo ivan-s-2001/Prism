@@ -93,6 +93,11 @@ fun HomeLibraryPage(bottomPadding: Dp, find: String? = null, showBack: Boolean =
     reset.add(tr(R.string.stream) + " · " + tr(R.string.visualizer) + " · " + tr(R.string.size), s.streamVisualSize, d.streamVisualSize, { it.label }) { prefs.setStreamVisualSize(it) }
     reset.add(tr(R.string.stream) + " · " + tr(R.string.visualizer), s.streamVisualStyle, d.streamVisualStyle, { it.label }) { prefs.setStreamVisualStyle(it) }
     reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_status), s.streamShowStatus, d.streamShowStatus, onOff) { prefs.setStreamShowStatus(it) }
+    reset.add(tr(R.string.stream) + " · " + tr(R.string.artwork), s.streamShowCover, d.streamShowCover, onOff) { prefs.setStreamShowCover(it) }
+    reset.add(tr(R.string.stream) + " · " + tr(R.string.cover_size), s.streamCoverSize, d.streamCoverSize, { it.label }) { prefs.setStreamCoverSize(it) }
+    reset.add(tr(R.string.stream) + " · " + tr(R.string.progress_bar), s.streamShowProgress, d.streamShowProgress, onOff) { prefs.setStreamShowProgress(it) }
+    reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_panel), s.streamGlassPanel, d.streamGlassPanel, onOff) { prefs.setStreamGlassPanel(it) }
+    reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_reverse), s.streamReverseLayout, d.streamReverseLayout, onOff) { prefs.setStreamReverseLayout(it) }
     val streamCompactScenariosChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_compact_scenarios), s.streamCompactScenarios, d.streamCompactScenarios, onOff) { prefs.setStreamCompactScenarios(it) }
 
     // What differs from how Prism comes, for the rows' dots and for Reset this page (top to bottom, as the page).
@@ -355,6 +360,11 @@ internal fun VibeAppearanceRows(s: AppSettings, d: AppSettings) {
         SliderRow(tr(R.string.speed), s.streamMotion, 0f..2f, { "${(it * 100).toInt()}%" }, steps = 7, changed = s.streamMotion != d.streamMotion) { prefs.setStreamMotion(it) }
         SliderRow(tr(R.string.intensity), s.streamSensitivity, 0f..2f, { "${(it * 100).toInt()}%" }, steps = 7, changed = s.streamSensitivity != d.streamSensitivity) { prefs.setStreamSensitivity(it) }
     }
+    SwitchRow(tr(R.string.artwork), s.streamShowCover, changed = s.streamShowCover != d.streamShowCover) { prefs.setStreamShowCover(it) }
+    if (s.streamShowCover) ChoiceRow(tr(R.string.cover_size), StreamCoverSize.entries, s.streamCoverSize, { it.label }, changed = s.streamCoverSize != d.streamCoverSize) { prefs.setStreamCoverSize(it) }
+    SwitchRow(tr(R.string.progress_bar), s.streamShowProgress, changed = s.streamShowProgress != d.streamShowProgress) { prefs.setStreamShowProgress(it) }
+    SwitchRow(tr(R.string.prism_stream_appearance_panel), s.streamGlassPanel, changed = s.streamGlassPanel != d.streamGlassPanel) { prefs.setStreamGlassPanel(it) }
+    if (s.streamShowProgress) SwitchRow(tr(R.string.prism_stream_appearance_reverse), s.streamReverseLayout, changed = s.streamReverseLayout != d.streamReverseLayout) { prefs.setStreamReverseLayout(it) }
     SwitchRow(tr(R.string.prism_stream_appearance_status), s.streamShowStatus, changed = s.streamShowStatus != d.streamShowStatus) { prefs.setStreamShowStatus(it) }
 }
 
@@ -404,6 +414,11 @@ val homeLibraryIndex: List<SettingEntry> by lazy {
         SettingEntry(page, g.stream, tr(R.string.size), tr(R.string.visualizer)),
         SettingEntry(page, g.stream, tr(R.string.visualizer), tr(R.string.stream)),
         SettingEntry(page, g.streamScenarios, tr(R.string.prism_stream_appearance_arrange), tr(R.string.stream)),
+        SettingEntry(page, g.stream, tr(R.string.artwork), tr(R.string.stream)),
+        SettingEntry(page, g.stream, tr(R.string.cover_size), tr(R.string.stream)),
+        SettingEntry(page, g.stream, tr(R.string.progress_bar), tr(R.string.stream)),
+        SettingEntry(page, g.stream, tr(R.string.prism_stream_appearance_panel), tr(R.string.stream)),
+        SettingEntry(page, g.stream, tr(R.string.prism_stream_appearance_reverse), tr(R.string.stream)),
         SettingEntry(page, g.stream, tr(R.string.prism_stream_appearance_status), tr(R.string.stream)),
         SettingEntry(page, g.streamScenarios, tr(R.string.prism_stream_appearance_compact_scenarios), tr(R.string.stream)),
         // Search

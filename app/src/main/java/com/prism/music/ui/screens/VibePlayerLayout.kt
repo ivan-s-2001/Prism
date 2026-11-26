@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import kotlin.math.abs
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.clip
@@ -121,6 +122,19 @@ internal fun VibePageLayout(
 internal fun vibeOrbitDepth(distanceInSlots: Float): Float =
     if (distanceInSlots.isFinite()) (abs(distanceInSlots) / 2f).coerceIn(0f, 1f) else 0f
 
+internal fun vibeOrbitScale(depth: Float): Float = 1f - 0.13f * depth.coerceIn(0f, 1f)
+internal fun vibeOrbitAlpha(depth: Float): Float = 1f - 0.23f * depth.coerceIn(0f, 1f)
+internal fun vibeOrbitDrop(depth: Float): Float = depth.coerceIn(0f, 1f).let { it * it }
+
+/** Apply the same orbit optics in phone, TV and preview without remeasuring focus targets. */
+internal fun Modifier.vibeOrbit(distanceInSlots: () -> Float): Modifier = graphicsLayer {
+    val depth = vibeOrbitDepth(distanceInSlots())
+    scaleX = vibeOrbitScale(depth)
+    scaleY = scaleX
+    alpha = vibeOrbitAlpha(depth)
+    translationY = 12.dp.toPx() * vibeOrbitDrop(depth)
+}
+
 internal fun vibeFillsViewport(width: Dp, height: Dp): Boolean =
     height != Dp.Infinity && height >= if (width >= 620.dp) 400.dp else 560.dp
 
@@ -130,8 +144,10 @@ internal fun VibeFlowField(
     modifier: Modifier = Modifier, animated: Boolean = false, energy: Float = 0.5f,
     preview: Boolean = false, content: @Composable (visual: @Composable (Modifier) -> Unit) -> Unit,
 ) {
-    Box(modifier, contentAlignment = Alignment.Center, propagateMinConstraints = true) {
-        content { visualModifier -> VibeSphere(visualModifier, animated, energy, preview) }
+    VibeScene {
+        Box(modifier, contentAlignment = Alignment.Center, propagateMinConstraints = true) {
+            content { visualModifier -> VibeSphere(visualModifier, animated, energy, preview) }
+        }
     }
 }
 
@@ -250,7 +266,7 @@ internal fun VibeStationOverlay(
                     StationTitle()
                     Transport()
                     tune()
-                    if (hasTrack) TrackDetails()
+                    if (hasTrack && layout != StreamLayout.SEPARATE) TrackDetails()
                 }
             }
         }
@@ -281,8 +297,17 @@ internal fun VibeStationOverlay(
                     }
                 }
             } else {
-                Box(Modifier.fillMaxWidth().padding(vertical = ui.gap(if (compact) 6.dp else 18.dp)),
-                    contentAlignment = Alignment.Center) { Controls() }
+                if (layout == StreamLayout.SEPARATE && hasTrack) {
+                    Column(Modifier.fillMaxWidth().padding(vertical = ui.gap(if (compact) 6.dp else 18.dp)),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(ui.gap(16.dp))) {
+                        Controls()
+                        Box(Modifier.widthIn(max = 460.dp).fillMaxWidth().padding(horizontal = ui.gap(12.dp))) { TrackDetails() }
+                    }
+                } else {
+                    Box(Modifier.fillMaxWidth().padding(vertical = ui.gap(if (compact) 6.dp else 18.dp)),
+                        contentAlignment = Alignment.Center) { Controls() }
+                }
             }
         }
     }
@@ -338,6 +363,8 @@ private fun VibeIdentity(source: String, compact: Boolean, roomy: Boolean) {
         maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
+internal fun vibeActionDiameter(base: Dp, fraction: Float): Dp = (base * fraction).coerceIn(48.dp, 88.dp)
+
 /** Single station action with the app's own controls, shape and play-ring preference. */
 @Composable
 internal fun VibeStationAction(
@@ -353,7 +380,7 @@ internal fun VibeStationAction(
         else -> R.string.prism_stream_start_listening
     })
     val shape = CircleShape
-    val diameter = (ui.gap(if (compact) 68.dp else 84.dp) * settings.streamActionSize.fraction).coerceIn(48.dp, 88.dp)
+    val diameter = vibeActionDiameter(ui.gap(if (compact) 68.dp else 84.dp), settings.streamActionSize.fraction)
     val target = modifier.size(diameter)
         .then(if (settings.view.playRing && !ui.classicControls) Modifier.border(1.5.dp, PrismTokens.spectrumRing(), shape) else Modifier)
         .testTag("home:my_wave:play")
