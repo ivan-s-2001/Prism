@@ -273,6 +273,9 @@ object LookLabels {
         "stream_russian_percent" to (tr(R.string.stream) + " · " + tr(R.string.prism_stream_music_language)),
         "stream_layout" to (tr(R.string.stream) + " · " + tr(R.string.layout)),
         "stream_motion" to (tr(R.string.stream) + " · " + tr(R.string.speed)),
+        "stream_action_style" to (tr(R.string.stream) + " · " + tr(R.string.play_button) + " · " + tr(R.string.style)),
+        "stream_action_size" to (tr(R.string.stream) + " · " + tr(R.string.play_button) + " · " + tr(R.string.size)),
+        "stream_opacity" to (tr(R.string.stream) + " · " + tr(R.string.opacity)),
         "stream_sensitivity" to (tr(R.string.stream) + " · " + tr(R.string.intensity)),
         "stream_visual_size" to (tr(R.string.stream) + " · " + tr(R.string.visualizer) + " · " + tr(R.string.size)),
         "stream_visual_style" to (tr(R.string.stream) + " · " + tr(R.string.visualizer)),
@@ -432,7 +435,7 @@ object LookLabels {
     }
 
     private val percent = setOf(
-        "stream_motion", "stream_sensitivity", "text_scale", "lyrics_scale", "backdrop_dim", "player_backdrop_show", "surface_tint_strength", "mesh_speed", "mesh_intensity", "player_blur",
+        "stream_motion", "stream_opacity", "stream_sensitivity", "text_scale", "lyrics_scale", "backdrop_dim", "player_backdrop_show", "surface_tint_strength", "mesh_speed", "mesh_intensity", "player_blur",
         "scrubber_thickness", "mini_fill_strength", "lyrics_blur_amount", "lyrics_spacing", "lyrics_others_alpha", "lyrics_backing_size", "lyrics_extra_size",
         "corner_scale", "glass_blur", "glass_frost", "player_gradient_depth",
     )
@@ -456,6 +459,8 @@ object LookLabels {
             'i' -> v.toIntOrNull()?.let { if (name in colors) "#%06X".format(it and 0xFFFFFF) else if (name == "player_art_corners") tr(R.string.dp, it) else v } ?: v
             else -> when (name) {
                 "stream_scenario_order" -> if (v.isBlank()) tr(R.string.prism_stream_auto) else tr(R.string.changed)
+                "stream_action_style" -> com.prism.music.data.prefs.TransportStyle.entries.firstOrNull { it.name == v }?.label ?: v
+                "stream_action_size" -> com.prism.music.data.prefs.StreamCoverSize.entries.firstOrNull { it.name == v }?.label ?: v
                 "stream_layout" -> com.prism.music.data.prefs.StreamLayout.entries.firstOrNull { it.name == v }?.label ?: v
                 "stream_visual_size" -> com.prism.music.data.prefs.StreamCoverSize.entries.firstOrNull { it.name == v }?.label ?: v
                 "stream_visual_style" -> com.prism.music.data.prefs.StreamVisualStyle.entries.firstOrNull { it.name == v }?.label ?: v
@@ -492,7 +497,7 @@ object LookLabels {
             "replay_card_graph", "replay_story_font",
             "hide_status_bar", "hide_status_bar_player", "tab_names", "nav_bar_size", "nav_bar_fill", "mini_player_joined", "controls_classic",
             "downloads_albums", "album_hero_cover",
-            "stream_theme_colors", "stream_russian_percent", "stream_visual_style", "stream_layout", "stream_visual_size", "stream_motion", "stream_sensitivity", "stream_show_cover", "stream_show_progress", "stream_show_reactions", "stream_show_status", "stream_compact_scenarios", "stream_cover_size", "stream_glass_panel", "stream_reverse_layout", "stream_scenario_order",
+            "stream_theme_colors", "stream_russian_percent", "stream_visual_style", "stream_layout", "stream_visual_size", "stream_motion", "stream_action_style", "stream_action_size", "stream_opacity", "stream_sensitivity", "stream_show_cover", "stream_show_progress", "stream_show_reactions", "stream_show_status", "stream_compact_scenarios", "stream_cover_size", "stream_glass_panel", "stream_reverse_layout", "stream_scenario_order",
         ),
         "player" to setOf(
             "player_background", "player_backdrop_show", "player_art_corners", "transport_style", "cover_size", "scrubber_style", "art_shrink_on_pause",

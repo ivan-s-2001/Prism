@@ -525,7 +525,7 @@ private fun CustomizeSheetContent(target: com.prism.music.ui.components.Customiz
                     SettingsGroup(tr(R.string.lyrics)) { LsStyleRows(asPrismComes) }
                 }
                 com.prism.music.ui.components.CustomizeTarget.VIBE -> {
-                    VibeLookPreview(s)
+                    VibeLookPreview(s, live = true)
                     SettingsGroup(tr(R.string.stream)) { com.prism.music.ui.screens.settings.VibeAppearanceRows(s, asPrismComes) }
                     SettingsGroup(tr(R.string.prism_stream_appearance_compact_scenarios)) {
                         com.prism.music.ui.screens.settings.SwitchRow(tr(R.string.prism_stream_appearance_compact_scenarios),

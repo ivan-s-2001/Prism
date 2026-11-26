@@ -22,6 +22,7 @@ import com.prism.music.data.prefs.SearchSection
 import com.prism.music.data.prefs.StreamCoverSize
 import com.prism.music.data.prefs.StreamVisualStyle
 import com.prism.music.data.prefs.StreamLayout
+import com.prism.music.data.prefs.TransportStyle
 import com.prism.music.ui.screens.VibeLookPreview
 import com.prism.music.tr
 import com.prism.music.ui.LocalNavigator
@@ -81,19 +82,16 @@ fun HomeLibraryPage(bottomPadding: Dp, find: String? = null, showBack: Boolean =
     val d = remember { AppSettings() }
     val reset = ListeningResets()
     val onOff: (Boolean) -> String = { ListeningResets.onOff(it) }
-    reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_reverse), s.streamReverseLayout, d.streamReverseLayout, onOff) { prefs.setStreamReverseLayout(it) }
     val streamOrderChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_arrange), s.streamScenarioOrder, d.streamScenarioOrder, { if (it.isEmpty()) tr(R.string.prism_stream_auto) else tr(R.string.changed) }) { prefs.setStreamScenarioOrder(it) }
     var arrangeVibe by rememberSaveable { mutableStateOf(false) }
-    reset.add(tr(R.string.stream) + " · " + tr(R.string.cover_size), s.streamCoverSize, d.streamCoverSize, { it.label }) { prefs.setStreamCoverSize(it) }
-    reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_panel), s.streamGlassPanel, d.streamGlassPanel, onOff) { prefs.setStreamGlassPanel(it) }
+    reset.add(tr(R.string.stream) + " · " + tr(R.string.play_button) + " · " + tr(R.string.style), s.streamActionStyle, d.streamActionStyle, { it.label }) { prefs.setStreamActionStyle(it) }
+    reset.add(tr(R.string.stream) + " · " + tr(R.string.play_button) + " · " + tr(R.string.size), s.streamActionSize, d.streamActionSize, { it.label }) { prefs.setStreamActionSize(it) }
+    reset.add(tr(R.string.stream) + " · " + tr(R.string.opacity), s.streamOpacity, d.streamOpacity, { "${(it * 100).toInt()}%" }) { prefs.setStreamOpacity(it) }
     reset.add(tr(R.string.stream) + " · " + tr(R.string.speed), s.streamMotion, d.streamMotion, { "${(it * 100).toInt()}%" }) { prefs.setStreamMotion(it) }
     reset.add(tr(R.string.stream) + " · " + tr(R.string.intensity), s.streamSensitivity, d.streamSensitivity, { "${(it * 100).toInt()}%" }) { prefs.setStreamSensitivity(it) }
     reset.add(tr(R.string.stream) + " · " + tr(R.string.layout), s.streamLayout, d.streamLayout, { it.label }) { prefs.setStreamLayout(it) }
     reset.add(tr(R.string.stream) + " · " + tr(R.string.visualizer) + " · " + tr(R.string.size), s.streamVisualSize, d.streamVisualSize, { it.label }) { prefs.setStreamVisualSize(it) }
     reset.add(tr(R.string.stream) + " · " + tr(R.string.visualizer), s.streamVisualStyle, d.streamVisualStyle, { it.label }) { prefs.setStreamVisualStyle(it) }
-    reset.add(tr(R.string.stream) + " · " + tr(R.string.artwork), s.streamShowCover, d.streamShowCover, onOff) { prefs.setStreamShowCover(it) }
-    reset.add(tr(R.string.stream) + " · " + tr(R.string.progress_bar), s.streamShowProgress, d.streamShowProgress, onOff) { prefs.setStreamShowProgress(it) }
-    reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_reactions), s.streamShowReactions, d.streamShowReactions, onOff) { prefs.setStreamShowReactions(it) }
     reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_status), s.streamShowStatus, d.streamShowStatus, onOff) { prefs.setStreamShowStatus(it) }
     val streamCompactScenariosChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_compact_scenarios), s.streamCompactScenarios, d.streamCompactScenarios, onOff) { prefs.setStreamCompactScenarios(it) }
 
@@ -347,10 +345,13 @@ fun homeLibraryValue(s: AppSettings, dark: Boolean): String {
 @Composable
 internal fun VibeAppearanceRows(s: AppSettings, d: AppSettings) {
     val prefs = LocalContainer.current.settings
-    ChoiceRow(tr(R.string.layout), StreamLayout.entries, s.streamLayout, { it.label }, changed = s.streamLayout != d.streamLayout) { prefs.setStreamLayout(it) }
+    ChoiceRow(tr(R.string.layout), StreamLayout.entries, s.streamLayout, { if (it == StreamLayout.SEPARATE) tr(R.string.bottom) else it.label }, changed = s.streamLayout != d.streamLayout) { prefs.setStreamLayout(it) }
+    ChoiceRow(tr(R.string.play_button) + " · " + tr(R.string.style), TransportStyle.entries, s.streamActionStyle, { it.label }, changed = s.streamActionStyle != d.streamActionStyle) { prefs.setStreamActionStyle(it) }
+    ChoiceRow(tr(R.string.play_button) + " · " + tr(R.string.size), StreamCoverSize.entries, s.streamActionSize, { it.label }, changed = s.streamActionSize != d.streamActionSize) { prefs.setStreamActionSize(it) }
     ChoiceRow(tr(R.string.visualizer), StreamVisualStyle.entries, s.streamVisualStyle, { it.label }, changed = s.streamVisualStyle != d.streamVisualStyle) { prefs.setStreamVisualStyle(it) }
     if (s.streamVisualStyle != StreamVisualStyle.OFF) {
         ChoiceRow(tr(R.string.size), StreamCoverSize.entries, s.streamVisualSize, { it.label }, changed = s.streamVisualSize != d.streamVisualSize) { prefs.setStreamVisualSize(it) }
+        SliderRow(tr(R.string.opacity), s.streamOpacity, 0f..1f, { "${(it * 100).toInt()}%" }, steps = 9, changed = s.streamOpacity != d.streamOpacity) { prefs.setStreamOpacity(it) }
         SliderRow(tr(R.string.speed), s.streamMotion, 0f..2f, { "${(it * 100).toInt()}%" }, steps = 7, changed = s.streamMotion != d.streamMotion) { prefs.setStreamMotion(it) }
         SliderRow(tr(R.string.intensity), s.streamSensitivity, 0f..2f, { "${(it * 100).toInt()}%" }, steps = 7, changed = s.streamSensitivity != d.streamSensitivity) { prefs.setStreamSensitivity(it) }
     }
@@ -360,7 +361,7 @@ internal fun VibeAppearanceRows(s: AppSettings, d: AppSettings) {
 val homeLibraryLookKeys: List<String> = listOf(
     "replay_card", "replay_card_graph", "library_view", "library_views", "library_columns", "library_subtitles",
     "playlist_hero_cover", "album_hero_cover", "downloads_albums",
-    "stream_visual_style", "stream_layout", "stream_visual_size", "stream_motion", "stream_sensitivity", "stream_show_cover", "stream_cover_size", "stream_glass_panel", "stream_reverse_layout", "stream_scenario_order", "stream_show_progress", "stream_show_reactions", "stream_show_status", "stream_compact_scenarios",
+    "stream_visual_style", "stream_layout", "stream_visual_size", "stream_motion", "stream_action_style", "stream_action_size", "stream_opacity", "stream_sensitivity", "stream_show_cover", "stream_cover_size", "stream_glass_panel", "stream_reverse_layout", "stream_scenario_order", "stream_show_progress", "stream_show_reactions", "stream_show_status", "stream_compact_scenarios",
 )
 
 /** Old group titles → this page's groups: "Liked songs" (on Recommendations before 1.8.4) held what is in Library now. */
@@ -394,18 +395,15 @@ val homeLibraryIndex: List<SettingEntry> by lazy {
         SettingEntry(page, g.home, tr(R.string.recently_played_shows), tr(R.string.recently_played_albums_playlists_songs_home)),
         SettingEntry(page, g.home, tr(R.string.buttons_at_the_top_of_home), words(R.string.podcasts_button, R.string.customize_button_at_the_top)),
         // Vibe appearance
+        SettingEntry(page, g.stream, tr(R.string.play_button) + " · " + tr(R.string.style), tr(R.string.stream)),
+        SettingEntry(page, g.stream, tr(R.string.play_button) + " · " + tr(R.string.size), tr(R.string.stream)),
+        SettingEntry(page, g.stream, tr(R.string.opacity), tr(R.string.visualizer)),
         SettingEntry(page, g.stream, tr(R.string.speed), tr(R.string.visualizer)),
         SettingEntry(page, g.stream, tr(R.string.intensity), tr(R.string.visualizer)),
         SettingEntry(page, g.stream, tr(R.string.layout), tr(R.string.stream)),
         SettingEntry(page, g.stream, tr(R.string.size), tr(R.string.visualizer)),
         SettingEntry(page, g.stream, tr(R.string.visualizer), tr(R.string.stream)),
-        SettingEntry(page, g.stream, tr(R.string.prism_stream_appearance_reverse), tr(R.string.stream)),
         SettingEntry(page, g.streamScenarios, tr(R.string.prism_stream_appearance_arrange), tr(R.string.stream)),
-        SettingEntry(page, g.stream, tr(R.string.prism_stream_appearance_panel), tr(R.string.stream)),
-        SettingEntry(page, g.stream, tr(R.string.cover_size), tr(R.string.stream)),
-        SettingEntry(page, g.stream, tr(R.string.artwork), tr(R.string.stream)),
-        SettingEntry(page, g.stream, tr(R.string.progress_bar), tr(R.string.stream)),
-        SettingEntry(page, g.stream, tr(R.string.prism_stream_appearance_reactions), tr(R.string.stream)),
         SettingEntry(page, g.stream, tr(R.string.prism_stream_appearance_status), tr(R.string.stream)),
         SettingEntry(page, g.streamScenarios, tr(R.string.prism_stream_appearance_compact_scenarios), tr(R.string.stream)),
         // Search

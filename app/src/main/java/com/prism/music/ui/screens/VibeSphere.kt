@@ -122,7 +122,7 @@ internal fun VibeSphere(
         }
     }
     val bass = { frame.longValue; if (motion) level.floatValue else 0f }
-    val opacity = if (dark) 0.92f else 0.76f
+    val opacity = (if (dark) 0.92f else 0.76f) * settings.streamOpacity
     if (style == StreamVisualStyle.GLOW) {
         Canvas(modifier) { drawVibeGlow(a, b, bass(), opacity, if (motion) time.floatValue else 7f) }
     } else if (style == StreamVisualStyle.RING || style == StreamVisualStyle.EQUALIZER) {

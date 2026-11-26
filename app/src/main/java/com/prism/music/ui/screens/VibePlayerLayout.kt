@@ -32,6 +32,8 @@ import com.prism.music.R
 import com.prism.music.tr
 import com.prism.music.ui.components.PrismButton
 import com.prism.music.ui.components.PrismFilledTonalButton
+import com.prism.music.ui.components.PrismOutlinedButton
+import com.prism.music.data.prefs.TransportStyle
 import com.prism.music.ui.components.PrismChip
 import com.prism.music.ui.theme.PrismIcons
 import androidx.compose.foundation.rememberScrollState
@@ -104,11 +106,12 @@ internal fun VibeDiscoveryStage(settings: AppSettings, title: String, active: Bo
                     visual(Modifier.fillMaxSize(settings.streamVisualSize.fraction))
                 }
             }
-            Column(Modifier.widthIn(max = 460.dp).fillMaxWidth().padding(horizontal = ui.gap(24.dp), vertical = ui.gap(16.dp)),
+            val groupAlignment = if (settings.streamLayout == StreamLayout.SEPARATE && height >= 320.dp) Alignment.BottomCenter else Alignment.Center
+            Column(Modifier.align(groupAlignment).widthIn(max = 460.dp).fillMaxWidth().padding(horizontal = ui.gap(24.dp), vertical = ui.gap(if (groupAlignment == Alignment.BottomCenter) 32.dp else 16.dp)),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 10.dp else 20.dp))) {
                 VibeIdentity(title, compact, height >= 320.dp)
-                VibeStationAction(playing, starting, active, onStart)
+                VibeStationAction(playing, starting, active, onStart, compact = compact)
                 VibeTunePill(onTune)
             }
         }
@@ -263,7 +266,7 @@ private fun VibeIdentity(source: String, compact: Boolean, roomy: Boolean) {
 @Composable
 internal fun VibeStationAction(
     playing: Boolean, starting: Boolean, active: Boolean,
-    onPlay: () -> Unit, modifier: Modifier = Modifier,
+    onPlay: () -> Unit, modifier: Modifier = Modifier, compact: Boolean = false,
 ) {
     val ui = LocalUi.current
     val settings = LocalAppSettings.current
@@ -273,14 +276,19 @@ internal fun VibeStationAction(
         active -> R.string.widget_play
         else -> R.string.prism_stream_start_listening
     })
-    val shape = ui.button
-    PrismButton(onClick = onPlay, enabled = !starting, shape = shape,
-        contentPadding = PaddingValues(0.dp),
-        modifier = modifier.size(ui.gap(84.dp).coerceIn(64.dp, 88.dp))
-            .then(if (settings.view.playRing && !ui.classicControls) Modifier.border(1.5.dp, PrismTokens.spectrumRing(), shape) else Modifier)
-            .testTag("home:my_wave:play")) {
+    val shape = CircleShape
+    val diameter = (ui.gap(if (compact) 68.dp else 84.dp) * settings.streamActionSize.fraction).coerceIn(48.dp, 88.dp)
+    val target = modifier.size(diameter)
+        .then(if (settings.view.playRing && !ui.classicControls) Modifier.border(1.5.dp, PrismTokens.spectrumRing(), shape) else Modifier)
+        .testTag("home:my_wave:play")
+    @Composable fun Glyph() {
         if (starting) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-        else Icon(if (playing) PrismIcons.Pause else PrismIcons.Play, label, Modifier.size(34.dp))
+        else Icon(if (playing) PrismIcons.Pause else PrismIcons.Play, label, Modifier.size(diameter * 0.43f))
+    }
+    when (settings.streamActionStyle) {
+        TransportStyle.BUTTON -> PrismButton(onPlay, target, enabled = !starting, shape = shape, contentPadding = PaddingValues(0.dp)) { Glyph() }
+        TransportStyle.OUTLINE -> PrismOutlinedButton(onPlay, target, enabled = !starting, shape = shape, contentPadding = PaddingValues(0.dp)) { Glyph() }
+        TransportStyle.GLYPHS -> IconButton(onClick = onPlay, modifier = target, enabled = !starting) { Glyph() }
     }
 }
 

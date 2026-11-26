@@ -132,16 +132,16 @@ fun LookPhones(s: AppSettings, width: Dp, modifier: Modifier = Modifier, gap: Dp
 
 /** A read-only Vibe preview: same layout flags, cover geometry, and page colors, without starting playback. */
 @Composable
-internal fun VibeLookPreview(s: AppSettings) {
+internal fun VibeLookPreview(s: AppSettings, live: Boolean = false) {
     val song by LocalContainer.current.player.currentSong.collectAsState()
     val dark = isAppDark(s)
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        PreviewPhone(126.dp) { LookTheme(s, dark) { c -> MiniVibe(c, song) } }
+        PreviewPhone(if (live) 164.dp else 126.dp) { LookTheme(s, dark) { c -> MiniVibe(c, song, live) } }
     }
 }
 
 @Composable
-private fun MiniVibe(c: ThemeColors, song: Song?) {
+private fun MiniVibe(c: ThemeColors, song: Song?, live: Boolean) {
     val s = LocalAppSettings.current
     val ui = LocalUi.current
     val scheme = c.scheme
@@ -157,7 +157,7 @@ private fun MiniVibe(c: ThemeColors, song: Song?) {
                     Icon(PrismIcons.Palette, null, Modifier.size(24.dp))
                 }
             }, player = { panel ->
-                VibeFlowField(panel, preview = true) { visual ->
+                VibeFlowField(panel, animated = live, preview = !live) { visual ->
                     VibeDiscoveryStage(s, tr(R.string.prism_stream_station_default), active = true,
                         playing = true, starting = false, onStart = {}, onTune = {}, visual = visual)
                 }

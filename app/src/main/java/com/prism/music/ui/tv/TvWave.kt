@@ -173,6 +173,7 @@ internal fun TvWavePlace(nav: TvNav) {
                             TvWaveChoices(tr(R.string.layout), StreamLayout.entries, appSettings.streamLayout, "layout", { it.label }) { c.settings.setStreamLayout(it) }
                             if (appSettings.streamVisualStyle != StreamVisualStyle.OFF) {
                             TvWaveChoices(tr(R.string.size), StreamCoverSize.entries, appSettings.streamVisualSize, "size", { it.label }) { c.settings.setStreamVisualSize(it) }
+                            TvWaveAdjust(tr(R.string.opacity), appSettings.streamOpacity, "opacity", maximum = 1f, step = 0.1f) { c.settings.setStreamOpacity(it) }
                             TvWaveAdjust(tr(R.string.speed), appSettings.streamMotion, "speed") { c.settings.setStreamMotion(it) }
                             TvWaveAdjust(tr(R.string.intensity), appSettings.streamSensitivity, "intensity") { c.settings.setStreamSensitivity(it) }
                             }
@@ -453,16 +454,16 @@ private fun <T> TvWaveChoices(title: String, values: List<T>, selected: T, tag: 
 
 /** Same 25% increments as phone sliders, with only two remote focus stops per parameter. */
 @Composable
-private fun TvWaveAdjust(title: String, value: Float, tag: String, change: (Float) -> Unit) {
+private fun TvWaveAdjust(title: String, value: Float, tag: String, maximum: Float = 2f, step: Float = 0.25f, change: (Float) -> Unit) {
     val ui = com.prism.music.ui.theme.LocalUi.current
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp))) {
         Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
         TvIconButton(PrismIcons.Remove, tr(R.string.prism_stream_decrease_share, title),
-            { change((value - 0.25f).coerceIn(0f, 2f)) }, Modifier.tvItem("tv_wave/$tag/down"))
-        Text("${(value * 100).toInt()}%", style = MaterialTheme.typography.titleMedium)
+            { change((value - step).coerceIn(0f, maximum)) }, Modifier.tvItem("tv_wave/$tag/down"))
+        Text("${kotlin.math.round(value * 100).toInt()}%", style = MaterialTheme.typography.titleMedium)
         TvIconButton(PrismIcons.Add, tr(R.string.prism_stream_increase_share, title),
-            { change((value + 0.25f).coerceIn(0f, 2f)) }, Modifier.tvItem("tv_wave/$tag/up"))
+            { change((value + step).coerceIn(0f, maximum)) }, Modifier.tvItem("tv_wave/$tag/up"))
     }
 }
 
