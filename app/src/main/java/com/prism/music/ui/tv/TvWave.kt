@@ -339,6 +339,7 @@ internal fun TvWavePlace(nav: TvNav) {
                 Box(Modifier.weight(1f, fill = true).fillMaxWidth(), propagateMinConstraints = true) {
                     com.prism.music.ui.screens.VibeStationOverlay(appSettings,
                         com.prism.music.ui.screens.activeVibeTitle(source, activeSaved, activeScenario), hasTrack = current != null,
+                        origin = com.prism.music.ui.screens.activeVibeOrigin(source, current),
                         artist = now?.artist ?: current?.primaryArtist,
                         play = {
                             TvIconButton(if (now?.playing == true) PrismIcons.Pause else PrismIcons.Play, tr(when {
