@@ -26,10 +26,6 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.prism.music.data.prefs.LightStyle
-import com.prism.music.data.prefs.ColorSource
-import com.prism.music.ui.theme.LocalArtworkColor
-import com.prism.music.ui.theme.seedFor
-import com.prism.music.ui.theme.themeColors
 import com.prism.music.ui.theme.SpectrumPresets
 import kotlin.math.exp
 import com.prism.music.data.prefs.StreamVisualStyle
@@ -49,19 +45,12 @@ internal fun VibeSphere(
     val style = settings.streamVisualStyle
     if (style == StreamVisualStyle.OFF) return
     val dark = LocalIsDark.current
-    val currentScheme = MaterialTheme.colorScheme
-    val artwork = LocalArtworkColor.current
-    // Use the final artwork seed, not the global theme's already interpolating primary.
-    // Otherwise the wave repeatedly restarts its own tween on every intermediate theme frame.
-    val scheme = if (settings.colorSource == ColorSource.DYNAMIC) currentScheme
-        else remember(settings, dark, artwork) {
-            themeColors(settings, dark, seedFor(settings, dark, artwork), null).scheme
-        }
-    val coverStops = if (settings.spectrumPreset == SpectrumPresets.COVER) SpectrumPresets.coverTargetStops else null
+    // Read the live Material scheme and cover light from Prism's single theme transition.
+    val scheme = MaterialTheme.colorScheme
+    val coverStops = if (settings.spectrumPreset == SpectrumPresets.COVER) SpectrumPresets.coverStops else null
     val palette = remember(settings.lightStyle, settings.spectrumPreset, settings.spectrumStops, settings.spectrumBands, dark, coverStops) {
         if (settings.lightStyle == LightStyle.WHITE) emptyList()
-        else SpectrumPresets.light(if (coverStops != null) "CUSTOM" else settings.spectrumPreset,
-            coverStops ?: settings.spectrumStops, settings.spectrumBands).let {
+        else SpectrumPresets.light(settings.spectrumPreset, settings.spectrumStops, settings.spectrumBands).let {
             (if (dark) it.colors else it.deep).map { stop -> stop.second }
         }
     }
@@ -115,8 +104,7 @@ internal fun VibeSphere(
     }
     val opacity = (if (dark) 0.92f else 0.76f) * settings.streamOpacity
     YamusicWaveBackdrop(modifier, a, b, c, signal, opacity, settings.streamVisualSize.fraction,
-        style, energy, motion, colorDurationMs = if (settings.colorSource == ColorSource.ARTWORK || coverStops != null)
-            settings.artworkChange.ms.coerceAtLeast(900) else 1200)
+        style, energy, motion, colorDurationMs = 0)
 }
 
 /** The phase advances without any audio input, even while paused. */
