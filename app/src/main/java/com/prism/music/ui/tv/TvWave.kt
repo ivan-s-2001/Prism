@@ -287,15 +287,17 @@ internal fun TvWavePlace(nav: TvNav) {
                             if (current != null) com.prism.music.ui.screens.VibeCredits(appSettings,
                                 now?.title ?: current.title, now?.artist ?: current.primaryArtist,
                                 artwork = { Artwork(now?.art, it, shape = com.prism.music.ui.theme.CoverShapes.of(appSettings.shapes.player, appSettings.player.artCorners.dp), size = 180) })
+                        }, previous = {
+                            TvIconButton(PrismIcons.Previous, tr(R.string.widget_previous),
+                                { if (c.player.hasPrevious.value) c.player.previous() }, Modifier.tvItem("tv_wave/previous"))
+                        }, next = {
+                            TvIconButton(PrismIcons.Next, tr(R.string.prism_stream_next),
+                                { if (c.player.hasNext.value) c.player.next() }, Modifier.tvItem("tv_wave/next"))
                         }, actions = {
                             if (current != null) {
                                 if (appSettings.streamShowReactions) TvIconButton(if (current.id in disliked) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown, tr(R.string.prism_stream_not_for_me),
                                     { val on = current.id in disliked; c.library.setDisliked(current, !on); if (!on && c.player.hasNext.value) c.player.next() },
                                     Modifier.tvItem("tv_wave/dislike"), on = current.id in disliked)
-                                TvIconButton(PrismIcons.Previous, tr(R.string.widget_previous),
-                                    { if (c.player.hasPrevious.value) c.player.previous() }, Modifier.tvItem("tv_wave/previous"))
-                                TvIconButton(PrismIcons.Next, tr(R.string.prism_stream_next),
-                                    { if (c.player.hasNext.value) c.player.next() }, Modifier.tvItem("tv_wave/next"))
                                 if (appSettings.streamShowReactions) TvIconButton(if (now?.liked == true) PrismIcons.HeartFilled else PrismIcons.Heart, tr(R.string.prism_stream_like),
                                     { c.library.toggleLike(current) }, Modifier.tvItem("tv_wave/like"), on = now?.liked == true)
                                 TvIconButton(PrismIcons.ChevronRight, tr(R.string.prism_stream_player), { nav.go(TvRoute.Player) }, Modifier.tvItem("tv_wave/player"))

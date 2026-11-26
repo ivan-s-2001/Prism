@@ -163,10 +163,12 @@ private fun MiniVibe(c: ThemeColors, song: Song?) {
                     credits = {
                         if (song != null) VibeCredits(s, song.title, song.primaryArtist,
                             artwork = { StandIn(song, it, com.prism.music.ui.theme.CoverShapes.of(s.shapes.player, s.player.artCorners.dp), standIns.first()) })
+                    }, previous = {
+                        VibeTrackAction(PrismIcons.Previous, tr(R.string.widget_previous), {})
+                    }, next = {
+                        VibeTrackAction(PrismIcons.Next, tr(R.string.prism_stream_next), {})
                     }, actions = {
                         if (s.streamShowReactions) VibeTrackAction(PrismIcons.ThumbDown, tr(R.string.prism_stream_not_for_me), {})
-                        VibeTrackAction(PrismIcons.Previous, tr(R.string.widget_previous), {})
-                        VibeTrackAction(PrismIcons.Next, tr(R.string.prism_stream_next), {})
                         if (s.streamShowReactions) VibeTrackAction(PrismIcons.Heart, tr(R.string.prism_stream_like), {})
                     }, progress = { PreviewBar(s, Brush.horizontalGradient(c.ring), ink = scheme.onSurface) })
             }

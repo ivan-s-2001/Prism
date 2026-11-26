@@ -74,7 +74,9 @@ internal fun VibeFlowField(
 internal fun VibeStationOverlay(
     settings: AppSettings, title: String, hasTrack: Boolean,
     modifier: Modifier = Modifier, play: @Composable () -> Unit,
-    credits: @Composable () -> Unit, actions: @Composable RowScope.() -> Unit,
+    credits: @Composable () -> Unit,
+    previous: @Composable () -> Unit, next: @Composable () -> Unit,
+    actions: @Composable RowScope.() -> Unit,
     progress: @Composable () -> Unit = {},
 ) {
     val ui = LocalUi.current
@@ -90,7 +92,11 @@ internal fun VibeStationOverlay(
                     Row(horizontalArrangement = Arrangement.spacedBy(ui.gap(4.dp)), verticalAlignment = Alignment.CenterVertically, content = actions)
                 }
                 if (settings.streamReverseLayout) Actions()
-                credits()
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.width(52.dp), contentAlignment = Alignment.Center) { previous() }
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { credits() }
+                    Box(Modifier.width(52.dp), contentAlignment = Alignment.Center) { next() }
+                }
                 if (!settings.streamReverseLayout) Actions()
                 if (settings.streamShowProgress) progress()
             }
@@ -147,14 +153,14 @@ internal fun VibeCredits(
 ) {
     val ui = LocalUi.current
     val scheme = MaterialTheme.colorScheme
-    val coverSize = 42.dp * settings.streamCoverSize.fraction
+    val coverSize = 32.dp * settings.streamCoverSize.fraction
     @Composable fun Body() {
         Row(Modifier.fillMaxWidth().then(if (onOpen != null) Modifier.clickable(onClick = onOpen) else Modifier)
             .padding(vertical = ui.gap(3.dp), horizontal = ui.gap(4.dp)),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ui.gap(6.dp))) {
             if (settings.streamShowCover) artwork(Modifier.size(coverSize))
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
                 Text(artist, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1,
                     overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
             }

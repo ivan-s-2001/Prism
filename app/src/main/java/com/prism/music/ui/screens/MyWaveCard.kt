@@ -341,11 +341,14 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                         current?.let { item -> VibeCredits(settings, item.title, item.primaryArtist,
                             artwork = { TrackArtwork(it) }, onOpen = onOpenPlayer) }
                     },
-                    actions = {
-                        if (settings.streamShowReactions) Reaction(false)
+                    previous = {
                         VibeTrackAction(PrismIcons.Previous, tr(R.string.widget_previous), { c.player.previous() }, enabled = hasPrevious)
+                    },
+                    next = {
                         VibeTrackAction(PrismIcons.Next, tr(R.string.prism_stream_next), { c.player.next() }, enabled = hasNext)
-                        if (settings.streamShowReactions) Reaction(true)
+                    },
+                    actions = {
+                        if (settings.streamShowReactions) { Reaction(false); Reaction(true) }
                     },
                     progress = {
                         val item = current
