@@ -12,7 +12,7 @@ import com.prism.music.data.prefs.PlayerButton
 import com.prism.music.ui.theme.LocalContainer
 import com.prism.music.ui.theme.PrismIcons
 
-internal fun canStartTrackVibe(song: Song): Boolean = !song.isEpisode && !song.isLive && !song.isLocal && !song.isRss
+internal fun canStartTrackVibe(song: Song): Boolean = !song.isEpisode && !song.isLive && !song.isLocal && !song.isRss && !song.isVideo
 
 /** When Like is moved to the customizable deck, keep the two reactions adjacent there.
  * Otherwise the credits own the pair; do not repeat a previously saved dislike button. */
@@ -22,8 +22,11 @@ internal fun deckOwnsPlayerReactions(buttons: List<PlayerButton>, headerLike: Bo
 internal fun pairedPlayerReactions(buttons: List<PlayerButton>, headerLike: Boolean): List<PlayerButton> {
     if (headerLike && PlayerButton.LIKE in buttons && !deckOwnsPlayerReactions(buttons, true))
         return buttons.filter { it != PlayerButton.LIKE && it != PlayerButton.DISLIKE }
-    if (PlayerButton.LIKE in buttons) return buttons.filter { it != PlayerButton.DISLIKE }.flatMap {
-        if (it == PlayerButton.LIKE) listOf(it, PlayerButton.DISLIKE) else listOf(it)
+    if (PlayerButton.LIKE in buttons) {
+        val withoutDislike = buttons.filter { it != PlayerButton.DISLIKE }.distinct()
+        // Preserve all explicitly configured actions rather than silently dropping one.
+        if (withoutDislike.size >= PlayerButton.MAX) return withoutDislike.take(PlayerButton.MAX)
+        return withoutDislike.flatMap { if (it == PlayerButton.LIKE) listOf(it, PlayerButton.DISLIKE) else listOf(it) }
     }
     return if (headerLike) buttons.filter { it != PlayerButton.DISLIKE } else buttons
 }
@@ -35,8 +38,7 @@ internal fun PlayerDislikeGlyph(song: Song) {
     val on = song.id in disliked
     CircleGlyph(if (on) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown,
         tr(R.string.not_for_me), on, Modifier.testTag("player:dislike")) {
-        val set = !c.library.isDisliked(song.id)
-        c.library.setDisliked(song, set)
+        val set = c.library.toggleDislike(song)
         if (set && c.player.currentSong.value?.id == song.id && c.player.hasNext.value) c.player.next()
     }
 }
