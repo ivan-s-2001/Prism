@@ -117,7 +117,7 @@ internal fun VibePageLayout(
 }
 
 internal fun vibeFillsViewport(width: Dp, height: Dp): Boolean =
-    height != Dp.Infinity && height >= if (width >= 620.dp) 400.dp else 480.dp
+    height != Dp.Infinity && height >= if (width >= 620.dp) 400.dp else 560.dp
 
 /** One visual slot: pass the allocated viewport to the station instead of losing its minimum constraints. */
 @Composable
@@ -308,7 +308,7 @@ private fun VibeIdentity(source: String, compact: Boolean, roomy: Boolean) {
             else -> MaterialTheme.typography.headlineSmall
         }).copy(fontWeight = FontWeight.SemiBold),
         color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center,
-        maxLines = 2, overflow = TextOverflow.Ellipsis)
+        maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
 /** Single station action with the app's own controls, shape and play-ring preference. */
@@ -370,9 +370,9 @@ internal fun VibeCredits(
     val coverSize = (if (inline) 48.dp else 48.dp) * settings.streamCoverSize.fraction
     @Composable fun Labels(modifier: Modifier = Modifier) {
         Column(modifier, horizontalAlignment = if (inline) Alignment.Start else Alignment.CenterHorizontally) {
-            Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium), maxLines = 2, overflow = TextOverflow.Ellipsis,
+            Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium), minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 textAlign = if (inline) TextAlign.Start else TextAlign.Center)
-            if (showArtist && artist.isNotBlank()) Text(artist, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant, maxLines = 1,
+            if (showArtist) Text(artist.ifBlank { " " }, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, textAlign = if (inline) TextAlign.Start else TextAlign.Center)
         }
     }
