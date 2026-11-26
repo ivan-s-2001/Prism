@@ -48,7 +48,7 @@ private fun VibePreferencesContent(modifier: Modifier, onClose: () -> Unit, onAd
     val c = LocalContainer.current
     val liked by c.library.liked.collectAsState()
     val disliked by c.library.dislikedSongs.collectAsState()
-    val favorites by c.artistPrefs.favorites.collectAsState()
+    val artists by c.library.profileArtists.collectAsState()
     val blocked by c.exclusions.artists.collectAsState()
     val ignoredSongs by c.exclusions.songs.collectAsState()
     val ignoredLists by c.exclusions.playlists.collectAsState()
@@ -62,7 +62,6 @@ private fun VibePreferencesContent(modifier: Modifier, onClose: () -> Unit, onAd
         PreferenceTab.PLAYLISTS -> ignoredLists
         else -> emptyList()
     }
-    val artists = favorites.filterNot { favorite -> blocked.any { it.id == favorite.id || it.name.equals(favorite.name, true) } }
     fun matches(name: String) = query.isBlank() || name.contains(query.trim(), true)
     val labels = listOf(
         tr(R.string.prism_vibe_likes_count, liked.size),

@@ -105,7 +105,7 @@ class YourMusic(private val c: AppContainer) {
 
     internal data class WaveTaste(val profile: MyWave.Profile, val favorites: List<Song>, val likedSeeds: List<Song>, val likes: List<Song>)
     private data class WarmTaste(val account: String, val likedIds: Set<String>, val preferences: List<Any>, val at: Long, val taste: WaveTaste)
-    private fun preferenceSnapshot(): List<Any> = listOf(c.library.likedIds.value, c.library.dislikedIds.value, c.artistPrefs.favorites.value, c.exclusions.artists.value, c.exclusions.songs.value, c.exclusions.playlists.value)
+    private fun preferenceSnapshot(): List<Any> = listOf(c.library.likedIds.value, c.library.dislikedIds.value, c.library.profileArtists.value, c.exclusions.artists.value, c.exclusions.songs.value, c.exclusions.playlists.value)
     @Volatile private var warmTaste: WarmTaste? = null
 
     /** Local, recency-weighted taste and listening-context profile, shared by Wave start and refill.
@@ -157,7 +157,7 @@ class YourMusic(private val c: AppContainer) {
             }
             s.genres[song.id]?.let { genreLikes.merge(it, weight, Double::plus) }
         }
-        c.artistPrefs.favorites.value.filterNot { c.exclusions.isArtistExcluded(it.id, it.name) }.forEach { favorite ->
+        c.library.profileArtists.value.filterNot { c.exclusions.isArtistExcluded(it.id, it.name) }.forEach { favorite ->
             val name = favorite.name.lowercase()
             artist.merge(name, 4.0, Double::plus)
             artistLikes.merge(name, 2.0, Double::plus)

@@ -24,12 +24,11 @@ internal fun TvMusicProfilePage(nav: TvNav) {
     val c = LocalContainer.current
     val likes by c.library.liked.collectAsState()
     val dislikes by c.library.dislikedSongs.collectAsState()
-    val favorites by c.artistPrefs.favorites.collectAsState()
+    val artists by c.library.profileArtists.collectAsState()
     val blocked by c.exclusions.artists.collectAsState()
     val ignoredSongs by c.exclusions.songs.collectAsState()
     val ignoredLists by c.exclusions.playlists.collectAsState()
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    val artists = favorites.filterNot { f -> blocked.any { it.id == f.id || it.name.equals(f.name, true) } }
     val labels = listOf(
         tr(R.string.prism_vibe_likes_count, likes.size), tr(R.string.prism_vibe_dislikes_count, dislikes.size),
         tr(R.string.prism_vibe_favorite_artists_count, artists.size), tr(R.string.prism_vibe_blocked_artists_count, blocked.size),
