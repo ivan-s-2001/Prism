@@ -29,6 +29,7 @@ import androidx.compose.ui.geometry.Offset
 import kotlin.math.sin
 import kotlin.math.cos
 import com.prism.music.ui.player.rememberVisualizer
+import com.prism.music.data.prefs.StreamVisualStyle
 import com.prism.music.ui.theme.LocalAppSettings
 import com.prism.music.ui.theme.LocalIsDark
 import androidx.compose.material3.MaterialTheme
@@ -102,6 +103,8 @@ internal fun VibeSphere(
     preview: Boolean = false,
 ) {
     val settings = LocalAppSettings.current
+    val style = settings.streamVisualStyle
+    if (style == StreamVisualStyle.OFF) return
     val dark = LocalIsDark.current
     val scheme = MaterialTheme.colorScheme
     // Follow the resolved Material accent, including dynamic wallpaper, custom accent and preview themes.
@@ -136,7 +139,9 @@ internal fun VibeSphere(
     }
     val bass = { if (motion) level.floatValue else 0f }
     val opacity = if (dark) 0.90f else 0.70f
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !settings.performanceMode) {
+    if (style == StreamVisualStyle.GLOW) {
+        Canvas(modifier) { drawVibeGlow(a, b, bass(), opacity, if (motion) time.floatValue else 7f) }
+    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !settings.performanceMode) {
         ShaderSphere(modifier, a, b, c, energy.coerceIn(0f, 1f), opacity, { time.floatValue }, bass)
     } else {
         Canvas(modifier) { drawSoftSphere(a, b, c, bass(), opacity, if (motion) time.floatValue else 7f) }
@@ -169,6 +174,22 @@ private fun ShaderSphere(
             // Create a fresh brush after writing uniforms, avoiding a cached native shader snapshot.
             drawRect(ShaderBrush(shader))
         }
+    }
+}
+
+/** A quiet, theme-colored halo; deliberately different from the turbulent Wave renderer. */
+private fun DrawScope.drawVibeGlow(a: Color, b: Color, bass: Float, opacity: Float, time: Float) {
+    if (size.minDimension <= 0f) return
+    val radius = size.minDimension * (0.38f + 0.025f * bass + 0.018f * sin(time * 0.55f))
+    val centerA = center + Offset(cos(time * 0.48f), sin(time * 0.48f)) * (radius * 0.16f)
+    val centerB = center - Offset(cos(time * 0.48f), sin(time * 0.48f)) * (radius * 0.16f)
+    listOf(a to centerA, b to centerB).forEach { (color, at) ->
+        drawCircle(Brush.radialGradient(
+            0f to Color.Transparent,
+            0.40f to Color.Transparent,
+            0.70f to color.copy(alpha = (0.24f + 0.10f * bass) * opacity),
+            1f to Color.Transparent, center = at, radius = radius
+        ), radius = radius, center = at)
     }
 }
 

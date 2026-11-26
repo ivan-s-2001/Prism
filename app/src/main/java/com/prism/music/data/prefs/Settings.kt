@@ -1181,6 +1181,9 @@ enum class PlayerBackground(val label: String) {
 }
 enum class TransportStyle(val label: String) { GLYPHS(tr(R.string.classic)), BUTTON(tr(R.string.transport_filled_play)), OUTLINE(tr(R.string.rings)) }
 /** How wide the player's cover is: [extra] is how far it reaches into each side margin. */
+/** A Flow-only visual effect; global reduced motion and performance preferences still apply. */
+enum class StreamVisualStyle(val label: String) { WAVE(tr(R.string.wave)), GLOW(tr(R.string.glow)), OFF(tr(R.string.off)) }
+
 enum class StreamCoverSize(val label: String, val fraction: Float) {
     COMPACT(tr(R.string.compact), 0.60f), MEDIUM(tr(R.string.medium), 0.80f), LARGE(tr(R.string.large), 1f)
 }
@@ -1918,6 +1921,7 @@ data class AppSettings(
     val frostedPages: Boolean = true,
     val replayThemeColors: Boolean = false,
     val streamThemeColors: Boolean = false,
+    val streamVisualStyle: StreamVisualStyle = StreamVisualStyle.WAVE,
     val streamShowCover: Boolean = true,
     val streamCoverSize: StreamCoverSize = StreamCoverSize.LARGE,
     val streamGlassPanel: Boolean = false,
@@ -2336,6 +2340,7 @@ class SettingsRepository(
         val frostedPages = booleanPreferencesKey("frosted_pages")
         val replayThemeColors = booleanPreferencesKey("replay_theme_colors")
         val streamThemeColors = booleanPreferencesKey("stream_theme_colors")
+        val streamVisualStyle = stringPreferencesKey("stream_visual_style")
         val streamShowCover = booleanPreferencesKey("stream_show_cover")
         val streamCoverSize = stringPreferencesKey("stream_cover_size")
         val streamGlassPanel = booleanPreferencesKey("stream_glass_panel")
@@ -2490,7 +2495,7 @@ class SettingsRepository(
                 fontChoice, textScale, corners, uiDensity, titleSize, cardSize, reduceMotion, navStyle, navLabels, navHideOnScroll,
                 navTabs, startTab, miniPlayerStyle, miniSkipButtons, miniPrevButton, miniPlayButton, miniProgress, miniProgressColor, miniFillStrength, playRing, playingInPageColor, playerBackground, playerBackdropShow, playerArtCorners, transportStyle,
                 coverSize, scrubberStyle, artShrinkOnPause, showOutputDevice, lyricsAlign, libraryView, playlistHeroCover, frostedPages, replayThemeColors, streamThemeColors, streamRussianPercent,
-                streamShowCover, streamCoverSize, streamGlassPanel, streamReverseLayout, streamScenarioOrder, streamShowProgress, streamShowReactions, streamShowStatus, streamCompactScenarios,
+                streamVisualStyle, streamShowCover, streamCoverSize, streamGlassPanel, streamReverseLayout, streamScenarioOrder, streamShowProgress, streamShowReactions, streamShowStatus, streamCompactScenarios,
                 immersiveArt, immersiveLyrics, immersiveControls, playerShuffleRepeat, lightStyle,
                 playerLayout, vinylTonearm, playerDeck, playerButtons, scrubberColor, playerTitleAlign, playerTitleSize, playerTitleScroll,
                 playerTimes, meshSpeed, meshIntensity, playerBlur, canvasFillsBackground,
@@ -2537,7 +2542,7 @@ class SettingsRepository(
                 lyricsAlign to 's', lyricsBlur to 'b', lyricsProgressLine to 'b', lyricsSourceButton to 'b', lyricsScale to 'f',
                 libraryView to 's', libraryViews to 's', libraryColumns to 's', librarySubtitles to 'b', playlistHeroCover to 'b',
                 homeHeader to 's', homeHeaderHeight to 's', replayThemeColors to 'b', streamThemeColors to 'b', streamRussianPercent to 'i',
-                streamShowCover to 'b', streamCoverSize to 's', streamGlassPanel to 'b', streamReverseLayout to 'b', streamScenarioOrder to 's', streamShowProgress to 'b', streamShowReactions to 'b', streamShowStatus to 'b', streamCompactScenarios to 'b', replayCard to 's', hideStatusBar to 'b',
+                streamVisualStyle to 's', streamShowCover to 'b', streamCoverSize to 's', streamGlassPanel to 'b', streamReverseLayout to 'b', streamScenarioOrder to 's', streamShowProgress to 'b', streamShowReactions to 'b', streamShowStatus to 'b', streamCompactScenarios to 'b', replayCard to 's', hideStatusBar to 'b',
                 cornerScale to 'f', songShape to 's', albumShape to 's', artistShape to 's', playerShape to 's', buttonShape to 's', playOutlined to 'b',
                 typeWeight to 's', typeSpacing to 's', titleFont to 's', tabTint to 's', playerTitleWeight to 's', typeClassic to 'b', controlsClassic to 'b',
                 panelPlayer to 's', queueHeadings to 'b', queueDjChip to 'b', castMark to 'b', immersiveVideo to 'b', bleedFit to 's', coverFlight to 'b',
@@ -3133,6 +3138,7 @@ class SettingsRepository(
             frostedPages = p[K.frostedPages] ?: d.frostedPages,
             replayThemeColors = p[K.replayThemeColors] ?: d.replayThemeColors,
             streamThemeColors = p[K.streamThemeColors] ?: d.streamThemeColors,
+            streamVisualStyle = p.enum(K.streamVisualStyle, d.streamVisualStyle),
             streamShowCover = p[K.streamShowCover] ?: d.streamShowCover,
             streamCoverSize = p.enum(K.streamCoverSize, d.streamCoverSize),
             streamGlassPanel = p[K.streamGlassPanel] ?: d.streamGlassPanel,
@@ -3991,6 +3997,7 @@ class SettingsRepository(
     fun setFrostedPages(v: Boolean) = edit { it[K.frostedPages] = v }
     fun setReplayThemeColors(v: Boolean) = edit { it[K.replayThemeColors] = v }
     fun setStreamThemeColors(v: Boolean) = edit { it[K.streamThemeColors] = v }
+    fun setStreamVisualStyle(v: StreamVisualStyle) = edit { it[K.streamVisualStyle] = v.name }
     fun setStreamShowCover(v: Boolean) = edit { it[K.streamShowCover] = v }
     fun setStreamCoverSize(v: StreamCoverSize) = edit { it[K.streamCoverSize] = v.name }
     fun setStreamGlassPanel(v: Boolean) = edit { it[K.streamGlassPanel] = v }
