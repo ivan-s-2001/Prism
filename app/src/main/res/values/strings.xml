@@ -5823,4 +5823,7 @@
     <string name="prism_recording_partial">No matching recordings yet. Some sources failed; open Sources for details.</string>
     <string name="prism_recording_retry">Search again</string>
     <string name="prism_recording_caution">Matching metadata does not establish that the audio is uncensored.</string>
+    <string name="prism_external_catalogs">Find in other music catalogs</string>
+    <string name="prism_external_catalog_note">Catalog links only. Opens the service; not an audio source inside Prism. Spotify needs a connected developer-app account.</string>
+    <string name="prism_external_open">Open service</string>
 </resources>

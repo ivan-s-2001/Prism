@@ -5922,4 +5922,7 @@
     <string name="prism_recording_partial">Совпадений нет. Некоторые источники не ответили — подробности в списке источников.</string>
     <string name="prism_recording_retry">Повторить поиск</string>
     <string name="prism_recording_caution">Совпадение метаданных не подтверждает отсутствие цензуры в звуке.</string>
+    <string name="prism_external_catalogs">Найти в других музыкальных каталогах</string>
+    <string name="prism_external_catalog_note">Только ссылки на релизы. Воспроизведение открывается в самом сервисе, не в Prism. Для Spotify нужен подключённый аккаунт через API.</string>
+    <string name="prism_external_open">Открыть сервис</string>
 </resources>

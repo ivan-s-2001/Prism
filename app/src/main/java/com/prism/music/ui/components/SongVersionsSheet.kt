@@ -32,6 +32,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.prism.music.data.SongVersions
 import com.prism.music.data.stream.RecordingDiscovery
+import com.prism.music.data.stream.ExternalCatalogDiscovery
+import com.prism.music.data.stream.CatalogService
+import com.prism.music.data.stream.CatalogOutcome
 import com.prism.music.data.stream.RecordingHit
 import com.prism.music.data.stream.RecordingSearchRank
 import com.prism.music.data.stream.RecordingSearchResult
@@ -92,6 +95,14 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
         }
     }
     val hits = remember(song, plan, results, explicitMode) { RecordingSearchRank.rank(song, plan, results.values, explicitMode) }
+    var showCatalogs by remember(song.id) { mutableStateOf(false) }
+    val catalogDiscovery = remember(c) { ExternalCatalogDiscovery(c.spotify.api) }
+    val catalogResults by produceState<Map<CatalogService, CatalogOutcome>>(emptyMap(), song.id, explicitMode, showCatalogs) {
+        value = emptyMap()
+        if (showCatalogs) catalogDiscovery.search(song, explicitMode).collect { result ->
+            value = value + (result.service to result)
+        }
+    }
     var link by remember(song.id) { mutableStateOf("") }
     var checkingLink by remember(song.id) { mutableStateOf(false) }
     var checkedLink by remember(song.id) { mutableStateOf<Song?>(null) }
@@ -211,6 +222,29 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                     }
                 }
                 Quiet(tr(R.string.prism_recording_caution))
+                androidx.compose.material3.TextButton(
+                    onClick = { showCatalogs = !showCatalogs }, modifier = Modifier.padding(horizontal = 12.dp)
+                ) { Text(tr(R.string.prism_external_catalogs)) }
+                if (showCatalogs) {
+                    Quiet(tr(R.string.prism_external_catalog_note))
+                    CatalogService.entries.forEach { service ->
+                        val result = catalogResults[service]
+                        Text(service.label, Modifier.padding(horizontal = 22.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.titleSmall)
+                        when {
+                            result == null -> Quiet(tr(R.string.prism_recording_searching))
+                            result.failed -> Quiet(tr(R.string.prism_recording_error))
+                            result.matches.isEmpty() -> Quiet(tr(R.string.prism_sc_no_versions))
+                            else -> result.matches.forEach { hit ->
+                                VersionRow(hit.song, listOfNotNull(tr(R.string.prism_external_open),
+                                    hit.market, tr(R.string.prism_version_explicit_match).takeIf { hit.song.explicit })
+                                    .joinToString(" · "), false, Modifier.testTag("catalog:${hit.song.id}:${hit.market}")) {
+                                    runCatching { uriHandler.openUri(hit.url) }
+                                }
+                            }
+                        }
+                    }
+                }
             }
             if (preferExplicit && !song.isLocal && !song.isEpisode && !song.isLive && !song.isUpload) {
                 androidx.compose.material3.TextButton(
