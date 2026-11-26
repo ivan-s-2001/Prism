@@ -546,6 +546,10 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         scope.launch { c.settings.flow.map { it.singAlwaysReady }.distinctUntilChanged().collect { if (it) singAhead() } }
         // Smart Shuffle: picks go in when it's turned on, and leave when it's turned off.
         scope.launch { c.queue.smartOn.collect { on -> if (on) smartAhead() else dropSmartPicks() } }
+        // Explicit preference edits apply to the unplayed generated portion, not to the current or manually queued songs.
+        scope.launch { c.library.dislikedIds.drop(1).collect { refreshVibePreferences() } }
+        scope.launch { c.exclusions.artists.drop(1).collect { refreshVibePreferences() } }
+        scope.launch { c.exclusions.songs.drop(1).collect { refreshVibePreferences() } }
         // Another network (or back online): songs that failed on the old one may play now (plan 4.4), and the one coming up
         // is looked up afresh too (its lookup ahead of time may have failed, and a link can be bound to the old address).
         scope.launch {
@@ -1825,6 +1829,27 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 if (!available) player.removeMediaItem(i)
             }
         }
+        maybeAutoplay()
+    }
+
+    private fun refreshVibePreferences() {
+        if (!c.queue.source.value.isVibe || c.queue.followingHost || c.queue.filling) return
+        val current = player.currentMediaItemIndex
+        if (current !in 0 until player.mediaItemCount) return
+        val manual = c.queue.userQueued.value
+        dropAutoplay()
+        c.queue.filling = true
+        try {
+            for (index in player.mediaItemCount - 1 downTo current + 1) {
+                val item = player.getMediaItemAt(index)
+                val song = item.toSong() ?: continue
+                if (item.mediaId in manual) continue
+                if (!c.library.isDisliked(song.id) && !c.exclusions.blocks(song) && !c.exclusions.isSongExcluded(song.id)) continue
+                player.removeMediaItem(index)
+                if (c.queue.autoplayStart.value > index) c.queue.autoplayStart.value--
+                if (c.queue.waveQuotaStart > index) c.queue.waveQuotaStart--
+            }
+        } finally { c.queue.filling = false }
         maybeAutoplay()
     }
 

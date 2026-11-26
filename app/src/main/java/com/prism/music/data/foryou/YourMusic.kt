@@ -30,6 +30,7 @@ class YourMusic(private val c: AppContainer) {
     private class Snapshot(
         val at: Long,
         val account: String,
+        val preferences: List<Any>,
         val events: List<PlayEventEntity>,
         val songs: Map<String, Song>,
         val liked: List<Song>,
@@ -55,9 +56,10 @@ class YourMusic(private val c: AppContainer) {
     private suspend fun snapshot(): Snapshot = lock.withLock {
         val now = System.currentTimeMillis()
         val account = waveAccount()
+        val preferences = preferenceSnapshot()
         val count = runCatching { c.imports.taste.changeCount(now) }.getOrDefault(0)
         // Kept for a few minutes, and only while no new play has come in.
-        snap?.takeIf { it.account == account && now - it.at in 0L..5 * 60_000L && count == total }?.let { return@withLock it }
+        snap?.takeIf { it.account == account && it.preferences == preferences && now - it.at in 0L..5 * 60_000L && count == total }?.let { return@withLock it }
         withContext(Dispatchers.IO) {
             val events = c.imports.taste.tasteEventsSince(now - YEAR)
             val liked = c.db.songs().liked().map { it.toSong() }
@@ -68,8 +70,10 @@ class YourMusic(private val c: AppContainer) {
             (liked + downloaded + local).forEach { songs.putIfAbsent(it.id, it) }
             val usable = songs.values.filter { ok(it) }
             val genres = runCatching { c.meta.cachedGenres(usable) }.getOrDefault(emptyMap())
-            val model = PlayLikelihood(events, songs, liked.map { it.id }.toSet(), now)
-            val co = LocalRadio.coListen(events.map { LocalRadio.Play(it.songId, it.timestamp) })
+            val usableIds = usable.mapTo(hashSetOf()) { it.id }
+            val tasteEvents = events.filter { !it.excluded && it.songId in usableIds }
+            val model = PlayLikelihood(tasteEvents, songs, liked.filter { it.id in usableIds }.map { it.id }.toSet(), now)
+            val co = LocalRadio.coListen(tasteEvents.map { LocalRadio.Play(it.songId, it.timestamp) })
             val recordingKeys = songs.mapValues { LocalRadio.sameSong(it.value) }
             val graph = VibeGraph.build(events.asSequence().filter { it.timestamp <= now && !it.excluded }.mapNotNull { event ->
                 val song = songs[event.songId] ?: return@mapNotNull null
@@ -78,8 +82,8 @@ class YourMusic(private val c: AppContainer) {
                 if (weight <= 0) return@mapNotNull null
                 VibeGraph.Event(recordingKeys.getValue(song.id), song.primaryArtist.lowercase().trim(), event.timestamp, weight)
             }.toList())
-            Snapshot(now, account, events, songs, liked, (downloaded + local).distinctBy { it.id }, genres, model, co, graph)
-                .also { if (account == waveAccount()) { snap = it; total = count } }
+            Snapshot(now, account, preferences, tasteEvents, songs, liked.filter { it.id in usableIds }, (downloaded + local).distinctBy { it.id }, genres, model, co, graph)
+                .also { if (account == waveAccount() && preferences == preferenceSnapshot()) { snap = it; total = count } }
         }
     }
 
@@ -101,7 +105,7 @@ class YourMusic(private val c: AppContainer) {
 
     internal data class WaveTaste(val profile: MyWave.Profile, val favorites: List<Song>, val likedSeeds: List<Song>, val likes: List<Song>)
     private data class WarmTaste(val account: String, val likedIds: Set<String>, val preferences: List<Any>, val at: Long, val taste: WaveTaste)
-    private fun preferenceSnapshot(): List<Any> = listOf(c.library.dislikedIds.value, c.artistPrefs.favorites.value, c.exclusions.artists.value, c.exclusions.songs.value, c.exclusions.playlists.value)
+    private fun preferenceSnapshot(): List<Any> = listOf(c.library.likedIds.value, c.library.dislikedIds.value, c.artistPrefs.favorites.value, c.exclusions.artists.value, c.exclusions.songs.value, c.exclusions.playlists.value)
     @Volatile private var warmTaste: WarmTaste? = null
 
     /** Local, recency-weighted taste and listening-context profile, shared by Wave start and refill.

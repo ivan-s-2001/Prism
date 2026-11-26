@@ -92,6 +92,11 @@ class RecFeedback(context: Context, private val day: () -> Int = { LocalDate.now
         }
     }
 
+    /** A deliberate positive/neutral edit overrides a previous automatic skip penalty. */
+    fun forgiveTrack(songId: String) {
+        if (songId in state.skipped) change { it.copy(skipped = it.skipped - songId) }
+    }
+
     /** Whether [songId] is left out of recommendations for now: skipped once if it was new to them, twice if known. */
     fun turnedDown(songId: String, known: Boolean): Boolean {
         val now = today()

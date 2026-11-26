@@ -326,6 +326,7 @@ class LibraryRepository(private val c: AppContainer) {
         if (disliked && c.downloads.downloads.value.containsKey(song.id) && existing?.smartDownload == true) {
             c.downloads.remove(song.id, byListener = false)
         }
+        if (target != SongReaction.DISLIKE) c.recFeedback.forgiveTrack(song.id)
         if (song.isLocal) return
         if (liked && !wasLiked && c.settings.current.downloadLikes) c.downloads.download(song)
         if (c.settings.current.isLoggedIn) {
@@ -338,8 +339,10 @@ class LibraryRepository(private val c: AppContainer) {
     suspend fun recordPlayed(song: Song) {
         // The song list doesn't keep what makes one an episode: a feed's would come back as a song, with no way to play.
         if (song.isRss) return
-        val existing = songs.get(song.id)
-        songs.upsert(song.toEntity(existing).copy(lastPlayed = System.currentTimeMillis()))
+        reactionLock.withLock {
+            val existing = songs.get(song.id)
+            songs.upsert(song.toEntity(existing).copy(lastPlayed = System.currentTimeMillis()))
+        }
     }
 
     /** Pulls liked songs, playlists, albums and artists from the account. */
