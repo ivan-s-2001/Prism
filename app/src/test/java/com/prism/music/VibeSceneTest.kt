@@ -12,6 +12,28 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VibeSceneTest {
+    @Test fun ringHasOpenCenterInsteadOfFilledBlob() {
+        val empty = FloatArray(28)
+        val center = com.prism.music.ui.screens.liquidRing(0f, 0f, 0f, 0f, empty)
+        val rim = com.prism.music.ui.screens.liquidRing(0.268f, 0f, 0f, 0f, empty)
+        assertTrue(center.first + center.second + center.third < 0.1f)
+        assertTrue(rim.first + rim.second + rim.third > 0.8f)
+    }
+
+    @Test fun ribbonRespondsToSpectrumAndHasSeparateTracks() {
+        val low = com.prism.music.ui.screens.spectralRibbon(0f, 0.10f, 0f, 0f, 0f, 0f)
+        val loud = com.prism.music.ui.screens.spectralRibbon(0f, 0.10f, 0f, 1f, 1f, 1f)
+        assertTrue(low.first > loud.first)
+        assertEquals(0.5f, com.prism.music.ui.screens.ribbonBand(floatArrayOf(0f, 1f), 0.5f), 0.001f)
+    }
+
+    @Test fun auroraDriftsThroughSeparateLightPools() {
+        val left = com.prism.music.ui.screens.softAurora(-0.30f, -0.16f, 0f, 0f)
+        val right = com.prism.music.ui.screens.softAurora(0.35f, 0.22f, 0f, 0f)
+        assertTrue(left.first > left.second)
+        assertTrue(right.second > right.first)
+    }
+
     @Test fun paletteRetargetStartsFromVisibleColor() {
         val first = WaveColors(List(6) { Color.Red }, 1f)
         val second = WaveColors(List(6) { Color.Blue }, 0.5f)

@@ -163,82 +163,142 @@ private fun smoothstep(lo: Float, hi: Float, x: Float): Float {
     return t * t * (3f - 2f * t)
 }
 
-/** Software port of the upstream fragment, evaluated into a small, smoothly filtered texture. */
+private fun gaussian(x: Float): Float = exp(-x * x)
+
+/** Three independent light intensities, one per theme color pair. All effects stay translucent. */
+internal data class VibeLight(val first: Float, val second: Float, val third: Float)
+
+/** Original yamusic-rs morphology, with stronger separate lobes and an asymmetric soft core. */
+private fun organicWave(x: Float, y: Float, t: Float, blobs: Array<Blob>): VibeLight {
+    fun lobe(i: Int): Float {
+        val blob = blobs[i]
+        val dx = x - blob.x
+        val dy = y - blob.y
+        val qx = blob.ca * dx + blob.sa * dy
+        val qy = (-blob.sa * dx + blob.ca * dy) * 1.25f
+        val angle = atan2(qy, qx)
+        val edge = 1f + 0.22f * sin(angle * 3f + t * 0.8f + blob.seed) +
+            0.10f * sin(angle * 5f - t * 1.1f + blob.seed * 2.3f)
+        val d = hypot(qx, qy) / (blob.radius * edge)
+        return gaussian(d * 1.55f) * blob.weight
+    }
+    return VibeLight(lobe(0), lobe(1), lobe(2))
+}
+
+/** Two luminous, hollow, rippling membranes. Dark center, broad colored rim, no filled blob. */
+internal fun liquidRing(x: Float, y: Float, t: Float, beat: Float, bands: FloatArray): VibeLight {
+    val qy = y * 1.10f
+    val angle = atan2(qy, x)
+    val radius = hypot(x, qy)
+    val band = waveBand(bands, angle - t * 0.25f)
+    val target = 0.255f + 0.024f * sin(angle * 3f + t * 0.72f) +
+        0.013f * cos(angle * 5f - t * 0.58f) + 0.045f * band + 0.022f * beat
+    val outer = gaussian((radius - target) / 0.039f)
+    val inner = gaussian((radius - target + 0.054f + 0.012f * sin(angle * 2f - t)) / 0.022f)
+    val halo = gaussian((radius - target) / 0.093f)
+    val sector = 0.5f + 0.5f * cos(angle - t * 0.42f)
+    return VibeLight(outer * (0.45f + 0.60f * sector),
+        inner * (0.48f + 0.35f * (1f - sector)), halo * 0.33f + outer * (1f - sector) * 0.46f)
+}
+
+/** Aurora: broad drifting pools of light, with no sphere, edge, or concentrated center. */
+internal fun softAurora(x: Float, y: Float, t: Float, beat: Float): VibeLight {
+    val leftX = -0.30f + 0.07f * sin(t * 0.39f)
+    val leftY = -0.16f + 0.07f * cos(t * 0.29f)
+    val rightX = 0.29f + 0.06f * cos(t * 0.34f)
+    val rightY = 0.22f + 0.08f * sin(t * 0.41f)
+    val tilt = 0.55f
+    val l = gaussian((x - leftX) / 0.29f) * gaussian((y - leftY + tilt * (x - leftX)) / 0.43f)
+    val r = gaussian((x - rightX) / 0.27f) * gaussian((y - rightY - tilt * (x - rightX)) / 0.42f)
+    val curtain = gaussian((x + 0.08f * sin(y * 5f + t * 0.5f)) / 0.46f) *
+        gaussian((y + 0.30f) / 0.25f)
+    return VibeLight(l * (0.76f + 0.20f * beat), r * (0.82f + 0.14f * beat), curtain * 0.43f)
+}
+
+/** A continuous spectral ribbon across the screen. The 28 FFT bands become smooth displacement,
+ * not bars or radial bumps. On pause the ribbons retain a slow independent sine motion. */
+internal fun spectralRibbon(x: Float, y: Float, t: Float, beat: Float, band: Float, fine: Float): VibeLight {
+    val fade = gaussian(x / 0.53f)
+    val bend = 0.052f * sin(x * 10f + t * 0.72f) + 0.026f * cos(x * 17f - t * 0.4f)
+    val spread = 0.077f + 0.10f * band + 0.032f * beat
+    val upper = bend + spread + fine * 0.045f
+    val lower = bend - spread - fine * 0.03f
+    val ribbonA = gaussian((y - upper) / (0.032f + band * 0.027f))
+    val ribbonB = gaussian((y - lower) / (0.038f + fine * 0.024f))
+    val body = gaussian((y - bend) / (spread + 0.044f))
+    val cross = gaussian((y - bend * 0.6f) / 0.026f)
+    return VibeLight(fade * (ribbonA * 0.98f + body * 0.09f),
+        fade * (ribbonB * 0.94f + body * 0.09f), fade * (body * 0.35f + cross * 0.27f))
+}
+
+/** Smooth interpolation across all FFT bins, with no seam or staircase between frequency bands. */
+internal fun ribbonBand(bands: FloatArray, position: Float): Float {
+    if (bands.isEmpty() || !position.isFinite()) return 0f
+    val p = position.coerceIn(0f, 1f) * bands.lastIndex
+    val i = p.toInt()
+    val j = minOf(i + 1, bands.lastIndex)
+    val k = p - i
+    return (bands[i] + (bands[j] - bands[i]) * k).coerceIn(0f, 1f)
+}
+
+/** Distinct spatial light fields, shared palette, tone mapping and continuous screen coordinates. */
 private fun renderYamusicWave(
     w: Int, h: Int, palette: List<Color>, sample: VibeWaveSignal, opacity: Float, scale: Float,
     style: StreamVisualStyle, energy: Float, center: Offset,
 ): ImageBitmap {
     val pixels = IntArray(w * h)
     val aspect = w.toFloat() / h
-    // Use the actual viewport aspect, never clip at the bounds of a scaled composable.
-    // On wide screens keep the central glow proportionate to the available height.
     val sceneScale = scale.coerceIn(0.25f, 1f) * minOf(1.25f, aspect * 1.95f)
     val t = sample.phase
     val beat = sample.beat.coerceIn(0f, 1f)
-    val glowMode = style == StreamVisualStyle.GLOW
-    val ringMode = style == StreamVisualStyle.RING
-    val spectrumMode = style == StreamVisualStyle.EQUALIZER
-    val spread = if (glowMode) 1.33f else if (ringMode) 1.18f else 1f
-    val angular = if (glowMode) 0.45f else if (spectrumMode) 1.25f else 1f
     val blobs = Array(3) { i ->
         val fi = i.toFloat()
         val phase = fi * 2.094f
         val ang = t * 0.12f + phase
-        Blob(0.05f * sin(t * 0.31f + phase), 0.05f * cos(t * 0.23f + phase * 1.3f),
-            cos(ang), sin(ang), (0.27f - fi * 0.03f) * spread * (1f + 0.16f * beat),
-            fi * 1.7f, 0.75f - fi * 0.12f)
+        Blob(0.09f * sin(t * 0.31f + phase), 0.085f * cos(t * 0.23f + phase * 1.3f),
+            cos(ang), sin(ang), (0.27f - fi * 0.025f) * (1f + 0.16f * beat),
+            fi * 1.7f, 0.88f - fi * 0.14f)
     }
+    // Precompute ribbon response once per column rather than sampling the FFT per pixel.
+    val ribbon = FloatArray(w) { ribbonBand(sample.bands, it / maxOf(1f, w - 1f)) }
+    val fine = FloatArray(w) { ribbonBand(sample.bands, (it / maxOf(1f, w - 1f) * 0.82f + 0.18f)) }
+    val low = Array(3) { palette[it * 2 + 1] }
+    val high = Array(3) { palette[it * 2] }
     for (y in 0 until h) {
         val v = 1f - (y + 0.5f) / h
         val py = (v - (1f - center.y)) / sceneScale
         for (x in 0 until w) {
             val u = (x + 0.5f) / w
             val px = (u - center.x) * aspect / sceneScale
+            val light = when (style) {
+                StreamVisualStyle.RING -> liquidRing(px, py, t, beat, sample.bands)
+                StreamVisualStyle.GLOW -> softAurora(px, py, t, beat)
+                StreamVisualStyle.EQUALIZER -> spectralRibbon(px, py, t, beat, ribbon[x], fine[x])
+                StreamVisualStyle.WAVE -> organicWave(px, py, t, blobs)
+                StreamVisualStyle.OFF -> VibeLight(0f, 0f, 0f)
+            }
             var red = 0f
             var green = 0f
             var blue = 0f
-            for (i in blobs.indices) {
-                val blob = blobs[i]
-                val dx = px - blob.x
-                val dy = py - blob.y
-                val qx = blob.ca * dx + blob.sa * dy
-                val qy = (-blob.sa * dx + blob.ca * dy) * 1.25f
-                val angle = atan2(qy, qx)
-                // Frequency bands deform the same soft blob, never draw a separate bar or ring widget.
-                val frequency = if (spectrumMode || ringMode) waveBand(sample.bands, angle + t * 0.13f) else 0f
-                val edge = 1f + angular * (0.14f * sin(angle * 3f + t * 0.8f + blob.seed) +
-                    0.08f * sin(angle * 5f - t * 1.1f + blob.seed * 2.3f)) +
-                    frequency * (if (spectrumMode) 0.28f else 0.12f)
-                val d = hypot(qx, qy) / (blob.radius * edge)
-                val base = exp(-d * d * (if (glowMode) 1.8f else 3f))
-                val rim = exp(-((d - 0.76f) * 2.8f) * ((d - 0.76f) * 2.8f))
-                val b = when {
-                    ringMode -> base * 0.48f + rim * (0.42f + 0.18f * frequency)
-                    spectrumMode -> base * (0.82f + 0.18f * energy) + rim * frequency * 0.24f
-                    else -> base
-                }
-                val mix = smoothstep(0.2f, 0.9f, b)
-                val low = palette[i * 2 + 1]
-                val high = palette[i * 2]
-                val weight = b * blob.weight
-                red += (low.red + (high.red - low.red) * mix) * weight
-                green += (low.green + (high.green - low.green) * mix) * weight
-                blue += (low.blue + (high.blue - low.blue) * mix) * weight
+            for (i in 0..2) {
+                val amount = when (i) { 0 -> light.first; 1 -> light.second; else -> light.third }
+                val mix = smoothstep(0.1f, 0.85f, amount)
+                red += (low[i].red + (high[i].red - low[i].red) * mix) * amount
+                green += (low[i].green + (high[i].green - low[i].green) * mix) * amount
+                blue += (low[i].blue + (high[i].blue - low[i].blue) * mix) * amount
             }
-            val glow = (1f - smoothstep(0f, 0.65f, v)) * (if (glowMode) 0.20f else 0.12f)
-            val low = palette[1]
-            val high = palette[3]
-            red += (low.red + (high.red - low.red) * u) * glow
-            green += (low.green + (high.green - low.green) * u) * glow
-            blue += (low.blue + (high.blue - low.blue) * u) * glow
-            red = 1f - exp(-red * 1.6f)
-            green = 1f - exp(-green * 1.6f)
-            blue = 1f - exp(-blue * 1.6f)
-            // Upstream composites over black. Recover a transparent colored layer instead,
-            // so custom Prism backdrops remain visible and no black rectangle cuts across the page.
+            // A shared faint lower atmosphere behind the standard mini player, not a clipped shape.
+            val ambient = (1f - smoothstep(0f, 0.65f, v)) * 0.105f
+            red += (palette[1].red + (palette[3].red - palette[1].red) * u) * ambient
+            green += (palette[1].green + (palette[3].green - palette[1].green) * u) * ambient
+            blue += (palette[1].blue + (palette[3].blue - palette[1].blue) * u) * ambient
+            val gain = 1.7f + 0.18f * energy.coerceIn(0f, 1f)
+            red = 1f - exp(-red * gain)
+            green = 1f - exp(-green * gain)
+            blue = 1f - exp(-blue * gain)
             val peak = maxOf(red, green, blue)
             if (peak < 0.001f) continue
-            val alpha = (peak * opacity * 0.8f * 255f).roundToInt().coerceIn(0, 255)
+            val alpha = (peak * opacity * 255f).roundToInt().coerceIn(0, 255)
             fun channel(value: Float) = (value / peak * 255f).roundToInt().coerceIn(0, 255)
             pixels[y * w + x] = (alpha shl 24) or (channel(red) shl 16) or
                 (channel(green) shl 8) or channel(blue)
