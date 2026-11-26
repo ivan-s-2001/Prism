@@ -24,6 +24,7 @@ import com.prism.music.ui.components.RoundAction
 import com.prism.music.ui.components.pageTitleStyle
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import com.prism.music.ui.components.Segmented
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -494,7 +495,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     }
                     RoundAction(PrismIcons.Refresh, tr(R.string.prism_stream_reset)) { change { it.reset() } }
                 }
-                var advanced by rememberSaveable { mutableStateOf(false) }
+                var advanced by rememberSaveable { mutableStateOf(draftStyle.depth != MyWave.Depth.ANY) }
+                var showPresets by rememberSaveable { mutableStateOf(false) }
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(bottom = ui.gap(8.dp)),
                     verticalArrangement = Arrangement.spacedBy(ui.gap(16.dp))) {
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(ui.gap(6.dp))) {
@@ -508,7 +510,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                             change { WaveTuningScale.DIVERSITY.change(it, value) }
                         }
                     }
-                    HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.65f))
                     WaveChoices(tr(R.string.prism_stream_mood), MyWave.Mood.entries, draftStyle.mood, ::moodName) { value -> change { it.tune(it.style.copy(mood = value)) } }
                     WaveChoices(tr(R.string.prism_stream_activity), MyWave.Activity.entries, draftStyle.activity, ::activityName) { value -> change { it.tune(it.style.copy(activity = value)) } }
 
@@ -523,15 +524,21 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     }
 
                     HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.65f))
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
-                        if (editing.presets.isNotEmpty())
-                            Text(tr(R.string.prism_stream_my_presets), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                        PrismChip(fitLabel = true, selected = false, onClick = { namingPreset = true }, icon = PrismIcons.Add,
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp))) {
+                        if (editing.presets.isNotEmpty()) {
+                            Row(Modifier.weight(1f).clip(ui.shape(12.dp)).clickable { showPresets = !showPresets }
+                                .heightIn(min = 48.dp).padding(vertical = ui.gap(8.dp)), verticalAlignment = Alignment.CenterVertically) {
+                                Text(tr(R.string.prism_stream_my_presets) + " · " + editing.presets.size,
+                                    Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                                Icon(if (showPresets) PrismIcons.ChevronUp else PrismIcons.ChevronDown, null, Modifier.size(20.dp))
+                            }
+                        }
+                        PrismChip(fitLabel = true, selected = false, onClick = { showPresets = true; namingPreset = true }, icon = PrismIcons.Add,
                             label = tr(R.string.prism_stream_save_scenario),
                             modifier = (if (editing.presets.isEmpty()) Modifier.fillMaxWidth() else Modifier)
-                                .heightIn(min = ui.gap(44.dp).coerceAtLeast(36.dp)).testTag("wave:preset:save"))
+                                .heightIn(min = 48.dp).testTag("wave:preset:save"))
                     }
-                    editing.presets.forEach { preset ->
+                    if (showPresets) editing.presets.forEach { preset ->
                         key(preset.id) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
                                 PrismChip(fitLabel = true, selected = editing.presetId == preset.id && preset.origin == draftStyle.origin, label = preset.name, icon = PrismIcons.Bookmark,
@@ -594,19 +601,23 @@ private fun WaveScale(scale: WaveTuningScale, style: MyWave.Style, tag: String, 
     }
 }
 
+/** Short mutually exclusive choices use Prism's own segmented control; longer lists wrap at their natural width. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun <T> WaveChoices(label: String, values: List<T>, selected: T, name: (T) -> String, onSelect: (T) -> Unit) {
     val ui = LocalUi.current
-    Column(verticalArrangement = Arrangement.spacedBy(ui.gap(10.dp))) {
-        Text(label, style = MaterialTheme.typography.titleSmall)
-        values.chunked(2).forEach { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
-                row.forEach { value ->
+    Column(verticalArrangement = Arrangement.spacedBy(ui.gap(8.dp))) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (values.size in 2..3 && !ui.classicControls) {
+            Segmented(values, selected, name, onSelect = onSelect)
+        } else {
+            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp)),
+                verticalArrangement = Arrangement.spacedBy(ui.gap(6.dp))) {
+                values.forEach { value ->
                     PrismChip(fitLabel = true, selected = value == selected, onClick = { onSelect(value) },
-                        label = name(value), modifier = Modifier.weight(1f).heightIn(min = ui.gap(48.dp).coerceAtLeast(44.dp)))
+                        label = name(value), modifier = Modifier.heightIn(min = 48.dp))
                 }
             }
         }
     }
 }
-
