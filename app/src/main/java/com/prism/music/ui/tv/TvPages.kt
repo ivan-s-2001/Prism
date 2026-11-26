@@ -207,7 +207,7 @@ internal fun open(
 ): Boolean {
     when (item) {
         is SongItem -> { TvPlay.song(c, row, index, rowTitle, radio); nav.go(TvRoute.Player) }
-        is PlaylistItem -> if (item.isMix) launch { if (TvPlay.mix(c, item)) nav.go(TvRoute.Player) } else nav.go(TvRoute.Collection(item))
+        is PlaylistItem -> if (item.isMix) launch { if (TvPlay.mix(c, item) && !c.queue.source.value.isVibe) nav.go(TvRoute.Player) } else nav.go(TvRoute.Collection(item))
         is AlbumItem -> nav.go(TvRoute.Collection(item))
         is ArtistItem -> nav.go(TvRoute.Artist(item.id))
         is com.prism.music.data.model.MoodItem -> nav.go(TvRoute.Mood(item))
@@ -409,7 +409,7 @@ fun TvCollectionPage(item: BrowseItem, nav: TvNav) {
                         else -> emptyList()
                     }
                 }
-                if (!ok) Toast.makeText(context, tr(R.string.couldn_t_start_the_radio), Toast.LENGTH_SHORT).show()
+                if (!ok) Toast.makeText(context, tr(R.string.prism_vibe_start_failed), Toast.LENGTH_SHORT).show()
             }
         }) else null,
     )

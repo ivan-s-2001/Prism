@@ -6,6 +6,30 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class VibeShortcutTest {
+    @Test fun legacyContextRadioRestoresAsVibe() {
+        val origin = com.prism.music.playback.VibeOrigin(com.prism.music.playback.VibeOriginKind.ALBUM, "Album", artist = "Artist")
+        val legacy = com.prism.music.playback.QueueSource(com.prism.music.playback.QueueKind.RADIO, "Old radio", seedId = "seed", vibeOrigin = origin)
+        val migrated = legacy.normalizedVibe()
+        assertEquals(com.prism.music.playback.QueueKind.VIBE, migrated.kind)
+        assertEquals("Album", migrated.title)
+        assertEquals(origin, migrated.vibeOrigin)
+        assertEquals(true, migrated.isContextVibe)
+        assertEquals(false, migrated.allowsOrderModes)
+    }
+
+    @Test fun oldUnseededRadioIsNotAContinuousSession() {
+        val source = com.prism.music.playback.QueueSource(com.prism.music.playback.QueueKind.RADIO, "Legacy")
+        assertEquals(com.prism.music.playback.QueueKind.OTHER, source.normalizedVibe().kind)
+    }
+
+    @Test fun newTrackVibeHasStableIdentity() {
+        val origin = com.prism.music.playback.VibeOrigin(com.prism.music.playback.VibeOriginKind.TRACK, "Track")
+        val source = com.prism.music.playback.QueueSource(com.prism.music.playback.QueueKind.VIBE, "Track", seedId = "seed", vibeOrigin = origin)
+        assertEquals(true, source.matchesTrackStream("seed", "Track"))
+        assertEquals(false, source.matchesTrackStream("other", "Track"))
+        assertEquals(true, source.continuousRecommendations)
+    }
+
     @Test fun artistLineOnlyDescribesTrackOrAlbum() {
         val kind = com.prism.music.playback.VibeOriginKind.TRACK
         val origin = com.prism.music.playback.VibeOrigin(kind, "Title", artist = "Artist")

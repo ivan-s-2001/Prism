@@ -44,11 +44,12 @@ object TvPlay {
         }
         val songs = if (live && !first.isLive) listOf(first.copy(isLive = true)) + r.songs.drop(1) else r.songs
         c.queue.counterparts.putAll(r.counterparts)
-        val selected = c.yourMusic.providedStream(songs)
-        if (selected.isEmpty()) return false
-        val seed = selected.first().takeUnless { it.isLive || it.isEpisode }
-        c.player.playQueue(selected, 0, QueueSource(if (seed == null) QueueKind.OTHER else QueueKind.VIBE, mix.title, seedId = seed?.id, vibeOrigin = seed?.let { com.prism.music.playback.VibeOrigin(com.prism.music.playback.VibeOriginKind.MIX, mix.title, mix.thumbnail) }))
-        return true
+        if (live || first.isEpisode) {
+            c.player.playQueue(songs, 0, QueueSource(QueueKind.OTHER, mix.title))
+            return true
+        }
+        return c.player.playContextVibe(mix.title, songs,
+            origin = com.prism.music.playback.VibeOrigin(com.prism.music.playback.VibeOriginKind.MIX, mix.title, mix.thumbnail))
     }
 
     /**

@@ -291,7 +291,7 @@ fun PlayActionsSheet(target: Playable, extra: List<SheetItem> = emptyList(), ext
                                 else c.radio(null, "RDAMPL${item.id.removePrefix("VL")}").songs
                             else -> emptyList()
                         }
-                    }) Toast.makeText(context, tr(R.string.couldn_t_start_the_radio), Toast.LENGTH_SHORT).show()
+                    }) Toast.makeText(context, tr(R.string.prism_vibe_start_failed), Toast.LENGTH_SHORT).show()
             }
         })
         val cover = if (item is AlbumItem) listOf(ActionItem(PrismIcons.Photo, tr(R.string.change_cover), active = c.covers.custom(c.covers.albumKey(item.id)) != null, keepOpen = true) {

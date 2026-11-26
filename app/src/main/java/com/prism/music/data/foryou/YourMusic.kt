@@ -434,7 +434,7 @@ class YourMusic(private val c: AppContainer) {
         if (anchors.isEmpty() || count <= 0) return@withContext emptyList()
         val settings = c.settings.current
         val offline = !c.network.isOnline()
-        val style = MyWave.restore(null, settings.streamStyleOrigin, settings.streamRussianPercent)
+        val style = if (explicitContext) MyWave.Style() else MyWave.restore(null, settings.streamStyleOrigin, settings.streamRussianPercent)
         val taste = waveTaste()
         val history = c.discover.heard()
         val feedback = c.recFeedback
@@ -469,12 +469,12 @@ class YourMusic(private val c: AppContainer) {
         val localScore = local.associate { LocalRadio.sameSong(it.song) to it.score }
         val bestLocal = local.maxOfOrNull { it.score }?.coerceAtLeast(0.001) ?: 1.0
         val contextArtists = anchors.map { it.primaryArtist.lowercase() }.filter { it.isNotBlank() }.toSet()
-        val suppliedKeys = provided.mapTo(hashSetOf(), LocalRadio::sameSong)
+        val suppliedKeys = (provided + if (explicitContext) anchors else emptyList()).mapTo(hashSetOf(), LocalRadio::sameSong)
         fun contextWeight(song: Song): Double = (if (song.primaryArtist.lowercase() in contextArtists) 1.5 else 1.0) *
             (localScore[LocalRadio.sameSong(song)]?.let { 0.7 + 1.1 * (it / bestLocal).coerceIn(0.0, 1.0) } ?: 1.0) *
             (if (LocalRadio.sameSong(song) in suppliedKeys) 1.25 else 1.0)
         val downloads = if (offline) withContext(Dispatchers.IO) { c.downloads.completedSongs() } else emptyList()
-        val pool = MyWave.fuse(listOf(provided, remote, local.map { it.song }, downloads).map { it.filter(::eligible) }, 160)
+        val pool = MyWave.fuse(listOf(provided, if (explicitContext) anchors else emptyList(), remote, local.map { it.song }, downloads).map { it.filter(::eligible) }, 160)
         val signals = c.discover.radioSignals(pool, style.tune.copy(newness = 0f), fetchTops = !offline && !c.castingNow)
         val contextualSignals = RadioSignals(heard = ::known, onTopList = signals.onTopList, energy = signals.energy)
         val current = seedWindow.lastOrNull()

@@ -1913,6 +1913,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             val occupied = if (offline) protected else all
             val additions = try {
                 c.yourMusic.contextBatch(anchors, occupied, (all.size - generatedStart).coerceAtLeast(0), explicitContext = radio,
+                    provided = if (radio) anchors else emptyList(),
                     recyclePast = past, protectedQueue = protected)
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) {

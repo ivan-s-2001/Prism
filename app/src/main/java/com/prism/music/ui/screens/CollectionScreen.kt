@@ -562,7 +562,7 @@ internal fun CollectionContent(type: CollectionType, live: LiveCollection, initi
             }, page.title, art, artist = if (type == CollectionType.ALBUM) page.artists.joinToString(", ") { it.name }.ifBlank { null } else null)) {
                 if (!c.network.isOnline()) emptyList() else radioId?.let { c.radio(null, it).songs }.orEmpty()
             }
-            if (!ok) Toast.makeText(context, tr(R.string.couldn_t_start_the_radio), Toast.LENGTH_SHORT).show()
+            if (!ok) Toast.makeText(context, tr(R.string.prism_vibe_start_failed), Toast.LENGTH_SHORT).show()
         }
     }
     // Songs marked to skip don't stand between a list and counting as downloaded (#221).
