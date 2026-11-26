@@ -148,6 +148,7 @@ internal fun WidePlayerContent(
                 onVideoMode = { pc.setVideoMode(it) },
                 episode = song.isEpisode,
                 onButton = onButton,
+                primaryVibeVisible = canStartTrackVibe(song) && !(window.tabletop && window.hinge != null),
             )
             if (!short && settings.showOutputDevice) {
                 Spacer(Modifier.height(10.dp))
