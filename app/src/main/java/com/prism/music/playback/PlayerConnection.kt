@@ -721,7 +721,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     fun playRadio(song: Song, announce: Boolean = false, contextTitle: String = song.title) {
         if (song.isLive || song.isEpisode || c.queue.followingHost) return
         val source = QueueSource(QueueKind.RADIO, tr(R.string.radio, contextTitle), seedId = song.id,
-            vibeOrigin = VibeOrigin(VibeOriginKind.TRACK, contextTitle, com.prism.music.data.PlaylistCovers.artOf(song)))
+            vibeOrigin = VibeOrigin(VibeOriginKind.TRACK, contextTitle, com.prism.music.data.PlaylistCovers.artOf(song), song.artists.joinToString(", ") { it.name }.ifBlank { null }))
         val p = player
         if (p?.currentMediaItem?.mediaId == song.id && c.queue.source.value.matchesTrackStream(song.id, source.title)) {
             ++playToken
