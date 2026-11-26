@@ -260,6 +260,8 @@ fun LibraryScreen(bottomPadding: Dp) {
     var deleting by remember { mutableStateOf<com.prism.music.data.model.BrowseItem?>(null) }
     val menu = com.prism.music.ui.components.rememberPlayMenu()
     var editingTiles by remember { mutableStateOf(false) }
+    var editingReactions by rememberSaveable { mutableStateOf(false) }
+    if (editingReactions) VibeReactionsSheet { editingReactions = false }
     if (editingTiles) LibraryTilesSheet { editingTiles = false }
     // History's "Remove from history" (#469): the plays taken out, until Undo or the bar goes.
     var historyUndo by remember { mutableStateOf<com.prism.music.data.HistoryRemoval.Removed?>(null) }
@@ -448,6 +450,7 @@ fun LibraryScreen(bottomPadding: Dp) {
                 if (sync == SyncState.SYNCING) Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) { com.prism.music.ui.components.PrismSpinner(Modifier.size(22.dp), stroke = 2.dp) }
                 else com.prism.music.ui.components.RoundAction(PrismIcons.Sync, tr(R.string.sync_with_youtube_music)) { scope.launch { c.library.sync() } }
             }
+            com.prism.music.ui.components.RoundAction(PrismIcons.ThumbDown, tr(R.string.prism_vibe_reactions)) { editingReactions = true }
             // Pick and order the Playlists tab's tiles (it was a tile of its own at the end of them until 1.7.5).
             com.prism.music.ui.components.RoundAction(PrismIcons.Edit, tr(R.string.edit_tiles)) { editingTiles = true }
             // This tab's own view (1.7.6); the others keep theirs.

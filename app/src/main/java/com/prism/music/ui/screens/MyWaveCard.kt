@@ -128,6 +128,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
 
     var starting by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
+    var editingReactions by rememberSaveable { mutableStateOf(false) }
+    if (editingReactions) VibeReactionsSheet { editingReactions = false }
     val settings = LocalAppSettings.current
     fun restoredStyle(origin: String?) =
         MyWave.restore(origin, settings.streamStyleOrigin, settings.streamRussianPercent)
@@ -274,6 +276,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     @Composable fun Header() {
         com.prism.music.ui.components.ScreenHeader(title,
             subtitle = status.takeIf { settings.streamShowStatus }) {
+            RoundAction(PrismIcons.ThumbDown, tr(R.string.prism_vibe_reactions), modifier = Modifier.testTag("wave:reactions")) { editingReactions = true }
             RoundAction(PrismIcons.Palette, tr(R.string.customize_prism), modifier = Modifier.testTag("wave:appearance")) {
                 if (openCustomize != null) openCustomize(CustomizeTarget.VIBE, null)
                 else nav.go(com.prism.music.ui.Routes.settings("home_library", tr(R.string.stream)))

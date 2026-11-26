@@ -67,6 +67,13 @@ class LibraryRepository(private val c: AppContainer) {
     private val dislikePrefs = c.app.getSharedPreferences("dislikes", android.content.Context.MODE_PRIVATE)
     /** Songs to keep out of autoplay, radio and smart downloads. */
     val dislikedIds = MutableStateFlow(dislikePrefs.getStringSet("ids", emptySet())!!.toSet())
+    /** Keep the metadata for excluded tracks, including exclusions saved by older versions. */
+    val dislikedSongs: StateFlow<List<Song>> = dislikedIds.map { ids ->
+        val rows = ids.toList().chunked(400).flatMap { songs.getAll(it) }.associateBy { it.id }
+        ids.map { id -> rows[id]?.toSong() ?: Song(id, id) }
+            .sortedBy { it.title.lowercase() }
+    }.flowOn(Dispatchers.IO).stateIn(c.scope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val likedIds: StateFlow<Set<String>> = combine(songs.likedIdsFlow().resilient("liked ids"), dislikedIds) { ids, disliked ->
         ids.toSet() - disliked
     }.stateIn(c.scope, SharingStarted.Eagerly, emptySet())
@@ -250,6 +257,9 @@ class LibraryRepository(private val c: AppContainer) {
         }
     }
 
+    /** Clear either reaction, including legacy IDs with no metadata. */
+    internal fun clearReaction(song: Song) { requestReaction(song) { SongReaction.NONE } }
+
     /** Bulk selection uses the same writer, preserving order and mutual exclusion. */
     fun setLiked(many: List<Song>, liked: Boolean) {
         many.forEach { setLiked(it, liked) }
@@ -261,20 +271,20 @@ class LibraryRepository(private val c: AppContainer) {
         val disliked = target == SongReaction.DISLIKE
         val oldDisliked = song.id in dislikedIds.value
         val wasLiked = existing?.liked == true
+        // Write metadata before publishing the exclusion so it can be edited after a restart.
+        if (wasLiked != liked || (disliked && existing == null)) {
+            songs.upsert(song.toEntity(existing).copy(liked = liked, likedAt = if (liked) System.currentTimeMillis() else 0))
+            if (wasLiked != liked) c.lastFm.liked(song, liked)
+        }
         if (disliked) {
             val next = dislikedIds.value + song.id
+            dislikePrefs.edit().putStringSet("ids", next).commit()
             dislikedIds.value = next
-            dislikePrefs.edit().putStringSet("ids", next).apply()
-        }
-        // Do not replace metadata or reset likedAt for a no-op.
-        if (wasLiked != liked) {
-            songs.upsert(song.toEntity(existing).copy(liked = liked, likedAt = if (liked) System.currentTimeMillis() else 0))
-            c.lastFm.liked(song, liked)
         }
         if (!disliked && oldDisliked) {
             val next = dislikedIds.value - song.id
+            dislikePrefs.edit().putStringSet("ids", next).commit()
             dislikedIds.value = next
-            dislikePrefs.edit().putStringSet("ids", next).apply()
         }
         if (disliked && c.downloads.downloads.value.containsKey(song.id) && existing?.smartDownload == true) {
             c.downloads.remove(song.id, byListener = false)

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="prism_vibe_reactions">My reactions</string>
+    <string name="prism_vibe_likes_count">Likes · %1$d</string>
+    <string name="prism_vibe_dislikes_count">Dislikes · %1$d</string>
+    <string name="prism_vibe_reaction_search">Search tracks or artists</string>
+    <string name="prism_vibe_reactions_empty">No matching reactions</string>
+    <string name="prism_vibe_mark_like">Like</string>
+    <string name="prism_vibe_clear_reaction">Remove reaction</string>
+</resources>

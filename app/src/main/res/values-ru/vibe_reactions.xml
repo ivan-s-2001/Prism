@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="prism_vibe_reactions">Мои оценки</string>
+    <string name="prism_vibe_likes_count">Лайки · %1$d</string>
+    <string name="prism_vibe_dislikes_count">Дизлайки · %1$d</string>
+    <string name="prism_vibe_reaction_search">Поиск треков и исполнителей</string>
+    <string name="prism_vibe_reactions_empty">Нет подходящих оценок</string>
+    <string name="prism_vibe_mark_like">Поставить лайк</string>
+    <string name="prism_vibe_clear_reaction">Снять оценку</string>
+</resources>
