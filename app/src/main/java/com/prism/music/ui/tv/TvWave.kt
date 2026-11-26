@@ -344,6 +344,7 @@ internal fun TvWavePlace(nav: TvNav) {
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(ui.gap(8.dp))) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(title, Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium)
+                    TvIconButton(PrismIcons.ThumbDown, tr(R.string.prism_vibe_reactions), { nav.go(TvRoute.MusicProfile) }, Modifier.tvItem("tv_wave/profile"))
                     TvIconButton(PrismIcons.Palette, tr(R.string.customize_prism), { toggleAppearance(true) }, Modifier.tvItem("tv_wave/appearance"))
                     val status = tr(if (starting) R.string.prism_stream_finding_music else if (now?.playing == true) R.string.prism_stream_playing else if (now != null) R.string.prism_stream_paused else R.string.prism_stream_personal_stream)
                     val subtitle = status.takeIf { appSettings.streamShowStatus }.orEmpty()

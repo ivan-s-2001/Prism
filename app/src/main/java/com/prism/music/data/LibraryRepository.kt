@@ -355,7 +355,7 @@ class LibraryRepository(private val c: AppContainer) {
             // Protect edits from this sync even if YouTube briefly returns a stale snapshot after acknowledging them.
             for ((id, reaction) in localEdits) sendPendingReaction(key, id, reaction)
             val remote = c.ytm.likedSongs().filterNot { it.id in dislikedIds.value || localEdits[it.id]?.let { reaction -> reaction != SongReaction.LIKE } == true }
-            if (remoteReactionKey() != key || !c.settings.current.isLoggedIn) return@withContext
+            if (remoteReactionKey() != key || !c.settings.current.isLoggedIn) { syncState.value = SyncState.IDLE; return@withContext }
             val before = likedIds.value
             val now = System.currentTimeMillis()
             // Chunked: SQLite caps bound parameters at 999 on older Android versions.
@@ -580,6 +580,20 @@ class LibraryRepository(private val c: AppContainer) {
     private data class ArtistEdit(val channel: String?, val on: Boolean)
     private val artistEditLock = Any()
     private val artistSyncLock = Mutex()
+
+    init {
+        c.scope.launch(Dispatchers.IO) {
+            c.network.online.collect { online ->
+                if (online && c.settings.current.isLoggedIn) {
+                    reactionLock.withLock {
+                        val key = remoteReactionKey()
+                        for ((id, reaction) in pendingRemote(key)) sendPendingReaction(key, id, reaction)
+                    }
+                    flushArtistEdits()
+                }
+            }
+        }
+    }
 
     private fun pendingArtists(key: String): Map<String, ArtistEdit> =
         dislikePrefs.getStringSet(key, emptySet()).orEmpty().mapNotNull { row ->

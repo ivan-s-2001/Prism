@@ -66,6 +66,7 @@ sealed interface TvRoute {
     data object Welcome : TvRoute { override val key = "welcome" }
     /** Customize Home: which rows show, in what order. */
     data object HomeEditor : TvRoute { override val key = "home_editor" }
+    data object MusicProfile : TvRoute { override val key = "music_profile" }
     /** A mood or genre's page (Home's Moods & genres tiles). */
     data class Mood(val item: com.prism.music.data.model.MoodItem) : TvRoute { override val key = "mood:${item.id}:${item.params}" }
 }
@@ -175,6 +176,7 @@ fun TvRoot(link: kotlinx.coroutines.flow.MutableStateFlow<android.net.Uri?> = re
                         TvRoute.Sing -> TvSingPage(nav)
                         TvRoute.Welcome -> TvWelcomePage(nav)
                         TvRoute.HomeEditor -> TvHomeEditorPage(nav)
+                        TvRoute.MusicProfile -> TvMusicProfilePage(nav)
                         is TvRoute.Mood -> TvMoodPage(top.item, nav)
                     }
                 }
