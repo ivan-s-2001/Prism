@@ -32,17 +32,28 @@ internal fun activeVibeTitle(source: com.prism.music.playback.QueueSource,
 internal fun activeVibeOrigin(source: com.prism.music.playback.QueueSource,
     current: com.prism.music.data.model.Song?): com.prism.music.playback.VibeOrigin? {
     if (!source.isSongRadio) return null
-    source.vibeOrigin?.let { return it }
     val seed = current?.takeIf { it.id == source.seedId }
+    source.vibeOrigin?.let { origin ->
+        if (origin.kind == VibeOriginKind.TRACK && origin.artist.isNullOrBlank() && seed != null) {
+            return origin.copy(artist = seed.artists.joinToString(", ") { it.name }.ifBlank { null })
+        }
+        return origin
+    }
     // Old saved queues may lack an explicit origin. A single-track radio still has a stable
     // source title after the seed stops playing; never replace it with the next recommendation.
     if (source.vibeAnchors.isEmpty() && source.seedId != null) {
         val name = seed?.title ?: source.title.substringAfter(" · ", source.title)
         if (name.isNotBlank()) return com.prism.music.playback.VibeOrigin(
-            com.prism.music.playback.VibeOriginKind.TRACK, name, seed?.thumbnail)
+            com.prism.music.playback.VibeOriginKind.TRACK, name, seed?.thumbnail, seed?.artists?.joinToString(", ") { it.name }?.ifBlank { null })
     }
     return null
 }
+
+internal fun vibeOriginArtist(origin: com.prism.music.playback.VibeOrigin): String? =
+    origin.artist?.trim()?.takeIf {
+        (origin.kind == VibeOriginKind.TRACK || origin.kind == VibeOriginKind.ALBUM) &&
+            it.isNotBlank() && !it.equals(origin.name.trim(), ignoreCase = true)
+    }
 
 internal fun vibeOriginLabel(kind: VibeOriginKind): Int = when (kind) {
     VibeOriginKind.TRACK -> R.string.prism_vibe_from_track

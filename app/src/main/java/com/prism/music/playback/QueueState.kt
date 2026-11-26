@@ -13,7 +13,13 @@ enum class QueueKind { SINGLE, ALBUM, PLAYLIST, RADIO, LIBRARY, REPLAY, OTHER }
 enum class VibeOriginKind { TRACK, ALBUM, ARTIST, PLAYLIST, COLLECTION, MIX }
 
 @kotlinx.serialization.Serializable
-data class VibeOrigin(val kind: VibeOriginKind, val name: String, val artwork: String? = null)
+data class VibeOrigin(
+    val kind: VibeOriginKind,
+    val name: String,
+    val artwork: String? = null,
+    /** Artist of the original seed or album, not the changing recommended song. */
+    val artist: String? = null,
+)
 
 data class QueueSource(
     val kind: QueueKind,

@@ -323,22 +323,31 @@ internal fun VibeStationOverlay(
     }
 }
 
-/** Context identity is two centered lines, never the changing now-playing song. */
+/** Quiet context, strong source name, optional original artist. */
 @Composable
 private fun VibeOriginIdentity(origin: com.prism.music.playback.VibeOrigin, compact: Boolean, roomy: Boolean) {
     val scheme = MaterialTheme.colorScheme
-    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+    val artist = vibeOriginArtist(origin)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(tr(vibeOriginLabel(origin.kind)), style = MaterialTheme.typography.labelLarge,
+        verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp)) {
+        Text(tr(vibeOriginLabel(origin.kind)), style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
             color = scheme.onSurfaceVariant, textAlign = TextAlign.Center,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(origin.name, style = (when {
-            compact -> MaterialTheme.typography.titleLarge
-            roomy -> MaterialTheme.typography.headlineMedium
-            else -> MaterialTheme.typography.headlineSmall
-        }).copy(fontWeight = FontWeight.Bold), color = scheme.onSurface,
-            textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(origin.name, modifier = Modifier.fillMaxWidth(),
+            style = (when {
+                compact -> MaterialTheme.typography.titleLarge
+                roomy -> MaterialTheme.typography.headlineMedium
+                else -> MaterialTheme.typography.headlineSmall
+            }).copy(fontWeight = FontWeight.SemiBold),
+            color = scheme.onSurface, textAlign = TextAlign.Center,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (artist != null) {
+            Text(artist, modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Normal),
+                color = scheme.onSurfaceVariant, textAlign = TextAlign.Center,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 

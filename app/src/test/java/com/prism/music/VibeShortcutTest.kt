@@ -6,6 +6,23 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class VibeShortcutTest {
+    @Test fun artistLineOnlyDescribesTrackOrAlbum() {
+        val kind = com.prism.music.playback.VibeOriginKind.TRACK
+        val origin = com.prism.music.playback.VibeOrigin(kind, "Title", artist = "Artist")
+        assertEquals("Artist", com.prism.music.ui.screens.vibeOriginArtist(origin))
+        assertEquals("Artist", com.prism.music.ui.screens.vibeOriginArtist(origin.copy(kind = com.prism.music.playback.VibeOriginKind.ALBUM)))
+        assertEquals(null, com.prism.music.ui.screens.vibeOriginArtist(origin.copy(kind = com.prism.music.playback.VibeOriginKind.PLAYLIST)))
+        assertEquals(null, com.prism.music.ui.screens.vibeOriginArtist(origin.copy(artist = "Title")))
+        assertEquals(null, com.prism.music.ui.screens.vibeOriginArtist(origin.copy(artist = " ")))
+    }
+
+    @Test fun originalArtistIsNotReplacedByRecommendedArtist() {
+        val origin = com.prism.music.playback.VibeOrigin(com.prism.music.playback.VibeOriginKind.TRACK, "Original", artist = "Original artist")
+        val source = com.prism.music.playback.QueueSource(com.prism.music.playback.QueueKind.RADIO, "Vibe · Original", seedId = "seed", vibeOrigin = origin)
+        val next = com.prism.music.data.model.Song("next", "Next", artists = listOf(com.prism.music.data.model.ArtistRef("Another artist")))
+        assertEquals(origin, com.prism.music.ui.screens.activeVibeOrigin(source, next))
+    }
+
     @Test fun contextOriginSurvivesSeedTrackChange() {
         val source = com.prism.music.playback.QueueSource(
             com.prism.music.playback.QueueKind.RADIO, "Vibe · Original track", seedId = "seed")
