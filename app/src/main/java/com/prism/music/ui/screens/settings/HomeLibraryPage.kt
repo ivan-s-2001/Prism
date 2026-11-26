@@ -80,16 +80,16 @@ fun HomeLibraryPage(bottomPadding: Dp, find: String? = null, showBack: Boolean =
     val d = remember { AppSettings() }
     val reset = ListeningResets()
     val onOff: (Boolean) -> String = { ListeningResets.onOff(it) }
-    val streamReverseChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_reverse), s.streamReverseLayout, d.streamReverseLayout, onOff) { prefs.setStreamReverseLayout(it) }
+    reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_reverse), s.streamReverseLayout, d.streamReverseLayout, onOff) { prefs.setStreamReverseLayout(it) }
     val streamOrderChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_arrange), s.streamScenarioOrder, d.streamScenarioOrder, { if (it.isEmpty()) tr(R.string.prism_stream_auto) else tr(R.string.changed) }) { prefs.setStreamScenarioOrder(it) }
     var arrangeVibe by rememberSaveable { mutableStateOf(false) }
-    val streamSizeChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.cover_size), s.streamCoverSize, d.streamCoverSize, { it.label }) { prefs.setStreamCoverSize(it) }
-    val streamPanelChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_panel), s.streamGlassPanel, d.streamGlassPanel, onOff) { prefs.setStreamGlassPanel(it) }
-    val streamVisualChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.visualizer), s.streamVisualStyle, d.streamVisualStyle, { it.label }) { prefs.setStreamVisualStyle(it) }
-    val streamShowCoverChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.artwork), s.streamShowCover, d.streamShowCover, onOff) { prefs.setStreamShowCover(it) }
-    val streamShowProgressChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.progress_bar), s.streamShowProgress, d.streamShowProgress, onOff) { prefs.setStreamShowProgress(it) }
-    val streamShowReactionsChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_reactions), s.streamShowReactions, d.streamShowReactions, onOff) { prefs.setStreamShowReactions(it) }
-    val streamShowStatusChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_status), s.streamShowStatus, d.streamShowStatus, onOff) { prefs.setStreamShowStatus(it) }
+    reset.add(tr(R.string.stream) + " · " + tr(R.string.cover_size), s.streamCoverSize, d.streamCoverSize, { it.label }) { prefs.setStreamCoverSize(it) }
+    reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_panel), s.streamGlassPanel, d.streamGlassPanel, onOff) { prefs.setStreamGlassPanel(it) }
+    reset.add(tr(R.string.stream) + " · " + tr(R.string.visualizer), s.streamVisualStyle, d.streamVisualStyle, { it.label }) { prefs.setStreamVisualStyle(it) }
+    reset.add(tr(R.string.stream) + " · " + tr(R.string.artwork), s.streamShowCover, d.streamShowCover, onOff) { prefs.setStreamShowCover(it) }
+    reset.add(tr(R.string.stream) + " · " + tr(R.string.progress_bar), s.streamShowProgress, d.streamShowProgress, onOff) { prefs.setStreamShowProgress(it) }
+    reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_reactions), s.streamShowReactions, d.streamShowReactions, onOff) { prefs.setStreamShowReactions(it) }
+    reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_status), s.streamShowStatus, d.streamShowStatus, onOff) { prefs.setStreamShowStatus(it) }
     val streamCompactScenariosChanged = reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_compact_scenarios), s.streamCompactScenarios, d.streamCompactScenarios, onOff) { prefs.setStreamCompactScenarios(it) }
 
     // What differs from how Prism comes, for the rows' dots and for Reset this page (top to bottom, as the page).
@@ -155,16 +155,7 @@ fun HomeLibraryPage(bottomPadding: Dp, find: String? = null, showBack: Boolean =
             ) { HomeChoices.setTopButtons(prefs, it) }
         }
         item("vibe-preview") { VibeLookPreview(s) }
-        group(HlGroups.stream) {
-            ChoiceRow(tr(R.string.visualizer), StreamVisualStyle.entries, s.streamVisualStyle, { it.label }, changed = streamVisualChanged) { prefs.setStreamVisualStyle(it) }
-            SwitchRow(tr(R.string.prism_stream_appearance_panel), s.streamGlassPanel, changed = streamPanelChanged) { prefs.setStreamGlassPanel(it) }
-            SwitchRow(tr(R.string.artwork), s.streamShowCover, changed = streamShowCoverChanged) { prefs.setStreamShowCover(it) }
-            if (s.streamShowCover) ChoiceRow(tr(R.string.cover_size), StreamCoverSize.entries, s.streamCoverSize, { it.label }, changed = streamSizeChanged) { prefs.setStreamCoverSize(it) }
-            SwitchRow(tr(R.string.progress_bar), s.streamShowProgress, changed = streamShowProgressChanged) { prefs.setStreamShowProgress(it) }
-            SwitchRow(tr(R.string.prism_stream_appearance_reactions), s.streamShowReactions, changed = streamShowReactionsChanged) { prefs.setStreamShowReactions(it) }
-            SwitchRow(tr(R.string.prism_stream_appearance_status), s.streamShowStatus, changed = streamShowStatusChanged) { prefs.setStreamShowStatus(it) }
-            SwitchRow(tr(R.string.prism_stream_appearance_reverse), s.streamReverseLayout, changed = streamReverseChanged) { prefs.setStreamReverseLayout(it) }
-        }
+        group(HlGroups.stream) { VibeAppearanceRows(s, d) }
         group(HlGroups.streamScenarios) {
             SwitchRow(tr(R.string.prism_stream_appearance_compact_scenarios), s.streamCompactScenarios, changed = streamCompactScenariosChanged) { prefs.setStreamCompactScenarios(it) }
             LinkRow(tr(R.string.prism_stream_appearance_arrange), value = if (s.streamScenarioOrder.isEmpty()) tr(R.string.prism_stream_auto) else tr(R.string.changed), changed = streamOrderChanged, icon = PrismIcons.Customize) { arrangeVibe = true }
@@ -347,6 +338,20 @@ fun homeLibraryValue(s: AppSettings, dark: Boolean): String {
  * The look settings "Reset this page" puts back. The page's reset goes through each row's own setter (its other rows
  * aren't part of a Look); these are the ones among them that a Look holds.
  */
+/** Same controls on the settings page and the native Customize this sheet. */
+@Composable
+internal fun VibeAppearanceRows(s: AppSettings, d: AppSettings) {
+    val prefs = LocalContainer.current.settings
+    ChoiceRow(tr(R.string.visualizer), StreamVisualStyle.entries, s.streamVisualStyle, { it.label }, changed = s.streamVisualStyle != d.streamVisualStyle) { prefs.setStreamVisualStyle(it) }
+    SwitchRow(tr(R.string.prism_stream_appearance_panel), s.streamGlassPanel, changed = s.streamGlassPanel != d.streamGlassPanel) { prefs.setStreamGlassPanel(it) }
+    SwitchRow(tr(R.string.artwork), s.streamShowCover, changed = s.streamShowCover != d.streamShowCover) { prefs.setStreamShowCover(it) }
+    if (s.streamShowCover) ChoiceRow(tr(R.string.cover_size), StreamCoverSize.entries, s.streamCoverSize, { it.label }, changed = s.streamCoverSize != d.streamCoverSize) { prefs.setStreamCoverSize(it) }
+    SwitchRow(tr(R.string.progress_bar), s.streamShowProgress, changed = s.streamShowProgress != d.streamShowProgress) { prefs.setStreamShowProgress(it) }
+    SwitchRow(tr(R.string.prism_stream_appearance_reactions), s.streamShowReactions, changed = s.streamShowReactions != d.streamShowReactions) { prefs.setStreamShowReactions(it) }
+    SwitchRow(tr(R.string.prism_stream_appearance_status), s.streamShowStatus, changed = s.streamShowStatus != d.streamShowStatus) { prefs.setStreamShowStatus(it) }
+    SwitchRow(tr(R.string.prism_stream_appearance_reverse), s.streamReverseLayout, changed = s.streamReverseLayout != d.streamReverseLayout) { prefs.setStreamReverseLayout(it) }
+}
+
 val homeLibraryLookKeys: List<String> = listOf(
     "replay_card", "replay_card_graph", "library_view", "library_views", "library_columns", "library_subtitles",
     "playlist_hero_cover", "album_hero_cover", "downloads_albums",

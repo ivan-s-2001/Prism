@@ -56,7 +56,7 @@ import kotlinx.coroutines.launch
 
 /** What "Customize this" (1.7.3) can open settings for, and where those settings live. */
 enum class CustomizeTarget(val title: String) {
-    MINI_PLAYER(tr(R.string.mini_player)), TAB_BAR(tr(R.string.tab_bar)), PLAYER(tr(R.string.player)), HOME_SECTION(tr(R.string.home_section)),
+    MINI_PLAYER(tr(R.string.mini_player)), TAB_BAR(tr(R.string.tab_bar)), PLAYER(tr(R.string.player)), HOME_SECTION(tr(R.string.home_section)), VIBE(tr(R.string.stream)),
 }
 
 /** Opens a target's settings sheet (provided at the app's root); null where there's no sheet to open. */

@@ -20,6 +20,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import com.prism.music.ui.components.RoundAction
+import com.prism.music.ui.components.CustomizeTarget
+import com.prism.music.ui.components.LocalCustomize
+import com.prism.music.ui.components.customizable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import com.prism.music.ui.components.Segmented
@@ -280,9 +283,14 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         !online -> tr(R.string.prism_stream_offline)
         else -> tr(R.string.prism_stream_personal_stream)
     }
+    val openCustomize = LocalCustomize.current
     @Composable fun Header() {
         com.prism.music.ui.components.ScreenHeader(title,
             subtitle = status.takeIf { settings.streamShowStatus }) {
+            RoundAction(PrismIcons.Palette, tr(R.string.customize_prism), modifier = Modifier.testTag("wave:appearance")) {
+                if (openCustomize != null) openCustomize(CustomizeTarget.VIBE, null)
+                else nav.go(com.prism.music.ui.Routes.settings("home_library", tr(R.string.stream)))
+            }
             if (wave) RoundAction(if (djOn) PrismIcons.TurntableFilled else PrismIcons.Turntable,
                 tr(if (djOn) R.string.dj_mode_off else R.string.dj_mode),
                 modifier = Modifier.testTag("wave:dj")) { c.player.setDjMode(!djOn) }
@@ -326,7 +334,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 }
             })
         }
-        VibeFlowField(modifier.testTag("home:my_wave"), animated = wave && playing && !buffering,
+        VibeFlowField(modifier.testTag("home:my_wave").customizable(CustomizeTarget.VIBE), animated = wave && playing && !buffering,
             energy = style.diversity / 100f) {
             CompositionLocalProvider(com.prism.music.ui.player.LocalEmbeddedPlayerInk provides scheme.onSurface,
                 LocalContentColor provides scheme.onSurface) {
@@ -420,9 +428,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 Row(Modifier.fillMaxWidth().padding(bottom = ui.gap(18.dp)), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
                     Text(tr(R.string.prism_stream_tune_your_stream), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    RoundAction(PrismIcons.Palette, tr(R.string.customize_prism)) {
-                        close { nav.go(com.prism.music.ui.Routes.settings("home_library", tr(R.string.stream))) }
-                    }
                     RoundAction(PrismIcons.Refresh, tr(R.string.prism_stream_reset)) { change { it.reset() } }
                 }
                 var advanced by rememberSaveable { mutableStateOf(draftStyle.depth != MyWave.Depth.ANY) }

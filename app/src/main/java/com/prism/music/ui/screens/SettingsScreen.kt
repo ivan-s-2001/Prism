@@ -500,7 +500,7 @@ private fun CustomizeSheetContent(target: com.prism.music.ui.components.Customiz
     val page = when (target) {
         com.prism.music.ui.components.CustomizeTarget.MINI_PLAYER, com.prism.music.ui.components.CustomizeTarget.TAB_BAR -> SettingsSection.INTERFACE
         com.prism.music.ui.components.CustomizeTarget.PLAYER -> SettingsSection.PLAYER
-        com.prism.music.ui.components.CustomizeTarget.HOME_SECTION -> SettingsSection.HOME
+        com.prism.music.ui.components.CustomizeTarget.HOME_SECTION, com.prism.music.ui.components.CustomizeTarget.VIBE -> SettingsSection.HOME
     }
     val section = key?.let { k -> s.home.layout.firstOrNull { it.key == k } }
     com.prism.music.ui.components.ActionSheet(null, onDismiss) { close ->
@@ -523,6 +523,9 @@ private fun CustomizeSheetContent(target: com.prism.music.ui.components.Customiz
                     SettingsGroup(tr(R.string.visualizer)) { PlayerVisualizerRows() }
                     // "Lyrics" and not "Style": here the group's name has to say whose.
                     SettingsGroup(tr(R.string.lyrics)) { LsStyleRows(asPrismComes) }
+                }
+                com.prism.music.ui.components.CustomizeTarget.VIBE -> {
+                    SettingsGroup(tr(R.string.stream)) { com.prism.music.ui.screens.settings.VibeAppearanceRows(s, asPrismComes) }
                 }
                 com.prism.music.ui.components.CustomizeTarget.HOME_SECTION -> {
                     if (section != null) SettingsGroup(tr(R.string.this_section)) {
@@ -556,7 +559,7 @@ private fun CustomizeSheetContent(target: com.prism.music.ui.components.Customiz
                     Text(tr(R.string.undo_2, step.label), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            PrismTextButton({ close { onLeave(); nav.go(Routes.settings(page.key)) } }, Modifier.fillMaxWidth()) {
+            PrismTextButton({ close { onLeave(); nav.go(if (target == com.prism.music.ui.components.CustomizeTarget.VIBE) Routes.settings("home_library", tr(R.string.stream)) else Routes.settings(page.key)) } }, Modifier.fillMaxWidth()) {
                 Text(tr(R.string.all_settings, page.title)); Spacer(Modifier.width(6.dp)); Chevron()
             }
         }
