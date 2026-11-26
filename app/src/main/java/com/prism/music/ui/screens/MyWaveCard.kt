@@ -69,7 +69,7 @@ internal fun MyWaveScreen(bottomPadding: Dp, onOpenPlayer: () -> Unit = {}) {
     var loading by remember(account, online, retry) { mutableStateOf(online) }
     var failed by remember(account, online, retry) { mutableStateOf(false) }
     LaunchedEffect(account, online, retry, favorites) {
-        if (!source.isMyWave) try { c.yourMusic.warmWave() }
+        if (!source.continuousRecommendations) try { c.yourMusic.warmWave() }
         catch (e: CancellationException) { throw e }
         catch (_: Exception) { /* Start can still use the existing feed. */ }
     }
@@ -81,7 +81,7 @@ internal fun MyWaveScreen(bottomPadding: Dp, onOpenPlayer: () -> Unit = {}) {
             val cached = c.homeCache.readPicks(day, account).orEmpty()
             if (cached.isNotEmpty()) { value = cached; return@produceState }
             // No parallel feed fetching while already listening to a Wave. The queue is filled by the service.
-            if (source.isMyWave && retry == 0) return@produceState
+            if (source.continuousRecommendations && retry == 0) return@produceState
             val fresh = kotlinx.coroutines.withTimeoutOrNull(7000L) {
                 val shelves = c.ytm.fullHome(pages = 1, maxPages = 2,
                     satisfied = { earlyQuickPicks(it, settings.accountName) != null })
@@ -91,7 +91,7 @@ internal fun MyWaveScreen(bottomPadding: Dp, onOpenPlayer: () -> Unit = {}) {
             }.orEmpty()
             value = fresh
             // Keep first sound fast: a separate recommendation pass is bounded, never required for starting.
-            if (!c.castingNow && !c.queue.source.value.isMyWave) {
+            if (!c.castingNow && !c.queue.source.value.continuousRecommendations) {
                 val curated = kotlinx.coroutines.withTimeoutOrNull(5000L) {
                     c.yourMusic.quickPicks(fresh, radioOf = { seed -> c.ytm.next(seed.id, playlistId = "RDAMVM${seed.id}").songs }, count = 36, draw = retry)
                 }.orEmpty()
@@ -120,7 +120,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val song by c.player.currentSong.collectAsState()
     val playing by c.player.isPlaying.collectAsState()
     val buffering by c.player.buffering.collectAsState()
-    val wave = source.isMyWave && song != null
+    val wave = source.continuousRecommendations && song != null
+    val contextual = wave && source.isSongRadio
     val title = tr(R.string.stream)
 
     var starting by remember { mutableStateOf(false) }
@@ -268,7 +269,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             if (wave) RoundAction(if (djOn) PrismIcons.TurntableFilled else PrismIcons.Turntable,
                 tr(if (djOn) R.string.dj_mode_off else R.string.dj_mode),
                 modifier = Modifier.testTag("wave:dj")) { c.player.setDjMode(!djOn) }
-            if (wave || onRetry != null) RoundAction(PrismIcons.Shuffle, tr(R.string.prism_stream_refresh_stream),
+            if ((wave && !contextual) || onRetry != null && !wave) RoundAction(PrismIcons.Shuffle, tr(R.string.prism_stream_refresh_stream),
                 enabled = !starting, modifier = Modifier.testTag("home:my_wave:refresh")) {
                 if (wave && djOn) c.player.toggleShuffle()
                 else if (onRetry != null && !wave) onRetry() else start()
@@ -282,14 +283,14 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val hasNext by c.player.hasNext.collectAsState()
     @Composable fun Hero(modifier: Modifier) {
         val current = song.takeIf { wave }
-        VibeStationOverlay(settings, vibeStationTitle(activeSaved, activeScenario),
+        VibeStationOverlay(settings, activeVibeTitle(source, activeSaved, activeScenario),
             hasTrack = current != null,
             modifier = modifier.testTag("home:my_wave").customizable(CustomizeTarget.VIBE),
             play = {
                 VibeStationAction(wave && playing, starting && !wave, wave,
                     onPlay = { if (wave) c.player.togglePlay() else if (!starting) start() })
             },
-            tune = { VibeTunePill({ openSettings() }) },
+            tune = { if (!contextual) VibeTunePill({ openSettings() }) },
             credits = {
                 if (current != null) VibeCredits(settings, current.title, current.primaryArtist,
                     artwork = { com.prism.music.ui.components.Artwork(com.prism.music.data.PlaylistCovers.artOf(current), it,
@@ -353,9 +354,9 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp)),
             contentPadding = PaddingValues(horizontal = ui.gap(12.dp), vertical = ui.gap(2.dp))) {
             items(shortcuts, key = { it.key }) { shortcut ->
-                ScenarioTile(shortcut.label, shortcut.icon, shortcut.selected, onClick = {
+                ScenarioTile(shortcut.label, shortcut.icon, shortcut.selected && !contextual, onClick = {
                     val target = shortcut.style
-                    if (target != null && (!wave || !shortcut.selected)) start(target, shortcut.scenarioId)
+                    if (target != null && (!wave || contextual || !shortcut.selected)) start(target, shortcut.scenarioId)
                 }, modifier = Modifier.testTag("wave:${shortcut.key}"))
             }
         }
