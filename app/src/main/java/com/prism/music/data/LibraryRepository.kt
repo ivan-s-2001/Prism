@@ -578,7 +578,20 @@ class LibraryRepository(private val c: AppContainer) {
                 val remote = c.ytm.librarySubscriptions(requireComplete = true)
                 synchronized(artistEditLock) {
                     if (c.settings.current.isLoggedIn && artistKey == remoteReactionKey() + ":artists") {
-                        val edits = artistEdits + pendingArtists(artistKey)
+                        val acknowledged = acknowledgedArtists[artistKey]
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        acknowledged?.entries?.removeAll { now - it.value.at >= 60_000L }
+                        val edits = artistEdits + acknowledged.orEmpty().mapValues { it.value.edit } + pendingArtists(artistKey)
+                        val remoteIds = remote.mapTo(hashSetOf()) { it.id }
+                        val confirmedKey = "$artistKey:confirmed"
+                        val previous = dislikePrefs.getStringSet(confirmedKey, emptySet()).orEmpty()
+                        // Only remove a local star if the artist was previously a confirmed remote subscription.
+                        // Purely local/imported stars remain local and are not deleted just because they are absent remotely.
+                        val removed = (previous - remoteIds).filterTo(hashSetOf()) { it !in edits }
+                        c.artistPrefs.unstar(removed)
+                        val confirmed = remoteIds + previous.filter { edits[it]?.on == true }
+                        dislikePrefs.edit().putStringSet(confirmedKey, confirmed.toSet()).apply()
+                        acknowledged?.entries?.removeAll { (id, ack) -> (id in remoteIds) == ack.edit.on }
                         val kept = subscribedArtists.value.filter { edits[it.id]?.on == true }
                         subscribedArtists.value = (remote.filter { edits[it.id]?.on != false } + kept).distinctBy { it.id }
                         cacheSubscriptions(artistKey)
@@ -799,6 +812,8 @@ class LibraryRepository(private val c: AppContainer) {
     }
 
     private data class ArtistEdit(val channel: String?, val on: Boolean)
+    private data class ArtistAck(val edit: ArtistEdit, val at: Long)
+    private val acknowledgedArtists = mutableMapOf<String, MutableMap<String, ArtistAck>>()
     private val artistEditLock = Any()
     private val artistSyncLock = Mutex()
 
@@ -872,9 +887,9 @@ class LibraryRepository(private val c: AppContainer) {
         }.toMap()
 
     private fun saveArtistEdits(key: String, edits: Map<String, ArtistEdit>) {
-        dislikePrefs.edit().putStringSet(key, edits.map { (id, edit) ->
+        check(dislikePrefs.edit().putStringSet(key, edits.map { (id, edit) ->
             "$id\t${edit.channel.orEmpty()}\t${if (edit.on) 1 else 0}"
-        }.toSet()).commit()
+        }.toSet()).commit()) { "Could not save artist edits" }
     }
 
     private suspend fun flushArtistEdits() = artistSyncLock.withLock {
@@ -883,6 +898,7 @@ class LibraryRepository(private val c: AppContainer) {
         val edits = synchronized(artistEditLock) { pendingArtists(key) }
         for ((id, edit) in edits) {
             if (!c.settings.current.isLoggedIn || key != remoteReactionKey() + ":artists") break
+            if (synchronized(artistEditLock) { pendingArtists(key)[id] } != edit) continue
             try {
                 val sent = kotlinx.coroutines.withTimeoutOrNull(8000L) {
                     val channel = edit.channel ?: c.ytm.artist(id).channelId ?: return@withTimeoutOrNull false
@@ -892,7 +908,10 @@ class LibraryRepository(private val c: AppContainer) {
                 } == true
                 if (sent) synchronized(artistEditLock) {
                     val latest = pendingArtists(key)
-                    if (latest[id] == edit) saveArtistEdits(key, latest - id)
+                    if (latest[id] == edit) {
+                        saveArtistEdits(key, latest - id)
+                        acknowledgedArtists.getOrPut(key) { mutableMapOf() }[id] = ArtistAck(edit, android.os.SystemClock.elapsedRealtime())
+                    }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) { lastError.value = e.friendlyMessage() }
