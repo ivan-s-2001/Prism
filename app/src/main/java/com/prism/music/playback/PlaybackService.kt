@@ -2887,14 +2887,13 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             if (q.shuffle) player.shuffleModeEnabled = true
             return
         }
-        val source = q.source()
-        val (index, position) = PlaceKeeper.start(q.songs.map { it.id }, q.index, q.positionMs, keptPlace(), placeIsNewer = true)
-        val at = index.coerceIn(0, q.songs.lastIndex)
+        val restored = q.resume(keptPlace()) ?: return
+        val source = restored.source
         c.queue.source.value = source
-        c.queue.userQueued.value = q.manualIds.intersect(q.songs.drop(at + 1).mapTo(hashSetOf()) { it.id })
-        c.queue.autoplayStart.value = q.autoplayStart.takeIf { it in q.songs.indices } ?: -1
-        c.queue.waveQuotaStart = if (source.isMyWave) q.waveQuotaStart.coerceIn(0, q.songs.size) else 0
-        player.setMediaItems(q.songs.map { it.toMediaItem() }, at, position)
+        c.queue.userQueued.value = restored.manualIds
+        c.queue.autoplayStart.value = restored.autoplayStart
+        c.queue.waveQuotaStart = restored.waveQuotaStart
+        player.setMediaItems(restored.songs.map { it.toMediaItem() }, restored.index, restored.positionMs)
         // Shuffle and repeat as they were, except for a continuous recommendation session.
         if (q.shuffle && source.allowsOrderModes) {
             if (q.shuffleOrder.size == q.songs.size && q.shuffleOrder.sorted() == q.songs.indices.toList()) {

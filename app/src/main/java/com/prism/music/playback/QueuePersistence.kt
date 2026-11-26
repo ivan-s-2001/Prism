@@ -37,10 +37,16 @@ internal fun savedQueueText(
 ): String {
     val decoded = songJson.map { s -> s?.let { runCatching { InnerTube.json.decodeFromString(Song.serializer(), it) }.getOrNull() } }
     val songs = decoded.filterNotNull()
+    // The player index belongs to the unfiltered timeline. Never restore the same offset into a different song.
+    val originalIndex = index.coerceIn(0, decoded.lastIndex.coerceAtLeast(0))
+    val currentSurvived = decoded.getOrNull(originalIndex) != null
+    val adjustedIndex = decoded.take(originalIndex).count { it != null }
+        .coerceAtMost(songs.lastIndex.coerceAtLeast(0))
+    val adjustedPosition = if (currentSurvived) positionMs.coerceAtLeast(0) else 0L
     val adjustedAuto = if (autoplayStart in decoded.indices && decoded.drop(autoplayStart).any { it != null })
         decoded.take(autoplayStart).count { it != null } else -1
     val adjustedQuota = if (source?.isMyWave == true) decoded.take(waveQuotaStart.coerceIn(0, decoded.size)).count { it != null } else 0
-    val q = SavedQueue(songs, index, positionMs, title, shuffle = shuffle, shuffleOrder = if (shuffle && songs.size == songJson.size) order else emptyList(), repeat = repeat,
+    val q = SavedQueue(songs, adjustedIndex, adjustedPosition, title, shuffle = shuffle, shuffleOrder = if (shuffle && songs.size == songJson.size) order else emptyList(), repeat = repeat,
         sourceKind = source?.kind?.name, seedId = source?.seedId, originId = source?.originId,
         manualIds = manualIds.intersect(songs.mapTo(hashSetOf()) { it.id }), autoplayStart = adjustedAuto, vibeAnchors = source?.vibeAnchors.orEmpty(), vibeOrigin = source?.vibeOrigin, waveQuotaStart = adjustedQuota)
     return InnerTube.json.encodeToString(SavedQueue.serializer(), q)
@@ -57,11 +63,18 @@ internal data class Resumption(val songs: List<Song>, val index: Int, val positi
  */
 internal fun resumptionOf(queueText: String?, place: QueuePlace?): Resumption? {
     val q = queueText?.let { runCatching { InnerTube.json.decodeFromString(SavedQueue.serializer(), it) }.getOrNull() } ?: return null
-    if (q.songs.isEmpty()) return null
-    val (index, position) = PlaceKeeper.start(q.songs.map { it.id }, q.index, q.positionMs, place, placeIsNewer = true)
-    return Resumption(q.songs, index.coerceIn(0, q.songs.lastIndex), position.coerceAtLeast(0), q.title,
-        q.source(), q.manualIds.intersect(q.songs.drop(index.coerceIn(0, q.songs.lastIndex) + 1).mapTo(hashSetOf()) { it.id }),
-        q.autoplayStart.takeIf { it in q.songs.indices } ?: -1,
-        if (q.source().isMyWave) q.waveQuotaStart.coerceIn(0, q.songs.size) else 0)
+    return q.resume(place)
+}
+
+/** The same reconstruction for app startup and MediaSession resumption. */
+internal fun SavedQueue.resume(place: QueuePlace?): Resumption? {
+    if (songs.isEmpty()) return null
+    val source = source()
+    val (restoredIndex, position) = PlaceKeeper.start(songs.map { it.id }, index, positionMs, place, placeIsNewer = true)
+    val at = restoredIndex.coerceIn(0, songs.lastIndex)
+    return Resumption(songs, at, position.coerceAtLeast(0), title,
+        source, manualIds.intersect(songs.drop(at + 1).mapTo(hashSetOf()) { it.id }),
+        autoplayStart.takeIf { it in songs.indices } ?: -1,
+        if (source.isMyWave) waveQuotaStart.coerceIn(0, songs.size) else 0)
 }
 

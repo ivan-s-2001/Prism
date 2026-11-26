@@ -116,6 +116,24 @@ class QueueResumeTest {
         assertEquals(listOf("a", "b", "c"), r.songs.map { it.id })
     }
 
+    @Test fun omittedItemsBeforeCurrentTrackDoNotChangeRestoredSong() {
+        val encoded = songs.map { InnerTube.json.encodeToString(Song.serializer(), it) }
+        val text = com.prism.music.playback.savedQueueText(
+            listOf(encoded[0], null, encoded[1], encoded[2]), 2, 12000L, "Queue", false, emptyList(), 0)
+        val r = resumptionOf(text, null)!!
+        assertEquals("b", r.songs[r.index].id)
+        assertEquals(12000L, r.positionMs)
+    }
+
+    @Test fun missingCurrentTrackResumesNextValidTrackFromStart() {
+        val encoded = songs.map { InnerTube.json.encodeToString(Song.serializer(), it) }
+        val text = com.prism.music.playback.savedQueueText(
+            listOf(encoded[0], null, encoded[1], encoded[2]), 1, 12000L, "Queue", false, emptyList(), 0)
+        val r = resumptionOf(text, null)!!
+        assertEquals("b", r.songs[r.index].id)
+        assertEquals(0L, r.positionMs)
+    }
+
     @Test fun oldQueueFileRemainsReadableWithoutInventingContext() {
         val r = resumptionOf(saved(), null)!!
         assertFalse(r.source.continuousRecommendations)
