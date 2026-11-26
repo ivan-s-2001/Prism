@@ -714,7 +714,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     /**
      * Plays [song] and then a radio of songs like it (YouTube Music's), whether or not Autoplay is on. The song playing
      * now carries on where it is, the radio lined up after it (#292: it started again from the top). [announce]: say
-     * "Radio started" once its songs are in ([vibeNotice]; the Radio buttons, 1.8.8).
+     * "Vibe started" once the first recommendations are in ([vibeNotice]).
      */
     fun playTrackVibe(song: Song, announce: Boolean = false, contextTitle: String = song.title) {
         if (song.isLive || song.isEpisode || c.queue.followingHost) return

@@ -96,7 +96,8 @@ class QueueResumeTest {
         val q = SavedQueue(songs, 1, 5000, "Vibe · Original artist", sourceKind = "RADIO",
             vibeAnchors = listOf(songs.first()), vibeOrigin = origin)
         val resumed = resumptionOf(InnerTube.json.encodeToString(SavedQueue.serializer(), q), null)!!
-        assertTrue(resumed.source.isSongRadio)
+        assertTrue(resumed.source.isContextVibe)
+        assertEquals(com.prism.music.playback.QueueKind.VIBE, resumed.source.kind)
         assertEquals(origin, resumed.source.vibeOrigin)
         assertEquals(origin, com.prism.music.ui.screens.activeVibeOrigin(resumed.source, songs[2]))
     }
