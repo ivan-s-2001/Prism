@@ -34,7 +34,7 @@ internal fun VibeReactionsSheet(onDismiss: () -> Unit) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.85f).padding(horizontal = 16.dp).navigationBarsPadding().imePadding()) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(tr(R.string.prism_vibe_reactions), Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-                RoundAction(PrismIcons.Close, tr(R.string.done)) { close() }
+                RoundAction(PrismIcons.Close, tr(R.string.done)) { close {} }
             }
             Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 com.prism.music.ui.components.PrismChip(selected = !negative,

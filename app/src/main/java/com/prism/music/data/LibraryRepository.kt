@@ -265,6 +265,43 @@ class LibraryRepository(private val c: AppContainer) {
         many.forEach { setLiked(it, liked) }
     }
 
+    private fun remoteReactionKey(): String {
+        val s = c.settings.current
+        return "remote_reactions:" + (s.dataSyncId?.takeIf { it.isNotBlank() } ?: "${s.authUser}:${s.accountName}")
+    }
+
+    private fun pendingRemote(key: String): Map<String, SongReaction> =
+        dislikePrefs.getStringSet(key, emptySet()).orEmpty().mapNotNull { row ->
+            val id = row.substringBeforeLast('\t', "")
+            val reaction = SongReaction.entries.firstOrNull { it.name == row.substringAfterLast('\t') }
+            if (id.isBlank() || reaction == null) null else id to reaction
+        }.toMap()
+
+    private fun savePendingRemote(key: String, pending: Map<String, SongReaction>) {
+        dislikePrefs.edit().putStringSet(key, pending.map { (id, target) -> "$id\t${target.name}" }.toSet()).commit()
+    }
+
+    /** Local state wins until its latest explicit change is acknowledged by the same remote account. */
+    private suspend fun sendPendingReaction(key: String, id: String, target: SongReaction): Boolean {
+        if (!c.settings.current.isLoggedIn || remoteReactionKey() != key) return false
+        return try {
+            val sent = kotlinx.coroutines.withTimeoutOrNull(8_000L) {
+                when (target) {
+                    SongReaction.LIKE -> c.ytm.like(id, true)
+                    SongReaction.DISLIKE -> c.ytm.dislike(id, true)
+                    SongReaction.NONE -> c.ytm.like(id, false)
+                }
+                true
+            } == true
+            if (sent && pendingRemote(key)[id] == target) savePendingRemote(key, pendingRemote(key) - id)
+            sent
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: Exception) {
+            lastError.value = tr(R.string.couldn_t_sync_like, e.friendlyMessage())
+            false
+        }
+    }
+
     private suspend fun applyReaction(song: Song, target: SongReaction) {
         val existing = songs.get(song.id)
         val liked = target == SongReaction.LIKE
@@ -292,13 +329,9 @@ class LibraryRepository(private val c: AppContainer) {
         if (song.isLocal) return
         if (liked && !wasLiked && c.settings.current.downloadLikes) c.downloads.download(song)
         if (c.settings.current.isLoggedIn) {
-            runCatching {
-                when (target) {
-                    SongReaction.LIKE -> c.ytm.like(song.id, true)
-                    SongReaction.DISLIKE -> c.ytm.dislike(song.id, true)
-                    SongReaction.NONE -> c.ytm.like(song.id, false)
-                }
-            }.onFailure { lastError.value = tr(R.string.couldn_t_sync_like, it.friendlyMessage()) }
+            val key = remoteReactionKey()
+            savePendingRemote(key, pendingRemote(key) + (song.id to target))
+            if (c.network.isOnline()) sendPendingReaction(key, song.id, target)
         }
     }
 
@@ -315,7 +348,11 @@ class LibraryRepository(private val c: AppContainer) {
         syncState.value = SyncState.SYNCING
         try {
             reactionLock.withLock {
-            val remote = c.ytm.likedSongs().filterNot { it.id in dislikedIds.value }
+            val key = remoteReactionKey()
+            val localEdits = pendingRemote(key)
+            // Protect edits from this sync even if YouTube briefly returns a stale snapshot after acknowledging them.
+            for ((id, reaction) in localEdits) sendPendingReaction(key, id, reaction)
+            val remote = c.ytm.likedSongs().filterNot { it.id in dislikedIds.value || localEdits[it.id]?.let { reaction -> reaction != SongReaction.LIKE } == true }
             val before = likedIds.value
             val now = System.currentTimeMillis()
             // Chunked: SQLite caps bound parameters at 999 on older Android versions.
@@ -329,7 +366,7 @@ class LibraryRepository(private val c: AppContainer) {
                 val remoteIds = remote.map { it.id }.toSet()
                 // Local songs' likes are Prism's own, and so are imported likes kept off the account (1.8.1): YouTube
                 // doesn't know them, so it can't take them away.
-                likesToDrop(before, remoteIds, c.imports.keptLikes()).forEach { songs.setLiked(it, false, 0) }
+                likesToDrop(before, remoteIds, c.imports.keptLikes() + localEdits.filterValues { it == SongReaction.LIKE }.keys).forEach { songs.setLiked(it, false, 0) }
             }
             if (c.settings.current.downloadLikes && before.isNotEmpty()) {
                 remote.filter { it.id !in before }.forEach { c.downloads.download(it) }
