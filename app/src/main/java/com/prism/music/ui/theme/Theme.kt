@@ -482,7 +482,7 @@ fun PrismTheme(settings: AppSettings, artworkColor: Color?, content: @Composable
     val contrastStep = settings.contrast.ordinal
     if (PrismTokens.contrast != contrastStep) PrismTokens.contrast = contrastStep
     val seedTarget = seedFor(settings, dark, artworkColor)
-    val seed by animateColorAsState(seedTarget, tween(if (settings.colorSource == ColorSource.ARTWORK) settings.artworkChange.ms else 900), label = "seed")
+    val seed by animateColorAsState(seedTarget, tween(if (settings.reduceMotionRequested ?: settings.reduceMotion) 0 else if (settings.colorSource == ColorSource.ARTWORK) settings.artworkChange.ms else 900), label = "seed")
     val dynamic = dynamicSchemes(settings, context)
     val colors = remember(settings, seed, dark) { themeColors(settings, dark, seed, dynamic) }
     val scheme = colors.scheme
