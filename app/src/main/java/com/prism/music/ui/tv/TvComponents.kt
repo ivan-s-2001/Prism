@@ -152,7 +152,7 @@ fun TvIconButton(icon: ImageVector, label: String, onClick: () -> Unit, modifier
         onClick = onClick,
         modifier = modifier.size(size)
             .then(if (ring) Modifier.border(TV_RING_THIN, light, CircleShape) else Modifier)
-            .then(if (vibeStyle == com.prism.music.data.prefs.TransportStyle.OUTLINE) Modifier.border(1.dp, scheme.outline, CircleShape) else Modifier),
+            .then(if (vibeStyle == com.prism.music.data.prefs.TransportStyle.OUTLINE) Modifier.border(1.dp, scheme.onSurfaceVariant.copy(alpha = 0.55f), CircleShape) else Modifier),
         scale = IconButtonDefaults.scale(focusedScale = 1.1f),
         colors = IconButtonDefaults.colors(
             containerColor = when (vibeStyle) {
