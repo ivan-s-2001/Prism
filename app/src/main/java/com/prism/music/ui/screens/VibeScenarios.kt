@@ -28,6 +28,15 @@ internal fun activeVibeTitle(source: com.prism.music.playback.QueueSource,
     saved: SavedWavePreset?, scenario: WaveScenarios.Scenario?): String =
     if (source.isSongRadio) source.title.ifBlank { tr(R.string.stream) } else vibeStationTitle(saved, scenario)
 
+internal fun activeVibeOrigin(source: com.prism.music.playback.QueueSource,
+    current: com.prism.music.data.model.Song?): com.prism.music.playback.VibeOrigin? {
+    if (!source.isSongRadio) return null
+    source.vibeOrigin?.let { return it }
+    val seed = current?.takeIf { it.id == source.seedId }
+    return if (seed != null) com.prism.music.playback.VibeOrigin(
+        com.prism.music.playback.VibeOriginKind.TRACK, seed.title, seed.thumbnail) else null
+}
+
 internal fun vibeShortcuts(
     style: MyWave.Style,
     saved: List<SavedWavePreset>,
