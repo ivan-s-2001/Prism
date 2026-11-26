@@ -272,6 +272,8 @@ object LookLabels {
         "stream_theme_colors" to (tr(R.string.stream) + " · " + tr(R.string.theme)),
         "stream_russian_percent" to (tr(R.string.stream) + " · " + tr(R.string.prism_stream_music_language)),
         "stream_layout" to (tr(R.string.stream) + " · " + tr(R.string.layout)),
+        "stream_motion" to (tr(R.string.stream) + " · " + tr(R.string.speed)),
+        "stream_sensitivity" to (tr(R.string.stream) + " · " + tr(R.string.intensity)),
         "stream_visual_size" to (tr(R.string.stream) + " · " + tr(R.string.visualizer) + " · " + tr(R.string.size)),
         "stream_visual_style" to (tr(R.string.stream) + " · " + tr(R.string.visualizer)),
         "stream_show_cover" to (tr(R.string.stream) + " · " + tr(R.string.artwork)),
@@ -430,7 +432,7 @@ object LookLabels {
     }
 
     private val percent = setOf(
-        "text_scale", "lyrics_scale", "backdrop_dim", "player_backdrop_show", "surface_tint_strength", "mesh_speed", "mesh_intensity", "player_blur",
+        "stream_motion", "stream_sensitivity", "text_scale", "lyrics_scale", "backdrop_dim", "player_backdrop_show", "surface_tint_strength", "mesh_speed", "mesh_intensity", "player_blur",
         "scrubber_thickness", "mini_fill_strength", "lyrics_blur_amount", "lyrics_spacing", "lyrics_others_alpha", "lyrics_backing_size", "lyrics_extra_size",
         "corner_scale", "glass_blur", "glass_frost", "player_gradient_depth",
     )
@@ -490,7 +492,7 @@ object LookLabels {
             "replay_card_graph", "replay_story_font",
             "hide_status_bar", "hide_status_bar_player", "tab_names", "nav_bar_size", "nav_bar_fill", "mini_player_joined", "controls_classic",
             "downloads_albums", "album_hero_cover",
-            "stream_theme_colors", "stream_russian_percent", "stream_visual_style", "stream_layout", "stream_visual_size", "stream_show_cover", "stream_show_progress", "stream_show_reactions", "stream_show_status", "stream_compact_scenarios", "stream_cover_size", "stream_glass_panel", "stream_reverse_layout", "stream_scenario_order",
+            "stream_theme_colors", "stream_russian_percent", "stream_visual_style", "stream_layout", "stream_visual_size", "stream_motion", "stream_sensitivity", "stream_show_cover", "stream_show_progress", "stream_show_reactions", "stream_show_status", "stream_compact_scenarios", "stream_cover_size", "stream_glass_panel", "stream_reverse_layout", "stream_scenario_order",
         ),
         "player" to setOf(
             "player_background", "player_backdrop_show", "player_art_corners", "transport_style", "cover_size", "scrubber_style", "art_shrink_on_pause",

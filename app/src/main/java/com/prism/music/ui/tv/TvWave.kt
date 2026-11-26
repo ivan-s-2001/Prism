@@ -170,6 +170,8 @@ internal fun TvWavePlace(nav: TvNav) {
                             TvWaveChoices(tr(R.string.visualizer), StreamVisualStyle.entries, appSettings.streamVisualStyle, "visual", { it.label }) { c.settings.setStreamVisualStyle(it) }
                             TvWaveChoices(tr(R.string.layout), StreamLayout.entries, appSettings.streamLayout, "layout", { it.label }) { c.settings.setStreamLayout(it) }
                             TvWaveChoices(tr(R.string.size), StreamCoverSize.entries, appSettings.streamVisualSize, "size", { it.label }) { c.settings.setStreamVisualSize(it) }
+                            TvWaveChoices(tr(R.string.speed), listOf(0f, 0.5f, 1f, 1.5f, 2f), appSettings.streamMotion, "speed", { "${(it * 100).toInt()}%" }) { c.settings.setStreamMotion(it) }
+                            TvWaveChoices(tr(R.string.intensity), listOf(0f, 0.5f, 1f, 1.5f, 2f), appSettings.streamSensitivity, "intensity", { "${(it * 100).toInt()}%" }) { c.settings.setStreamSensitivity(it) }
                         }
                         Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                             com.prism.music.ui.screens.VibeSphere(Modifier.size(240.dp * appSettings.streamVisualSize.fraction), animated = false, energy = 0.5f, preview = true)

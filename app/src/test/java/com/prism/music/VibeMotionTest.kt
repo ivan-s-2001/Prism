@@ -15,6 +15,21 @@ class VibeMotionTest {
         assertTrue(level < 0.001f)
     }
 
+    @Test fun envelopeIsIndependentOfFrameRate() {
+        fun rise(fps: Int): Float {
+            var value = 0f
+            repeat(fps) { value = smoothVibe(value, 0.75f, 1f / fps) }
+            return value
+        }
+        fun fall(fps: Int): Float {
+            var value = 1f
+            repeat(fps) { value = smoothVibe(value, 0f, 1f / fps) }
+            return value
+        }
+        assertTrue(kotlin.math.abs(rise(30) - rise(60)) < 0.0001f)
+        assertTrue(kotlin.math.abs(fall(30) - fall(60)) < 0.0001f)
+    }
+
     @Test fun invalidInputCannotPoisonTheAnimation() {
         assertTrue(smoothVibe(0.5f, Float.NaN) in 0f..0.5f)
         assertTrue(smoothVibe(0f, 20f) in 0f..1f)

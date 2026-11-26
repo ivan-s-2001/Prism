@@ -34,7 +34,15 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.geometry.Offset
 import kotlin.math.sin
 import kotlin.math.cos
-import com.prism.music.ui.player.rememberVisualizer
+import com.prism.music.playback.VisualizerTap
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.prism.music.data.prefs.LightStyle
+import com.prism.music.ui.theme.SpectrumPresets
+import kotlin.math.exp
 import com.prism.music.data.prefs.StreamVisualStyle
 import com.prism.music.ui.theme.LocalAppSettings
 import com.prism.music.ui.theme.LocalIsDark
@@ -93,6 +101,8 @@ half4 main(float2 fc) {
     float outer = 1.0 - smoothstep(radius * 0.91, radius * 1.48, edge);
     float inner = smoothstep(radius * 0.56, radius * 0.94, edge);
     float ribbon = 0.5 + 0.5 * sin(angle * 2.0 + detail * 6.2 + t * 0.9);
+    float silk = 0.5 + 0.5 * cos((edge - radius) * 96.0 + 4.0 * cloud + angle * 3.0 - t * 0.8);
+    float litRim = smoothstep(0.30, 0.95, 0.5 + 0.5 * sin(angle + t * 0.32 + cloud * 1.8));
     float sheen = pow(ribbon, 2.1) * (0.30 + 0.70 * detail);
     float tone = 0.5 + 0.5 * sin(angle + cloud * 4.5 - t * 0.8);
     float3 col = mix(mix(colA, colB, smoothstep(0.0, 0.56, tone)), colC, smoothstep(0.52, 1.0, tone));
@@ -104,7 +114,9 @@ half4 main(float2 fc) {
     float secondary = exp(-n * n);
     float light = outer * inner * (0.23 + 0.40 * cloud + sheen * 0.42)
         + membrane * (0.22 + 0.40 * sheen + 0.12 * frequencies.w)
-        + secondary * (0.08 + 0.20 * detail);
+        + secondary * (0.08 + 0.20 * detail)
+        + outer * inner * silk * (0.045 + 0.08 * frequencies.z) * litRim;
+    col = mix(col, colB, membrane * litRim * 0.32);
     light *= 0.88 + 0.29 * bass;
     float clipEdge = 1.0 - smoothstep(0.42, 0.50, r);
     float al = clamp(light * opacity * clipEdge, 0.0, 0.95);
@@ -127,18 +139,35 @@ internal fun VibeSphere(
     val scheme = MaterialTheme.colorScheme
     // Follow the resolved Material accent, including dynamic wallpaper, custom accent and preview themes.
     // Vary its brightness rather than injecting unrelated hues.
+    // Resolve from local settings rather than the global token singleton: a Look preview can have another palette.
+    val palette = remember(settings.lightStyle, settings.spectrumPreset, settings.spectrumStops, settings.spectrumBands, dark, scheme.primary) {
+        if (settings.lightStyle == LightStyle.WHITE) emptyList()
+        else SpectrumPresets.light(settings.spectrumPreset, settings.spectrumStops, settings.spectrumBands).let {
+            (if (dark) it.colors else it.deep).map { stop -> stop.second }
+        }
+    }
     val a = scheme.primary
-    val b = lerp(a, scheme.onSurface, if (dark) 0.36f else 0.22f)
-    val c = lerp(a, scheme.background, if (dark) 0.28f else 0.18f)
-    val motion = !preview && !settings.reduceMotion && !settings.performanceMode
-    val visualizer = rememberVisualizer(motion && animated)
+    val b = if (palette.isEmpty()) lerp(a, scheme.onSurface, if (dark) 0.36f else 0.22f)
+        else lerp(a, palette[palette.size / 2], 0.55f)
+    val c = if (palette.isEmpty()) lerp(a, scheme.background, if (dark) 0.28f else 0.18f)
+        else lerp(a, palette.last(), 0.55f)
+    val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
+    val motion = !preview && !settings.reduceMotion && !settings.performanceMode && lifecycle.isAtLeast(Lifecycle.State.RESUMED)
+    val listening = motion && animated && settings.streamSensitivity > 0f
+    val spectrum = remember { Spectrum() }
     val playing = rememberUpdatedState(animated)
+    val speed = rememberUpdatedState(settings.streamMotion)
+    val sensitivity = rememberUpdatedState(settings.streamSensitivity)
     val time = remember { mutableFloatStateOf(7f) }
+    val frame = remember { androidx.compose.runtime.mutableLongStateOf(0L) }
     val level = remember { mutableFloatStateOf(0f) }
-    val live = rememberUpdatedState(visualizer)
     val bands = remember { FloatArray(Spectrum.BANDS) }
     val group = remember { FloatArray(4) }
-    LaunchedEffect(motion) {
+    DisposableEffect(listening) {
+        if (listening) VisualizerTap.listen()
+        onDispose { if (listening) VisualizerTap.stop() }
+    }
+    LaunchedEffect(motion, listening) {
         if (!motion) {
             level.floatValue = 0f
             bands.fill(0f)
@@ -149,31 +178,35 @@ internal fun VibeSphere(
         while (true) {
             withFrameNanos { now ->
                 if (last == 0L) last = now
-                // Update the GPU field at most ~30 fps, and never jump on returning from background.
                 val dt = now - last
                 if (dt >= 30_000_000L) {
-                    time.floatValue += (dt / 1e9f).coerceIn(0f, 0.1f) * if (playing.value) 2.2f else 0.75f
-                    val source = live.value
-                    val target = source?.level?.floatValue ?: 0f
-                    level.floatValue = smoothVibe(level.floatValue, target)
-                    for (i in bands.indices) bands[i] = smoothVibe(bands[i], source?.bands?.get(i) ?: 0f)
+                    val seconds = (dt / 1e9f).coerceIn(0.001f, 0.1f)
+                    if (listening) spectrum.update(seconds * 1000f)
+                    val gain = sensitivity.value
+                    val target = if (listening) spectrum.level * gain else 0f
+                    level.floatValue = smoothVibe(level.floatValue, target, seconds)
+                    for (i in bands.indices) bands[i] = smoothVibe(bands[i], if (listening) spectrum.bands[i] * gain else 0f, seconds)
                     for (i in group.indices) {
                         var sum = 0f
                         val start = i * 7
                         for (j in start until start + 7) sum += bands[j]
                         group[i] = sum / 7f
                     }
+                    // A separate clock tick keeps draw invalidation alive at zero motion speed, for the FFT.
+                    time.floatValue += seconds * (if (playing.value) 2.2f else 0.55f) * speed.value
+                    frame.longValue++
                     last = now
                 }
             }
         }
     }
-    val bass = { if (motion) level.floatValue else 0f }
+    val bass = { frame.longValue; if (motion) level.floatValue else 0f }
     val opacity = if (dark) 0.90f else 0.70f
     if (style == StreamVisualStyle.GLOW) {
         Canvas(modifier) { drawVibeGlow(a, b, bass(), opacity, if (motion) time.floatValue else 7f) }
     } else if (style == StreamVisualStyle.RING || style == StreamVisualStyle.EQUALIZER) {
         Canvas(modifier) {
+            frame.longValue
             val t = if (motion) time.floatValue else 7f
             drawVibeSpectrum(a, b, bands, t, opacity, style == StreamVisualStyle.RING, preview)
         }
@@ -231,9 +264,12 @@ private fun DrawScope.drawVibeGlow(a: Color, b: Color, bass: Float, opacity: Flo
 }
 
 /** Smooth attack/release on top of the shared FFT. Also decays when the PCM tap goes quiet. */
-internal fun smoothVibe(previous: Float, next: Float): Float {
+internal fun smoothVibe(previous: Float, next: Float, seconds: Float = 1f / 30f): Float {
+    val current = if (previous.isFinite()) previous.coerceIn(0f, 1f) else 0f
     val target = if (next.isFinite()) next.coerceIn(0f, 1f) else 0f
-    return previous + (target - previous) * if (target > previous) 0.36f else 0.12f
+    val dt = if (seconds.isFinite()) seconds.coerceIn(0f, 0.1f) else 0f
+    val tau = if (target > current) 0.075f else 0.26f
+    return current + (target - current) * (1f - exp(-dt / tau))
 }
 
 /** A portable liquid membrane with continuous curved contours, even without AGSL. */

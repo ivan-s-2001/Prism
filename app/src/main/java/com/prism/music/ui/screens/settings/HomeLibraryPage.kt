@@ -86,6 +86,8 @@ fun HomeLibraryPage(bottomPadding: Dp, find: String? = null, showBack: Boolean =
     var arrangeVibe by rememberSaveable { mutableStateOf(false) }
     reset.add(tr(R.string.stream) + " · " + tr(R.string.cover_size), s.streamCoverSize, d.streamCoverSize, { it.label }) { prefs.setStreamCoverSize(it) }
     reset.add(tr(R.string.stream) + " · " + tr(R.string.prism_stream_appearance_panel), s.streamGlassPanel, d.streamGlassPanel, onOff) { prefs.setStreamGlassPanel(it) }
+    reset.add(tr(R.string.stream) + " · " + tr(R.string.speed), s.streamMotion, d.streamMotion, { "${(it * 100).toInt()}%" }) { prefs.setStreamMotion(it) }
+    reset.add(tr(R.string.stream) + " · " + tr(R.string.intensity), s.streamSensitivity, d.streamSensitivity, { "${(it * 100).toInt()}%" }) { prefs.setStreamSensitivity(it) }
     reset.add(tr(R.string.stream) + " · " + tr(R.string.layout), s.streamLayout, d.streamLayout, { it.label }) { prefs.setStreamLayout(it) }
     reset.add(tr(R.string.stream) + " · " + tr(R.string.visualizer) + " · " + tr(R.string.size), s.streamVisualSize, d.streamVisualSize, { it.label }) { prefs.setStreamVisualSize(it) }
     reset.add(tr(R.string.stream) + " · " + tr(R.string.visualizer), s.streamVisualStyle, d.streamVisualStyle, { it.label }) { prefs.setStreamVisualStyle(it) }
@@ -347,7 +349,11 @@ internal fun VibeAppearanceRows(s: AppSettings, d: AppSettings) {
     val prefs = LocalContainer.current.settings
     ChoiceRow(tr(R.string.layout), StreamLayout.entries, s.streamLayout, { it.label }, changed = s.streamLayout != d.streamLayout) { prefs.setStreamLayout(it) }
     ChoiceRow(tr(R.string.visualizer), StreamVisualStyle.entries, s.streamVisualStyle, { it.label }, changed = s.streamVisualStyle != d.streamVisualStyle) { prefs.setStreamVisualStyle(it) }
-    if (s.streamVisualStyle != StreamVisualStyle.OFF) ChoiceRow(tr(R.string.size), StreamCoverSize.entries, s.streamVisualSize, { it.label }, changed = s.streamVisualSize != d.streamVisualSize) { prefs.setStreamVisualSize(it) }
+    if (s.streamVisualStyle != StreamVisualStyle.OFF) {
+        ChoiceRow(tr(R.string.size), StreamCoverSize.entries, s.streamVisualSize, { it.label }, changed = s.streamVisualSize != d.streamVisualSize) { prefs.setStreamVisualSize(it) }
+        SliderRow(tr(R.string.speed), s.streamMotion, 0f..2f, { "${(it * 100).toInt()}%" }, steps = 7, changed = s.streamMotion != d.streamMotion) { prefs.setStreamMotion(it) }
+        SliderRow(tr(R.string.intensity), s.streamSensitivity, 0f..2f, { "${(it * 100).toInt()}%" }, steps = 7, changed = s.streamSensitivity != d.streamSensitivity) { prefs.setStreamSensitivity(it) }
+    }
     SwitchRow(tr(R.string.prism_stream_appearance_panel), s.streamGlassPanel, changed = s.streamGlassPanel != d.streamGlassPanel) { prefs.setStreamGlassPanel(it) }
     SwitchRow(tr(R.string.artwork), s.streamShowCover, changed = s.streamShowCover != d.streamShowCover) { prefs.setStreamShowCover(it) }
     if (s.streamShowCover) ChoiceRow(tr(R.string.cover_size), StreamCoverSize.entries, s.streamCoverSize, { it.label }, changed = s.streamCoverSize != d.streamCoverSize) { prefs.setStreamCoverSize(it) }
@@ -360,7 +366,7 @@ internal fun VibeAppearanceRows(s: AppSettings, d: AppSettings) {
 val homeLibraryLookKeys: List<String> = listOf(
     "replay_card", "replay_card_graph", "library_view", "library_views", "library_columns", "library_subtitles",
     "playlist_hero_cover", "album_hero_cover", "downloads_albums",
-    "stream_visual_style", "stream_layout", "stream_visual_size", "stream_show_cover", "stream_cover_size", "stream_glass_panel", "stream_reverse_layout", "stream_scenario_order", "stream_show_progress", "stream_show_reactions", "stream_show_status", "stream_compact_scenarios",
+    "stream_visual_style", "stream_layout", "stream_visual_size", "stream_motion", "stream_sensitivity", "stream_show_cover", "stream_cover_size", "stream_glass_panel", "stream_reverse_layout", "stream_scenario_order", "stream_show_progress", "stream_show_reactions", "stream_show_status", "stream_compact_scenarios",
 )
 
 /** Old group titles → this page's groups: "Liked songs" (on Recommendations before 1.8.4) held what is in Library now. */
@@ -394,6 +400,8 @@ val homeLibraryIndex: List<SettingEntry> by lazy {
         SettingEntry(page, g.home, tr(R.string.recently_played_shows), tr(R.string.recently_played_albums_playlists_songs_home)),
         SettingEntry(page, g.home, tr(R.string.buttons_at_the_top_of_home), words(R.string.podcasts_button, R.string.customize_button_at_the_top)),
         // Vibe appearance
+        SettingEntry(page, g.stream, tr(R.string.speed), tr(R.string.visualizer)),
+        SettingEntry(page, g.stream, tr(R.string.intensity), tr(R.string.visualizer)),
         SettingEntry(page, g.stream, tr(R.string.layout), tr(R.string.stream)),
         SettingEntry(page, g.stream, tr(R.string.size), tr(R.string.visualizer)),
         SettingEntry(page, g.stream, tr(R.string.visualizer), tr(R.string.stream)),

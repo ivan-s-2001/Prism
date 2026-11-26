@@ -1929,6 +1929,8 @@ data class AppSettings(
     val streamVisualStyle: StreamVisualStyle = StreamVisualStyle.WAVE,
     val streamLayout: StreamLayout = StreamLayout.CENTERED,
     val streamVisualSize: StreamCoverSize = StreamCoverSize.LARGE,
+    val streamMotion: Float = 1f,
+    val streamSensitivity: Float = 1f,
     val streamShowCover: Boolean = true,
     val streamCoverSize: StreamCoverSize = StreamCoverSize.LARGE,
     val streamGlassPanel: Boolean = false,
@@ -2350,6 +2352,8 @@ class SettingsRepository(
         val streamVisualStyle = stringPreferencesKey("stream_visual_style")
         val streamLayout = stringPreferencesKey("stream_layout")
         val streamVisualSize = stringPreferencesKey("stream_visual_size")
+        val streamMotion = floatPreferencesKey("stream_motion")
+        val streamSensitivity = floatPreferencesKey("stream_sensitivity")
         val streamShowCover = booleanPreferencesKey("stream_show_cover")
         val streamCoverSize = stringPreferencesKey("stream_cover_size")
         val streamGlassPanel = booleanPreferencesKey("stream_glass_panel")
@@ -2504,7 +2508,7 @@ class SettingsRepository(
                 fontChoice, textScale, corners, uiDensity, titleSize, cardSize, reduceMotion, navStyle, navLabels, navHideOnScroll,
                 navTabs, startTab, miniPlayerStyle, miniSkipButtons, miniPrevButton, miniPlayButton, miniProgress, miniProgressColor, miniFillStrength, playRing, playingInPageColor, playerBackground, playerBackdropShow, playerArtCorners, transportStyle,
                 coverSize, scrubberStyle, artShrinkOnPause, showOutputDevice, lyricsAlign, libraryView, playlistHeroCover, frostedPages, replayThemeColors, streamThemeColors, streamRussianPercent,
-                streamVisualStyle, streamLayout, streamVisualSize, streamShowCover, streamCoverSize, streamGlassPanel, streamReverseLayout, streamScenarioOrder, streamShowProgress, streamShowReactions, streamShowStatus, streamCompactScenarios,
+                streamVisualStyle, streamLayout, streamVisualSize, streamMotion, streamSensitivity, streamShowCover, streamCoverSize, streamGlassPanel, streamReverseLayout, streamScenarioOrder, streamShowProgress, streamShowReactions, streamShowStatus, streamCompactScenarios,
                 immersiveArt, immersiveLyrics, immersiveControls, playerShuffleRepeat, lightStyle,
                 playerLayout, vinylTonearm, playerDeck, playerButtons, scrubberColor, playerTitleAlign, playerTitleSize, playerTitleScroll,
                 playerTimes, meshSpeed, meshIntensity, playerBlur, canvasFillsBackground,
@@ -2551,7 +2555,7 @@ class SettingsRepository(
                 lyricsAlign to 's', lyricsBlur to 'b', lyricsProgressLine to 'b', lyricsSourceButton to 'b', lyricsScale to 'f',
                 libraryView to 's', libraryViews to 's', libraryColumns to 's', librarySubtitles to 'b', playlistHeroCover to 'b',
                 homeHeader to 's', homeHeaderHeight to 's', replayThemeColors to 'b', streamThemeColors to 'b', streamRussianPercent to 'i',
-                streamVisualStyle to 's', streamLayout to 's', streamVisualSize to 's', streamShowCover to 'b', streamCoverSize to 's', streamGlassPanel to 'b', streamReverseLayout to 'b', streamScenarioOrder to 's', streamShowProgress to 'b', streamShowReactions to 'b', streamShowStatus to 'b', streamCompactScenarios to 'b', replayCard to 's', hideStatusBar to 'b',
+                streamVisualStyle to 's', streamLayout to 's', streamVisualSize to 's', streamMotion to 'f', streamSensitivity to 'f', streamShowCover to 'b', streamCoverSize to 's', streamGlassPanel to 'b', streamReverseLayout to 'b', streamScenarioOrder to 's', streamShowProgress to 'b', streamShowReactions to 'b', streamShowStatus to 'b', streamCompactScenarios to 'b', replayCard to 's', hideStatusBar to 'b',
                 cornerScale to 'f', songShape to 's', albumShape to 's', artistShape to 's', playerShape to 's', buttonShape to 's', playOutlined to 'b',
                 typeWeight to 's', typeSpacing to 's', titleFont to 's', tabTint to 's', playerTitleWeight to 's', typeClassic to 'b', controlsClassic to 'b',
                 panelPlayer to 's', queueHeadings to 'b', queueDjChip to 'b', castMark to 'b', immersiveVideo to 'b', bleedFit to 's', coverFlight to 'b',
@@ -3150,6 +3154,8 @@ class SettingsRepository(
             streamVisualStyle = p.enum(K.streamVisualStyle, d.streamVisualStyle),
             streamLayout = p.enum(K.streamLayout, d.streamLayout),
             streamVisualSize = p.enum(K.streamVisualSize, d.streamVisualSize),
+            streamMotion = p[K.streamMotion]?.takeIf { it.isFinite() }?.coerceIn(0f, 2f) ?: d.streamMotion,
+            streamSensitivity = p[K.streamSensitivity]?.takeIf { it.isFinite() }?.coerceIn(0f, 2f) ?: d.streamSensitivity,
             streamShowCover = p[K.streamShowCover] ?: d.streamShowCover,
             streamCoverSize = p.enum(K.streamCoverSize, d.streamCoverSize),
             streamGlassPanel = p[K.streamGlassPanel] ?: d.streamGlassPanel,
@@ -4009,6 +4015,8 @@ class SettingsRepository(
     fun setReplayThemeColors(v: Boolean) = edit { it[K.replayThemeColors] = v }
     fun setStreamThemeColors(v: Boolean) = edit { it[K.streamThemeColors] = v }
     fun setStreamLayout(v: StreamLayout) = edit { it[K.streamLayout] = v.name }
+    fun setStreamMotion(v: Float) = edit { it[K.streamMotion] = if (v.isFinite()) v.coerceIn(0f, 2f) else 1f }
+    fun setStreamSensitivity(v: Float) = edit { it[K.streamSensitivity] = if (v.isFinite()) v.coerceIn(0f, 2f) else 1f }
     fun setStreamVisualSize(v: StreamCoverSize) = edit { it[K.streamVisualSize] = v.name }
     fun setStreamVisualStyle(v: StreamVisualStyle) = edit { it[K.streamVisualStyle] = v.name }
     fun setStreamShowCover(v: Boolean) = edit { it[K.streamShowCover] = v }
