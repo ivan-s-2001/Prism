@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="prism_vibe_started">Vibe started</string>
-    <string name="prism_vibe_start_failed">Couldn't start Vibe</string>
+    <string name="prism_vibe_start_failed">Unable to start Vibe</string>
 </resources>
