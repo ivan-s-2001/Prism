@@ -1,24 +1,9 @@
 package com.prism.music.ui.screens
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import com.prism.music.ui.theme.GlassSurface
-import com.prism.music.ui.theme.LocalAppSettings
-import com.prism.music.ui.theme.LocalIsDark
-import com.prism.music.ui.theme.PrismTokens
-import kotlin.math.PI
-import kotlin.math.sin
-import kotlin.math.cos
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -97,50 +82,15 @@ internal fun VibeStationPanel(
     }
 }
 
-/** Contours are an ambient expression of the selected station, not a fabricated audio-level meter. */
+/** Shared station field: actual audio-reactive shader on supported devices, static in previews. */
 @Composable
 internal fun VibeFlowField(
     modifier: Modifier = Modifier, animated: Boolean = false, energy: Float = 0.5f,
     palette: List<Color>? = null, content: @Composable BoxScope.() -> Unit,
 ) {
-    val settings = LocalAppSettings.current
-    val ui = LocalUi.current
-    val scheme = MaterialTheme.colorScheme
-    val dark = LocalIsDark.current
-    val colors = if (ui.classicControls) listOf(scheme.primary, scheme.secondary, scheme.primary)
-    else palette?.takeIf { it.size >= 2 } ?: PrismTokens.spectrumColors(dark).map { it.second }
-    val phase = if (animated && !settings.reduceMotion && !settings.performanceMode) {
-        rememberInfiniteTransition(label = "vibeFlow").animateFloat(
-            initialValue = 0f, targetValue = (2 * PI).toFloat(),
-            animationSpec = infiniteRepeatable(tween(10000, easing = LinearEasing)),
-            label = "vibePhase")
-    } else null
-    Box(modifier, contentAlignment = Alignment.Center) {
-        Canvas(Modifier.matchParentSize()) {
-            val radius = minOf(size.width, size.height) * 0.47f
-            if (radius <= 0f) return@Canvas
-            val center = this.center
-            val shift = phase?.value ?: 0f
-            val count = if (settings.performanceMode) 4 else 9
-            val vivid = energy.coerceIn(0f, 1f)
-            for (i in 0 until count) {
-                val fraction = i / (count - 1).toFloat()
-                val base = radius * (0.68f + 0.31f * fraction)
-                val path = Path()
-                for (step in 0..96) {
-                    val a = step / 96f * (2 * PI).toFloat()
-                    val bend = 1f + (0.035f + vivid * 0.055f) * sin(3f * a + shift + fraction * 2.2f) +
-                        0.025f * cos(5f * a - shift * 2f + fraction)
-                    val x = center.x + cos(a) * base * bend
-                    val y = center.y + sin(a) * base * bend
-                    if (step == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                }
-                path.close()
-                val alpha = (if (dark) 0.30f else 0.23f) + fraction * 0.32f
-                drawPath(path, brush = Brush.sweepGradient(colors.map { it.copy(alpha = alpha) }, center),
-                    style = Stroke(width = if (i == count - 1) 1.8.dp.toPx() else 1.dp.toPx()))
-            }
-        }
+    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+        // Bound the fragment shader to a square rather than rendering the entire TV/window.
+        VibeSphere(Modifier.size(minOf(maxWidth, maxHeight, 460.dp)), animated, energy, palette)
         content()
     }
 }
