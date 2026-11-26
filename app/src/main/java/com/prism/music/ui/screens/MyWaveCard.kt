@@ -334,7 +334,9 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                             kotlinx.coroutines.delay(250)
                         }
                     }
-                    com.prism.music.ui.player.PlayerScrubber(position, c.player.duration)
+                    CompositionLocalProvider(com.prism.music.ui.player.LocalEmbeddedPlayerInk provides MaterialTheme.colorScheme.onSurface) {
+                        com.prism.music.ui.player.PlayerScrubber(position, c.player.duration)
+                    }
                 }
             })
     }
