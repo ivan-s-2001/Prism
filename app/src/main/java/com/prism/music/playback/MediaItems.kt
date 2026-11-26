@@ -33,6 +33,8 @@ fun Song.toMediaItem(videoId: String? = null): MediaItem {
         .setMediaId(id)
         .setUri(uri)
         .setCustomCacheKey(id)
+        // In-process metadata: avoid decoding the same JSON for every player listener.
+        .setTag(this)
         .setMediaMetadata(
             MediaMetadata.Builder()
                 .setTitle(shown.title)
@@ -53,8 +55,12 @@ fun Song.toMediaItem(videoId: String? = null): MediaItem {
         .build()
 }
 
-fun MediaItem.toSong(): Song? = mediaMetadata.extras?.getString(EXTRA_SONG)?.let {
-    runCatching { InnerTube.json.decodeFromString(Song.serializer(), it) }.getOrNull()
+fun MediaItem.toSong(): Song? {
+    (localConfiguration?.tag as? Song)?.takeIf { it.id == mediaId }?.let { return it }
+    // MediaSession/IPC items may not carry a local tag. Preserve the portable JSON representation.
+    return mediaMetadata.extras?.getString(EXTRA_SONG)?.let {
+        runCatching { InnerTube.json.decodeFromString(Song.serializer(), it) }.getOrNull()
+    }
 }
 
 val MediaItem.videoModeId: String? get() = mediaMetadata.extras?.getString(EXTRA_VIDEO)

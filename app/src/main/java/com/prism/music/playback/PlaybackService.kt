@@ -1863,15 +1863,22 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         dropAutoplay()
         c.queue.filling = true
         try {
-            for (index in player.mediaItemCount - 1 downTo current + 1) {
-                val item = player.getMediaItemAt(index)
-                val song = item.toSong() ?: continue
-                if (item.mediaId in manual) continue
-                if (!rebuild && !c.library.isDisliked(song.id) && !c.exclusions.blocks(song) && !c.exclusions.isSongExcluded(song.id)) continue
-                player.removeMediaItem(index)
-                if (c.queue.autoplayStart.value > index) c.queue.autoplayStart.value--
-                if (c.queue.waveQuotaStart > index) c.queue.waveQuotaStart--
+            val auto = c.queue.autoplayStart.value
+            val quota = c.queue.waveQuotaStart
+            var removedBeforeAuto = 0
+            var removedBeforeQuota = 0
+            player.removeMatchingRuns(current + 1, player.mediaItemCount) { index, item ->
+                val song = item.toSong()
+                val remove = song != null && item.mediaId !in manual &&
+                    (rebuild || c.library.isDisliked(song.id) || c.exclusions.blocks(song) || c.exclusions.isSongExcluded(song.id))
+                if (remove) {
+                    if (index < auto) removedBeforeAuto++
+                    if (index < quota) removedBeforeQuota++
+                }
+                remove
             }
+            c.queue.autoplayStart.value = auto - removedBeforeAuto
+            c.queue.waveQuotaStart = quota - removedBeforeQuota
         } finally { c.queue.filling = false }
         maybeAutoplay()
     }
@@ -2045,9 +2052,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         if (start >= 0 && start < player.mediaItemCount) {
             val manual = c.queue.userQueued.value
             val from = maxOf(start, player.currentMediaItemIndex + 1)
-            for (index in player.mediaItemCount - 1 downTo from) {
-                if (player.getMediaItemAt(index).mediaId !in manual) player.removeMediaItem(index)
-            }
+            player.removeMatchingRuns(from, player.mediaItemCount) { _, item -> item.mediaId !in manual }
         }
         c.queue.autoplayStart.value = -1
         c.queue.autoplayContinuation = null

@@ -725,25 +725,27 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         }
         ++playToken
         stopFill()
-        // As a new queue would be: just this song (what came before stays in Played), in order, the radio to follow.
-        c.queue.smartShuffle.value = false
-        c.queue.smartPicks.value = emptySet()
-        c.queue.source.value = source
-        c.queue.autoplayContinuation = null
-        c.queue.autoplayStart.value = -1
-        val manual = c.queue.userQueued.value
-        p.shuffleModeEnabled = false
-        p.repeatMode = Player.REPEAT_MODE_OFF
-        val at = p.currentMediaItemIndex
-        // Changing the context of the current track preserves its position and explicitly queued successors.
-        for (index in p.mediaItemCount - 1 downTo at + 1) {
-            if (p.getMediaItemAt(index).mediaId !in manual) p.removeMediaItem(index)
-        }
-        if (at > 0) p.removeMediaItems(0, at)
-        c.queue.userQueued.value = (1 until p.mediaItemCount).map { p.getMediaItemAt(it).mediaId }.filter { it in manual }.toSet()
-        if (!p.isPlaying) { ensureStarted(); if (p.playbackState == Player.STATE_IDLE) p.prepare(); p.play() }
-        // An autoplay load still out for the old queue is dropped: the radio asks now rather than wait on it.
         service?.dropAutoplay()
+        c.queue.filling = true
+        try {
+            c.queue.smartShuffle.value = false
+            c.queue.smartPicks.value = emptySet()
+            c.queue.source.value = source
+            c.queue.autoplayContinuation = null
+            c.queue.autoplayStart.value = -1
+            c.queue.waveQuotaStart = 0
+            val manual = c.queue.userQueued.value
+            p.shuffleModeEnabled = false
+            p.repeatMode = Player.REPEAT_MODE_OFF
+            val at = p.currentMediaItemIndex
+            // Delete contiguous runs, not hundreds of individual MediaItems. Never replace the current item.
+            p.removeMatchingRuns(at + 1, p.mediaItemCount) { _, item -> item.mediaId !in manual }
+            if (at > 0) p.removeMediaItems(0, at)
+            c.queue.userQueued.value = (1 until p.mediaItemCount).map { p.getMediaItemAt(it).mediaId }.filter { it in manual }.toSet()
+            if (!p.isPlaying) { ensureStarted(); if (p.playbackState == Player.STATE_IDLE) p.prepare(); p.play() }
+        } finally {
+            c.queue.filling = false
+        }
         service?.maybeAutoplay()
         if (announce) _showVibe.tryEmit(Unit)
     }
@@ -825,9 +827,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
             c.queue.autoplayStart.value = -1
             // Add first so the active item always has a successor. Keep anything explicitly queued.
             p.addMediaItems(songs.map { it.toMediaItem() })
-            for (i in oldSize - 1 downTo at + 1) {
-                if (p.getMediaItemAt(i).mediaId !in manual) p.removeMediaItem(i)
-            }
+            p.removeMatchingRuns(at + 1, oldSize) { _, item -> item.mediaId !in manual }
             c.queue.autoplayStart.value = p.mediaItemCount - songs.size
             c.queue.waveQuotaStart = p.mediaItemCount - songs.size
         } finally { c.queue.filling = false }
@@ -1374,7 +1374,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         _buffering.value = clock.loading
     }
 
-    private fun refresh() {
+    private fun refresh(rebuildQueue: Boolean = true, rebuildOrder: Boolean = true) {
         val p = player ?: return
         val item = p.currentMediaItem
         val song = item?.toSong()
@@ -1392,12 +1392,15 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         _hasNext.value = p.hasNextMediaItem()
         _hasPrevious.value = p.hasPreviousMediaItem()
         // Keys stay stable when items move (id + occurrence), so a dragged row keeps its gesture.
-        val seen = HashMap<String, Int>()
-        _queue.value = (0 until p.mediaItemCount).mapNotNull { i ->
-            val mi: MediaItem = p.getMediaItemAt(i)
-            val n = seen.merge(mi.mediaId, 1, Int::plus) ?: 1
-            mi.toSong()?.let { QueueEntry(i, it, "${mi.mediaId}#$n") }
+        if (rebuildQueue) {
+            val seen = HashMap<String, Int>()
+            _queue.value = (0 until p.mediaItemCount).mapNotNull { i ->
+                val mi: MediaItem = p.getMediaItemAt(i)
+                val n = seen.merge(mi.mediaId, 1, Int::plus) ?: 1
+                mi.toSong()?.let { QueueEntry(i, it, "${mi.mediaId}#$n") }
+            }
         }
+        if (rebuildOrder) {
         _upNext.value = buildList {
             val tl = p.currentTimeline
             if (tl.isEmpty || p.currentMediaItemIndex !in 0 until tl.windowCount) return@buildList
@@ -1411,6 +1414,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
             var i = tl.getPreviousWindowIndex(p.currentMediaItemIndex, Player.REPEAT_MODE_OFF, p.shuffleModeEnabled)
             while (i != C.INDEX_UNSET && size < tl.windowCount) { add(i); i = tl.getPreviousWindowIndex(i, Player.REPEAT_MODE_OFF, p.shuffleModeEnabled) }
         }.asReversed()
+        }
         if (song != null && (changed || song.isLive != wasLive)) checkVideo(song)
         updateLyricTiming()
     }
@@ -1468,11 +1472,12 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     val jumps: StateFlow<Int> = _jumps
 
     override fun onEvents(player: Player, events: Player.Events) {
-        refresh()
+        // Media3 batches events from one Looper iteration. Rebuild only for actual queue changes,
+        // not every play/pause, buffer or metadata notification, and never twice for the same timeline.
+        val timelineChanged = events.contains(Player.EVENT_TIMELINE_CHANGED)
+        val orderChanged = timelineChanged || events.contains(Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED) ||
+            events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION) || events.contains(Player.EVENT_POSITION_DISCONTINUITY)
+        refresh(rebuildQueue = timelineChanged, rebuildOrder = orderChanged)
         if (events.contains(Player.EVENT_POSITION_DISCONTINUITY)) _jumps.value++
-    }
-
-    override fun onTimelineChanged(timeline: Timeline, reason: Int) {
-        refresh()
     }
 }
