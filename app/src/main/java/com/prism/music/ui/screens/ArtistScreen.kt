@@ -219,7 +219,8 @@ private fun ArtistContent(opened: ArtistOpened, bottomPadding: Dp) {
     // Favourite: starred here, or already subscribed on YouTube Music.
     val favorites by c.artistPrefs.favorites.collectAsState()
     var subscribed by remember(page.id) { mutableStateOf(page.subscribed) }
-    val favorite = subscribed || favorites.any { it.id == page.id }
+    val excludedArtists by c.exclusions.artists.collectAsState()
+    val favorite = (subscribed || favorites.any { it.id == page.id }) && excludedArtists.none { it.id == page.id || it.name.equals(page.name, true) }
     val toggleFavorite = {
         val on = !favorite
         subscribed = on

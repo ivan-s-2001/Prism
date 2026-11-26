@@ -1,10 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="prism_vibe_reactions">Мои оценки</string>
+    <string name="prism_vibe_reactions">Музыкальный профиль</string>
     <string name="prism_vibe_likes_count">Лайки · %1$d</string>
     <string name="prism_vibe_dislikes_count">Дизлайки · %1$d</string>
     <string name="prism_vibe_reaction_search">Поиск треков и исполнителей</string>
     <string name="prism_vibe_reactions_empty">Нет подходящих оценок</string>
     <string name="prism_vibe_mark_like">Поставить лайк</string>
     <string name="prism_vibe_clear_reaction">Снять оценку</string>
+    <string name="prism_vibe_profile_info">Оценки треков, исполнители и исключения</string>
+    <string name="prism_vibe_favorite_artists_count">Любимые исполнители · %1$d</string>
+    <string name="prism_vibe_blocked_artists_count">Исключённые исполнители · %1$d</string>
+    <string name="prism_vibe_ignored_songs_count">Исключённые треки · %1$d</string>
+    <string name="prism_vibe_ignored_lists_count">Исключённые плейлисты · %1$d</string>
+    <string name="prism_vibe_add_artists">Добавить исполнителей</string>
+    <string name="prism_vibe_ignore_info">Исключения не удаляют историю прослушиваний.</string>
 </resources>

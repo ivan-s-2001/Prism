@@ -100,7 +100,8 @@ class YourMusic(private val c: AppContainer) {
     private fun ok(s: Song) = recommendable(s) && !c.library.isDisliked(s.id) && !c.exclusions.blocks(s) && !c.exclusions.isSongExcluded(s.id)
 
     internal data class WaveTaste(val profile: MyWave.Profile, val favorites: List<Song>, val likedSeeds: List<Song>, val likes: List<Song>)
-    private data class WarmTaste(val account: String, val likedIds: Set<String>, val at: Long, val taste: WaveTaste)
+    private data class WarmTaste(val account: String, val likedIds: Set<String>, val preferences: List<Any>, val at: Long, val taste: WaveTaste)
+    private fun preferenceSnapshot(): List<Any> = listOf(c.library.dislikedIds.value, c.artistPrefs.favorites.value, c.exclusions.artists.value, c.exclusions.songs.value, c.exclusions.playlists.value)
     @Volatile private var warmTaste: WarmTaste? = null
 
     /** Local, recency-weighted taste and listening-context profile, shared by Wave start and refill.
@@ -109,6 +110,7 @@ class YourMusic(private val c: AppContainer) {
     internal suspend fun waveTaste(): WaveTaste = withContext(Dispatchers.Default) {
         val account = waveAccount()
         val likedIds = c.library.likedIds.value.toSet()
+        val preferences = preferenceSnapshot()
         val s = snapshot()
         val now = java.time.ZonedDateTime.now()
         val zone = now.zone
@@ -120,6 +122,7 @@ class YourMusic(private val c: AppContainer) {
         var contextWeight = 0.0
         for (event in recent) {
             val song = s.songs[event.songId] ?: continue
+            if (!ok(song)) continue
             val a = song.primaryArtist.lowercase()
             if (a.isBlank()) continue
             // Listening for ten seconds is not the same preference signal as finishing a song.
@@ -149,6 +152,11 @@ class YourMusic(private val c: AppContainer) {
                 artistLikes.merge(it, weight, Double::plus)
             }
             s.genres[song.id]?.let { genreLikes.merge(it, weight, Double::plus) }
+        }
+        c.artistPrefs.favorites.value.filterNot { c.exclusions.isArtistExcluded(it.id, it.name) }.forEach { favorite ->
+            val name = favorite.name.lowercase()
+            artist.merge(name, 4.0, Double::plus)
+            artistLikes.merge(name, 2.0, Double::plus)
         }
         fun likeAffinity(song: Song): Double {
             val direct = directLikes[LocalRadio.sameSong(song)] ?: 0.0
@@ -194,8 +202,8 @@ class YourMusic(private val c: AppContainer) {
         val historySeeds = if (seedPool.isEmpty()) favorites.filter { !it.isLocal && !it.isVideo &&
             !c.recFeedback.turnedDown(it.id, known = false) }.distinctBy { it.primaryArtist.lowercase() }.take(8) else emptyList()
         WaveTaste(profile, favorites, freshSeeds + durableSeeds + historySeeds, liked.map { it.first }).also {
-            if (account == waveAccount() && likedIds == c.library.likedIds.value)
-                warmTaste = WarmTaste(account, likedIds, System.currentTimeMillis(), it)
+            if (account == waveAccount() && likedIds == c.library.likedIds.value && preferences == preferenceSnapshot())
+                warmTaste = WarmTaste(account, likedIds, preferences, System.currentTimeMillis(), it)
         }
     }
 
@@ -323,7 +331,7 @@ class YourMusic(private val c: AppContainer) {
         count: Int = MyWave.HORIZON, fast: Boolean = false,
     ): List<Song> = withContext(Dispatchers.Default) {
         val taste = (if (fast) warmTaste?.takeIf {
-            it.account == waveAccount() && it.likedIds == c.library.likedIds.value &&
+            it.account == waveAccount() && it.likedIds == c.library.likedIds.value && it.preferences == preferenceSnapshot() &&
                 System.currentTimeMillis() - it.at in 0L..60_000L
         }?.taste else null) ?: waveTaste()
         val offline = !c.network.isOnline()

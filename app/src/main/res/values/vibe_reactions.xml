@@ -1,10 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="prism_vibe_reactions">My reactions</string>
+    <string name="prism_vibe_reactions">Music profile</string>
     <string name="prism_vibe_likes_count">Likes · %1$d</string>
     <string name="prism_vibe_dislikes_count">Dislikes · %1$d</string>
     <string name="prism_vibe_reaction_search">Search tracks or artists</string>
     <string name="prism_vibe_reactions_empty">No matching reactions</string>
     <string name="prism_vibe_mark_like">Like</string>
     <string name="prism_vibe_clear_reaction">Remove reaction</string>
+    <string name="prism_vibe_profile_info">Track reactions, artists and listening exclusions</string>
+    <string name="prism_vibe_favorite_artists_count">Favorite artists · %1$d</string>
+    <string name="prism_vibe_blocked_artists_count">Blocked artists · %1$d</string>
+    <string name="prism_vibe_ignored_songs_count">Ignored tracks · %1$d</string>
+    <string name="prism_vibe_ignored_lists_count">Ignored playlists · %1$d</string>
+    <string name="prism_vibe_add_artists">Add artists</string>
+    <string name="prism_vibe_ignore_info">Listening exclusions do not delete your history.</string>
 </resources>

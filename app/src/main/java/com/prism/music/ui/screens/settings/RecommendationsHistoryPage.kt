@@ -101,7 +101,7 @@ fun RecommendationsHistoryPage(bottomPadding: Dp, find: String? = null, showBack
 
     SettingsPageScaffold(page.title, bottomPadding, showBack = showBack, onSearch = onSearch, find = find, reset = reset.pageReset()) {
         group(tr(R.string.made_for_you)) {
-            LinkRow(tr(R.string.your_artists), info = tr(R.string.they_shape_your_mixes_and_release)) { nav.go(Routes.PICK_ARTISTS) }
+            LinkRow(tr(R.string.prism_vibe_reactions), info = tr(R.string.prism_vibe_profile_info)) { nav.go(Routes.EXCLUSIONS) }
             SwitchRow(
                 tr(R.string.new_release_notifications), s.releaseNotifications,
                 info = tr(R.string.when_a_starred_artist_puts_out), changed = releasesChanged,
@@ -110,7 +110,6 @@ fun RecommendationsHistoryPage(bottomPadding: Dp, find: String? = null, showBack
                 c.scope.launch { c.forYou.refresh(force = true) }
                 Toast.makeText(context, tr(R.string.making_your_mixes), Toast.LENGTH_SHORT).show()
             }
-            LinkRow(tr(R.string.exclusions), info = tr(R.string.artists_not_to_play_and_playlists)) { nav.go(Routes.EXCLUSIONS) }
             // Suggestions skipped at once stay out of mixes and radio for a while (1.7.9): this lets them all back.
             LinkRow(tr(R.string.forget_skipped_suggestions), value = tr(R.string.let_every_song_be_suggested_again), info = tr(R.string.forget_skipped_suggestions_info), action = true) {
                 c.recFeedback.clear()
@@ -242,10 +241,9 @@ val recommendationsHistoryIndex: List<SettingEntry> by lazy {
     val signedIn = Needs(tr(R.string.hist_needs_account)) { it.isLoggedIn }
     listOf(
         // GitHub requests in 1.7.5 (#111 #115 #116).
-        SettingEntry(page, made, tr(R.string.your_artists), tr(R.string.onboarding_pick_artists_favourites_starred_recom)),
+        SettingEntry(page, made, tr(R.string.prism_vibe_reactions), tr(R.string.onboarding_pick_artists_favourites_starred_recom) + " " + tr(R.string.taste_profile_exclude_artist_playlist_don)),
         SettingEntry(page, made, tr(R.string.new_release_notifications), tr(R.string.release_radar_new_music_alerts)),
         SettingEntry(page, made, tr(R.string.make_my_mixes_again), tr(R.string.daily_mix_refresh_recommendations)),
-        SettingEntry(page, made, tr(R.string.exclusions), tr(R.string.taste_profile_exclude_artist_playlist_don)),
         SettingEntry(page, made, tr(R.string.forget_skipped_suggestions), tr(R.string.skipped_suggestions_keywords) + " " + tr(R.string.let_every_song_be_suggested_again)),
         SettingEntry(page, radios, tr(R.string.prism_stream_tune_your_stream), radioWords + " " + tr(R.string.tune_radios) + " " + tr(R.string.tune_familiar_new) + " " + tr(R.string.tune_hits_deep) + " " + tr(R.string.tune_calm_energetic)),
         // 1.8.1: History (#296, #263).

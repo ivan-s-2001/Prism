@@ -19,7 +19,7 @@ data class Excluded(val id: String, val name: String, val thumbnail: String? = n
  *   (a sleep or kids' playlist, a song played for someone else). Replay still counts them.
  * Kept on the phone (`exclusions` prefs).
  */
-class Exclusions(context: Context) {
+class Exclusions(context: Context, private val onArtistExcluded: (Excluded) -> Unit = {}) {
     private val prefs = context.getSharedPreferences("exclusions", Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -45,7 +45,10 @@ class Exclusions(context: Context) {
         prefs.edit().putString(key, json.encodeToString(list)).apply()
     }
 
-    fun setArtist(e: Excluded, excluded: Boolean) = save(ARTISTS, _artists, _artists.value.filter { !same(it, e) } + listOfNotNull(e.takeIf { excluded }))
+    fun setArtist(e: Excluded, excluded: Boolean) {
+        if (excluded) onArtistExcluded(e)
+        save(ARTISTS, _artists, _artists.value.filter { !same(it, e) } + listOfNotNull(e.takeIf { excluded }))
+    }
     fun setPlaylist(e: Excluded, excluded: Boolean) = save(PLAYLISTS, _playlists, _playlists.value.filter { it.id != e.id } + listOfNotNull(e.takeIf { excluded }))
     fun setSong(e: Excluded, excluded: Boolean) = save(SONGS, _songs, _songs.value.filter { it.id != e.id } + listOfNotNull(e.takeIf { excluded }))
 

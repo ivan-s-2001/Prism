@@ -8,13 +8,13 @@ import kotlinx.serialization.builtins.ListSerializer
 
 /** An artist the listener starred. */
 @Serializable
-data class FavoriteArtist(val id: String, val name: String, val thumbnail: String? = null, val at: Long = 0)
+data class FavoriteArtist(val id: String, val name: String, val thumbnail: String? = null, val at: Long = 0, val channelId: String? = null)
 
 /**
  * What the listener chose about artists, kept on this phone: the ones they starred, and the
  * signature style picked for an artist's name (instead of the one Prism would choose).
  */
-class ArtistPrefs(context: Context) {
+class ArtistPrefs(context: Context, private val onFavorite: (FavoriteArtist) -> Unit = {}) {
     private val prefs = context.getSharedPreferences("artist_prefs", Context.MODE_PRIVATE)
     private val listSerializer = ListSerializer(FavoriteArtist.serializer())
 
@@ -37,8 +37,9 @@ class ArtistPrefs(context: Context) {
     fun isFavorite(id: String) = favorites.value.any { it.id == id }
 
     fun setFavorite(artist: FavoriteArtist, on: Boolean) {
+        if (on) onFavorite(artist)
         val rest = favorites.value.filterNot { it.id == artist.id }
-        val next = if (on) listOf(artist.copy(at = System.currentTimeMillis())) + rest else rest
+        val next = if (on) listOf(artist.copy(at = System.currentTimeMillis(), channelId = artist.channelId ?: favorites.value.firstOrNull { it.id == artist.id }?.channelId)) + rest else rest
         favorites.value = next
         prefs.edit().putString("favorites", InnerTube.json.encodeToString(listSerializer, next)).apply()
     }

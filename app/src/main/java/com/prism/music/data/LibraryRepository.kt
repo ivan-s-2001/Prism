@@ -558,12 +558,15 @@ class LibraryRepository(private val c: AppContainer) {
      * subscribes to them on YouTube Music ([channelId]), which is what YouTube's own app does.
      */
     fun setFavoriteArtist(artist: FavoriteArtist, channelId: String?, on: Boolean) {
-        c.artistPrefs.setFavorite(artist, on)
+        c.artistPrefs.setFavorite(artist.copy(channelId = channelId ?: artist.channelId), on)
         if (on && artists.value.none { it.id == artist.id }) {
             artists.value = listOf(ArtistItem(artist.id, artist.name, "Artist", artist.thumbnail)) + artists.value
         }
-        if (c.settings.current.isLoggedIn && channelId != null) c.scope.launch(Dispatchers.IO) {
-            runCatching { c.ytm.subscribe(channelId, on) }.onFailure { lastError.value = tr(R.string.couldn_t_update_on_youtube_music, artist.name, it.friendlyMessage()) }
+        if (c.settings.current.isLoggedIn) c.scope.launch(Dispatchers.IO) {
+            runCatching {
+                val channel = channelId ?: artist.channelId ?: c.ytm.artist(artist.id).channelId
+                if (channel != null) c.ytm.subscribe(channel, on)
+            }.onFailure { lastError.value = tr(R.string.couldn_t_update_on_youtube_music, artist.name, it.friendlyMessage()) }
         }
     }
 

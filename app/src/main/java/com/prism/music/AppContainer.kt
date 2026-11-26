@@ -518,7 +518,9 @@ class AppContainer(val app: Application) {
         SimpleCache(File(app.filesDir, "downloads"), NoOpCacheEvictor(), databaseProvider)
     }
 
-    val artistPrefs = com.prism.music.data.ArtistPrefs(app)
+    val artistPrefs = com.prism.music.data.ArtistPrefs(app) { artist ->
+        exclusions.setArtist(com.prism.music.data.foryou.Excluded(artist.id, artist.name, artist.thumbnail), false)
+    }
     /** The color picker's recent and starred colors. */
     val savedColors = com.prism.music.data.prefs.SavedColors(app)
     /** Where each podcast episode was left off. */
@@ -722,7 +724,11 @@ class AppContainer(val app: Application) {
     /** Sing: karaoke with the song's own backing (vocals separated on the phone). */
     val sing by lazy { com.prism.music.playback.sing.Sing(this) }
     val dj = com.prism.music.playback.DjMode()
-    val exclusions by lazy { com.prism.music.data.foryou.Exclusions(app) }
+    val exclusions: com.prism.music.data.foryou.Exclusions by lazy {
+        com.prism.music.data.foryou.Exclusions(app) { blocked ->
+            artistPrefs.unstar(artistPrefs.favorites.value.filter { it.id == blocked.id || it.name.equals(blocked.name, true) }.map { it.id }.toSet())
+        }
+    }
     val forYou by lazy { com.prism.music.data.foryou.ForYou(this) }
     /** What the listener made of Prism's recommendations: served, skipped, heard through (1.7.9). */
     val recFeedback by lazy { com.prism.music.data.foryou.RecFeedback(app) }
