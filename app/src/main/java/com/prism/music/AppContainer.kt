@@ -894,7 +894,7 @@ class AppContainer(val app: Application) {
                     waves.forget(song.id)
                     // A file on the phone (1.8.3) is there already: a download stays the song's own.
                     if (pick?.id?.startsWith(com.prism.music.data.model.Song.LOCAL_PREFIX) != true &&
-                        pick?.id?.let(com.prism.music.data.stream.SoundCloudVersion::url) == null) {
+                        pick?.id?.let(com.prism.music.data.stream.PublicRecording::url) == null) {
                         downloads.redownload(song.id, unfinished = true)
                     }
                 }
@@ -910,7 +910,7 @@ class AppContainer(val app: Application) {
         // the song's own key, so they aren't swapped.
         // A download refused every way comes down as its music video's sound (1.8.7, [downloadSoundOf]), under the song's
         // own key still.
-        val external = versions.streamedOf(song)?.let(com.prism.music.data.stream.SoundCloudVersion::url) != null
+        val external = versions.streamedOf(song)?.let(com.prism.music.data.stream.PublicRecording::url) != null
         // Public alternate sources are streaming-only. Never read or overwrite the original download as that version.
         if (external && !useCaches) throw com.prism.music.data.stream.SongStreamException(song, tr(R.string.prism_sc_stream_only), java.io.IOException())
         val sound = if (external) null else if (useCaches) soundFrom[song] else downloadSoundOf(song)

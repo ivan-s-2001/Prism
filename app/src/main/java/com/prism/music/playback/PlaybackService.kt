@@ -2866,7 +2866,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             }
         }
         // An explicitly selected public source wins over automatic local matching.
-        if (c.versions.streamedOf(item.mediaId)?.let(com.prism.music.data.stream.SoundCloudVersion::url) != null) return null
+        if (c.versions.streamedOf(item.mediaId)?.let(com.prism.music.data.stream.PublicRecording::url) != null) return null
         // Lossless files need lossless playback, as in 1.8.0; your own MP3/AAC/Ogg files (#314) need only their switch,
         // and give way to a lossless file of the same song ([com.prism.music.data.local.PlaySourceRule]).
         val kinds = com.prism.music.data.local.OwnFiles.kinds(c.settings.current)

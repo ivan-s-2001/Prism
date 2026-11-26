@@ -5787,9 +5787,9 @@
     <string name="prism_stream_appearance_reverse_info">Progress before track credits</string>
     <string name="prism_stream_station_default">My mix</string>
     <string name="prism_sc_versions">SoundCloud (experimental)</string>
-    <string name="prism_sc_versions_note">Free public recordings. Audio may differ; listen to verify. Streaming only.</string>
+    <string name="prism_sc_versions_note">Public uploads with matching artist names. Account identity and uncensored audio are not guaranteed. Listen before choosing.</string>
     <string name="prism_sc_no_versions">No matching full stream found</string>
-    <string name="prism_sc_stream_only">This SoundCloud version is streaming only</string>
+    <string name="prism_sc_stream_only">This public recording is available for streaming only.</string>
     <string name="prism_censorship_report_title">Reported Yandex recording</string>
     <string name="prism_censorship_report_note">Community report: %1$s. This refers to the linked Yandex track, not proof of censorship in the current audio. Listen before choosing a version.</string>
     <string name="prism_censorship_audit">Check recording versions</string>
@@ -5803,4 +5803,5 @@
     <string name="prism_censorship_audit_picked">Alternative version selected · audio not verified</string>
     <string name="prism_censorship_audit_retry">Check again</string>
     <string name="prism_version_catalog">Catalog search: %1$s</string>
+    <string name="prism_bandcamp_note">Public artist releases. Matching metadata does not verify the absence of edits.</string>
 </resources>

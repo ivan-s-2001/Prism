@@ -5886,9 +5886,9 @@
     <string name="prism_stream_appearance_reverse_info">Прогресс перед названием трека</string>
     <string name="prism_stream_station_default">Мой поток</string>
     <string name="prism_sc_versions">SoundCloud (экспериментально)</string>
-    <string name="prism_sc_versions_note">Бесплатные публичные записи. Проверьте звук на слух. Только потоковое воспроизведение.</string>
+    <string name="prism_sc_versions_note">Открытые записи с совпадающим именем исполнителя. Подлинность аккаунта и отсутствие цензуры не гарантируются. Проверьте на слух.</string>
     <string name="prism_sc_no_versions">Подходящая полная запись не найдена</string>
-    <string name="prism_sc_stream_only">Версия SoundCloud доступна только для потокового воспроизведения</string>
+    <string name="prism_sc_stream_only">Эта открытая запись доступна только для потокового воспроизведения.</string>
     <string name="prism_censorship_report_title">Запись отмечена в базе цензуры</string>
     <string name="prism_censorship_report_note">Источники: %1$s. Отметка относится к связанной записи Яндекс Музыки, а не подтверждает цензуру текущего аудио. Проверьте версию на слух.</string>
     <string name="prism_censorship_audit">Проверка версий треков</string>
@@ -5902,4 +5902,5 @@
     <string name="prism_censorship_audit_picked">Выбрана другая версия · звук не проверен</string>
     <string name="prism_censorship_audit_retry">Проверить снова</string>
     <string name="prism_version_catalog">Поиск в каталогах: %1$s</string>
+    <string name="prism_bandcamp_note">Открытые релизы исполнителей. Совпадение метаданных не подтверждает отсутствие цензуры.</string>
 </resources>
