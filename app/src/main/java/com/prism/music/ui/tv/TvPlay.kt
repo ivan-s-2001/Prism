@@ -47,7 +47,7 @@ object TvPlay {
         val selected = c.yourMusic.providedStream(songs)
         if (selected.isEmpty()) return false
         val seed = selected.first().takeUnless { it.isLive || it.isEpisode }
-        c.player.playQueue(selected, 0, QueueSource(if (seed == null) QueueKind.OTHER else QueueKind.RADIO, mix.title, seedId = seed?.id))
+        c.player.playQueue(selected, 0, QueueSource(if (seed == null) QueueKind.OTHER else QueueKind.RADIO, mix.title, seedId = seed?.id, vibeOrigin = seed?.let { com.prism.music.playback.VibeOrigin(com.prism.music.playback.VibeOriginKind.MIX, mix.title, mix.thumbnail) }))
         return true
     }
 
@@ -91,7 +91,8 @@ object TvPlay {
         if (radio) {
             val original = a.shelves.flatMap { it.items }.filterIsInstance<SongItem>().map { it.song }
                 .filter { it.primaryArtist.equals(a.name, ignoreCase = true) }
-            return@tried c.player.playContextVibe(a.name, original.ifEmpty { r.songs.filter { it.primaryArtist.equals(a.name, true) } }) { r.songs }
+            return@tried c.player.playContextVibe(a.name, original.ifEmpty { r.songs.filter { it.primaryArtist.equals(a.name, true) } },
+                origin = com.prism.music.playback.VibeOrigin(com.prism.music.playback.VibeOriginKind.ARTIST, a.name, a.thumbnail)) { r.songs }
         } else c.player.playQueue(r.songs, 0, QueueSource(QueueKind.LIBRARY, a.name, originId = id))
         true
     }
