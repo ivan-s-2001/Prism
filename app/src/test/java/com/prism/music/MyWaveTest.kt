@@ -9,6 +9,25 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MyWaveTest {
+    @Test fun presetIconSurvivesTuningAndRename() {
+        val draft = com.prism.music.data.foryou.WaveSettingsDraft(MyWave.Style(), false, emptyList(), null)
+            .save("Focus", "focus", iconId = "headphones")
+        assertEquals("headphones", draft.presets.single().iconId)
+        val tuned = draft.discovery(70)
+        assertEquals("headphones", tuned.presets.single().iconId)
+        val edited = tuned.editPreset("focus", "Night", "moon")
+        assertEquals("Night", edited.presets.single().name)
+        assertEquals("moon", edited.presets.single().iconId)
+        assertEquals(tuned.presets.single().origin, edited.presets.single().origin)
+        assertEquals("focus", edited.presetId)
+    }
+
+    @Test fun legacyAndInvalidPresetIconsUseBookmark() {
+        assertEquals("bookmark", com.prism.music.data.prefs.SavedWavePreset("id", "Old", MyWave.Style().origin).iconId)
+        assertEquals("bookmark", com.prism.music.data.foryou.normalizePresetIconId("../bad"))
+        assertEquals("headphones-off", com.prism.music.data.foryou.normalizePresetIconId("headphones-off"))
+    }
+
     private fun song(id: String, artist: String, title: String = id) =
         Song(id, title, listOf(ArtistRef(artist)), durationSec = 180)
 
