@@ -120,6 +120,7 @@ internal fun YamusicWaveBackdrop(
         val aspect = view.width.toFloat() / view.height
         val w = if (aspect >= 1f) 192 else (192 * aspect).roundToInt().coerceAtLeast(1)
         val h = if (aspect <= 1f) 192 else (192 / aspect).roundToInt().coerceAtLeast(1)
+        val buffers = WaveLightBuffers(w, h)
         snapshotFlow {
             WaveInput(if (moving) signal.value else VibeWaveSignal(7f, 0f, EMPTY_BANDS),
                 scene?.anchor, targetColors.value)
@@ -131,7 +132,7 @@ internal fun YamusicWaveBackdrop(
                 val center = Offset(((at.x + drift.x) / view.width).coerceIn(0f, 1f),
                     ((at.y + drift.y) / view.height).coerceIn(0f, 1f))
                 val bitmap = withContext(Dispatchers.Default) {
-                    renderYamusicWave(w, h, framePalette, sample, blended.opacity, scale, style, energy, center)
+                    renderYamusicWave(w, h, framePalette, sample, blended.opacity, scale, style, energy, center, buffers)
                 }
                 // Only the ambient field moves. The anchor and its touch targets remain stationary.
                 value = bitmap
@@ -142,7 +143,7 @@ internal fun YamusicWaveBackdrop(
     }) {
         frame?.let {
             drawImage(it, dstSize = IntSize(size.width.roundToInt().coerceAtLeast(1),
-                size.height.roundToInt().coerceAtLeast(1)), filterQuality = FilterQuality.Low)
+                size.height.roundToInt().coerceAtLeast(1)), filterQuality = FilterQuality.Medium)
         }
     }
 }
@@ -244,9 +245,9 @@ internal fun ribbonBand(bands: FloatArray, position: Float): Float {
 /** Distinct spatial light fields, shared palette, tone mapping and continuous screen coordinates. */
 private fun renderYamusicWave(
     w: Int, h: Int, palette: List<Color>, sample: VibeWaveSignal, opacity: Float, scale: Float,
-    style: StreamVisualStyle, energy: Float, center: Offset,
+    style: StreamVisualStyle, energy: Float, center: Offset, buffers: WaveLightBuffers,
 ): ImageBitmap {
-    val pixels = IntArray(w * h)
+    val pixels = buffers.pixels
     val aspect = w.toFloat() / h
     val sceneScale = scale.coerceIn(0.25f, 1f) * minOf(1.25f, aspect * 1.95f)
     val t = sample.phase
@@ -264,6 +265,7 @@ private fun renderYamusicWave(
     val fine = FloatArray(w) { ribbonBand(sample.bands, (it / maxOf(1f, w - 1f) * 0.82f + 0.18f)) }
     val low = Array(3) { palette[it * 2 + 1] }
     val high = Array(3) { palette[it * 2] }
+    val raw = buffers.raw
     for (y in 0 until h) {
         val v = 1f - (y + 0.5f) / h
         val py = (v - (1f - center.y)) / sceneScale
@@ -287,24 +289,93 @@ private fun renderYamusicWave(
                 green += (low[i].green + (high[i].green - low[i].green) * mix) * amount
                 blue += (low[i].blue + (high[i].blue - low[i].blue) * mix) * amount
             }
-            // A shared faint lower atmosphere behind the standard mini player, not a clipped shape.
-            val ambient = (1f - smoothstep(0f, 0.65f, v)) * 0.105f
+            // Continue the moving atmosphere under the mini player.
+            val sweep = 0.72f + 0.28f * sin(u * 4.8f + v * 3.2f - t * 0.42f)
+            val ambient = (1f - smoothstep(0f, 0.78f, v)) * 0.105f * sweep
             red += (palette[1].red + (palette[3].red - palette[1].red) * u) * ambient
             green += (palette[1].green + (palette[3].green - palette[1].green) * u) * ambient
             blue += (palette[1].blue + (palette[3].blue - palette[1].blue) * u) * ambient
-            val gain = 1.7f + 0.18f * energy.coerceIn(0f, 1f)
-            red = 1f - exp(-red * gain)
-            green = 1f - exp(-green * gain)
-            blue = 1f - exp(-blue * gain)
-            val peak = maxOf(red, green, blue)
-            if (peak < 0.001f) continue
+            val i = (y * w + x) * 3
+            raw[i] = red
+            raw[i + 1] = green
+            raw[i + 2] = blue
+        }
+    }
+    // Shared optical pipeline: interior softness, edge diffusion, and highlight bloom.
+    val unit = (minOf(w, h) / 96f).coerceAtLeast(0.5f)
+    blurWaveLight(raw, buffers.inner, buffers.scratch, w, h, (2 * unit).roundToInt())
+    blurWaveLight(buffers.inner, buffers.edge, buffers.scratch, w, h, (6 * unit).roundToInt())
+    for (i in raw.indices step 3) {
+        val peak = maxOf(raw[i], raw[i + 1], raw[i + 2])
+        val weight = smoothstep(0.18f, 0.75f, peak)
+        for (c in 0..2) buffers.bright[i + c] = raw[i + c] * weight
+    }
+    blurWaveLight(buffers.bright, buffers.bloom, buffers.scratch, w, h, (12 * unit).roundToInt())
+    val diffuse = if (style == StreamVisualStyle.GLOW) 0.72f else 0.38f
+    val core = if (style == StreamVisualStyle.GLOW) 0.12f else 0.28f
+    val gain = 1.48f + 0.18f * energy.coerceIn(0f, 1f)
+    val bloom = 0.38f + 0.24f * beat
+    for (p in pixels.indices) {
+        val i = p * 3
+        fun tone(c: Int): Float {
+            val j = i + c
+            val light = raw[j] * core + buffers.inner[j] * (1f - core) +
+                buffers.edge[j] * diffuse + buffers.bloom[j] * bloom
+            return 1f - exp(-light * gain)
+        }
+        val red = tone(0)
+        val green = tone(1)
+        val blue = tone(2)
+        val peak = maxOf(red, green, blue)
+        if (peak < 0.001f) {
+            pixels[p] = 0
+        } else {
             val alpha = (peak * opacity * 255f).roundToInt().coerceIn(0, 255)
             fun channel(value: Float) = (value / peak * 255f).roundToInt().coerceIn(0, 255)
-            pixels[y * w + x] = (alpha shl 24) or (channel(red) shl 16) or
+            pixels[p] = (alpha shl 24) or (channel(red) shl 16) or
                 (channel(green) shl 8) or channel(blue)
         }
     }
     return Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888).asImageBitmap()
+}
+
+private class WaveLightBuffers(w: Int, h: Int) {
+    val pixels = IntArray(w * h)
+    val raw = FloatArray(w * h * 3)
+    val inner = FloatArray(raw.size)
+    val edge = FloatArray(raw.size)
+    val bright = FloatArray(raw.size)
+    val bloom = FloatArray(raw.size)
+    val scratch = FloatArray(raw.size)
+}
+
+/** Separable sliding-window RGB blur in O(pixels), with clamped edges.
+ * Working storage belongs to a single render coroutine and is reused. */
+internal fun blurWaveLight(input: FloatArray, output: FloatArray, scratch: FloatArray,
+    w: Int, h: Int, radius: Int) {
+    val r = radius.coerceAtLeast(1)
+    val divisor = (r * 2 + 1).toFloat()
+    for (y in 0 until h) for (c in 0..2) {
+        val row = y * w * 3 + c
+        var sum = 0f
+        for (k in -r..r) sum += input[row + k.coerceIn(0, w - 1) * 3]
+        for (x in 0 until w) {
+            scratch[row + x * 3] = (sum / divisor).coerceAtLeast(0f)
+            sum += input[row + (x + r + 1).coerceIn(0, w - 1) * 3] -
+                input[row + (x - r).coerceIn(0, w - 1) * 3]
+        }
+    }
+    for (x in 0 until w) for (c in 0..2) {
+        val column = x * 3 + c
+        val stride = w * 3
+        var sum = 0f
+        for (k in -r..r) sum += scratch[column + k.coerceIn(0, h - 1) * stride]
+        for (y in 0 until h) {
+            output[column + y * stride] = (sum / divisor).coerceAtLeast(0f)
+            sum += scratch[column + (y + r + 1).coerceIn(0, h - 1) * stride] -
+                scratch[column + (y - r).coerceIn(0, h - 1) * stride]
+        }
+    }
 }
 
 /** Mirror low-to-high FFT along the circumference and interpolate continuously at the seam. */
