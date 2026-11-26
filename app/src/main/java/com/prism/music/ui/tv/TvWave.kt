@@ -69,6 +69,9 @@ internal fun TvWavePlace(nav: TvNav) {
     val draft = editor.style
     val activeSaved = savedPresets.firstOrNull { it.id == chosenPresetId && it.origin == style.origin }
         ?: savedPresets.firstOrNull { chosenPresetId == null && it.origin == style.origin }
+    val activeScenario = if (activeSaved == null) WaveScenarios.active(style, chosenPresetId, appSettings.streamScenarioStyles) else null
+    val mixName = activeSaved?.name ?: activeScenario?.label
+    val stationIcon = activeScenario?.let { PrismIcons.waveScenario(it.glyph) } ?: PrismIcons.Stream
     var tuning by remember { mutableStateOf(false) }
     var starting by remember { mutableStateOf(false) }
     var job by remember { mutableStateOf<Job?>(null) }
@@ -263,18 +266,28 @@ internal fun TvWavePlace(nav: TvNav) {
                     if (current != null) TvIconButton(if (djOn) PrismIcons.TurntableFilled else PrismIcons.Turntable,
                         tr(if (djOn) R.string.dj_mode_off else R.string.dj_mode), { c.player.setDjMode(!djOn) },
                         Modifier.tvItem("tv_wave/dj"), on = djOn)
-                    if (appSettings.streamShowStatus) Text(tr(if (starting) R.string.prism_stream_finding_music else if (now?.playing == true) R.string.prism_stream_playing else if (now != null) R.string.prism_stream_paused else R.string.prism_stream_personal_stream), style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+                    val status = tr(if (starting) R.string.prism_stream_finding_music else if (now?.playing == true) R.string.prism_stream_playing else if (now != null) R.string.prism_stream_paused else R.string.prism_stream_personal_stream)
+                    val subtitle = listOfNotNull(mixName?.takeIf { current != null }, status.takeIf { appSettings.streamShowStatus }).joinToString(" · ")
+                    if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Row(Modifier.weight(1f).fillMaxWidth().then(if (appSettings.streamGlassPanel) Modifier.tvGlass(ui.shape(24.dp)) else Modifier).padding(ui.gap(if (appSettings.streamGlassPanel) 24.dp else 4.dp)),
                     horizontalArrangement = Arrangement.spacedBy(ui.gap(if (narrow) 24.dp else 44.dp)),
                     verticalAlignment = Alignment.CenterVertically) {
                     @Composable fun Cover() { BoxWithConstraints(Modifier.weight(if (narrow) 0.65f else 0.85f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                        Artwork(now?.art, Modifier.size(minOf(maxWidth, maxHeight, 340.dp) * appSettings.streamCoverSize.fraction),
+                        val size = minOf(maxWidth, maxHeight, 340.dp) * appSettings.streamCoverSize.fraction
+                        if (current == null) com.prism.music.ui.screens.VibeStationMark(stationIcon, scheme.primary, Modifier.size(size))
+                        else Artwork(now?.art, Modifier.size(size),
                             shape = com.prism.music.ui.theme.CoverShapes.of(appSettings.shapes.player, appSettings.player.artCorners.dp), size = 1080)
                     }
                     }
                     if (appSettings.streamShowCover && !appSettings.streamReverseLayout) Cover()
                     TvFitColumn(Modifier.weight(1.15f).fillMaxHeight()) {
+                        if (current == null) {
+                            Text(mixName ?: tr(R.string.prism_stream_music_in_your_rhythm), style = MaterialTheme.typography.displaySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            TvFitGap(ui.gap(24.dp))
+                            WaveTvButton(tr(if (starting) R.string.prism_stream_finding_music else R.string.prism_stream_start_listening),
+                                { if (!starting) start() }, Modifier.tvItem("tv_wave/play", entry = true), icon = PrismIcons.Play, primary = true)
+                        } else {
                         Text(now?.title ?: tr(R.string.prism_stream_music_in_your_rhythm),
                             style = MaterialTheme.typography.displaySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         TvFitGap(ui.gap(6.dp))
@@ -309,12 +322,11 @@ internal fun TvWavePlace(nav: TvNav) {
                                 { if (!starting) { if (djOn && current != null) c.player.toggleShuffle() else start() } }, Modifier.weight(1f).tvItem("tv_wave/refresh"), icon = PrismIcons.Shuffle)
                             if (current != null) WaveTvButton(tr(R.string.prism_stream_player), { nav.go(TvRoute.Player) }, Modifier.weight(1f).tvItem("tv_wave/player"))
                         }
+                        }
                     }
                     if (appSettings.streamShowCover && appSettings.streamReverseLayout) Cover()
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(16.dp)), verticalAlignment = Alignment.CenterVertically) {
-                    val active = WaveScenarios.all.firstOrNull { it.id == chosenPresetId }
-                        ?: WaveScenarios.all.firstOrNull { chosenPresetId == null && style == WaveScenarios.resolve(it, appSettings.streamScenarioStyles, style.russianPercent) }
                     Row(Modifier.weight(1f).scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward })
                         .horizontalScroll(scenarioScroll).padding(vertical = 8.dp, horizontal = 14.dp)
                         .rememberedFocus().focusGroup(),
@@ -329,7 +341,7 @@ internal fun TvWavePlace(nav: TvNav) {
                         }
                         scenarioOrder.forEach { preset ->
                             ScenarioTile(label = preset.label,
-                                icon = PrismIcons.waveScenario(preset.glyph), selected = activeSaved == null && active?.id == preset.id,
+                                icon = PrismIcons.waveScenario(preset.glyph), selected = activeScenario?.id == preset.id,
                                 onClick = { start(WaveScenarios.resolve(preset, appSettings.streamScenarioStyles, style.russianPercent), preset.id) },
                                 modifier = Modifier.tvItem("tv_wave/quick/${preset.id}"))
                         }

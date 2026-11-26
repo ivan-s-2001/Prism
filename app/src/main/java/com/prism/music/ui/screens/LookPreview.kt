@@ -157,9 +157,13 @@ private fun MiniVibe(c: ThemeColors, song: Song?) {
             }
         }, player = { panel ->
             VibePlayerLayout(s, panel.then(if (s.streamGlassPanel) Modifier.clip(ui.shape(24.dp)).background(scheme.surfaceContainerHigh.copy(alpha = 0.80f)) else Modifier),
-                cover = { modifier -> StandIn(song, modifier, com.prism.music.ui.theme.CoverShapes.of(s.shapes.player, s.player.artCorners.dp), standIns.first()) },
+                cover = { modifier ->
+                    if (song == null) VibeStationMark(PrismIcons.Stream, scheme.primary, modifier)
+                    else StandIn(song, modifier, com.prism.music.ui.theme.CoverShapes.of(s.shapes.player, s.player.artCorners.dp), standIns.first())
+                },
                 metadata = {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    if (song == null) VibeStationTitle(tr(R.string.prism_stream_music_in_your_rhythm), Modifier.fillMaxWidth())
+                    else Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         val centered = s.player.titleAlign == com.prism.music.data.prefs.PlayerTitleAlign.CENTER
                         if (centered && s.streamShowReactions) Icon(PrismIcons.Heart, null, Modifier.padding(6.dp))
                         Column(Modifier.weight(1f), horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start) {
@@ -172,9 +176,10 @@ private fun MiniVibe(c: ThemeColors, song: Song?) {
                         }
                     }
                 }, progress = {
-                    PreviewBar(s, Brush.horizontalGradient(c.ring), ink = scheme.onSurface)
+                    if (song != null) PreviewBar(s, Brush.horizontalGradient(c.ring), ink = scheme.onSurface)
                 }, transport = {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                    if (song == null) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { VibeStartButton(false, {}, Modifier.fillMaxWidth(0.85f)) }
+                    else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                         Icon(PrismIcons.Previous, null)
                         PreviewPlay(s, c, 52.dp, ink = scheme.onSurface, inverseInk = scheme.surface, ring = s.view.playRing)
                         Icon(PrismIcons.Next, null)
@@ -186,8 +191,7 @@ private fun MiniVibe(c: ThemeColors, song: Song?) {
                 horizontalArrangement = Arrangement.spacedBy(ui.gap(12.dp)), verticalAlignment = Alignment.CenterVertically) {
                 val tiles = listOf(tr(R.string.prism_stream_tune) to PrismIcons.Customize) + scenarios.take(2).map { it.label to PrismIcons.waveScenario(it.glyph) }
                 tiles.forEach { (label, icon) ->
-                    if (s.streamCompactScenarios) com.prism.music.ui.components.PrismChip(false, {}, label, Modifier.weight(1f), icon, fitLabel = true)
-                    else com.prism.music.ui.components.PrismScenarioDisc(label, icon, false, {}, Modifier.weight(1f))
+                    VibeScenarioTile(s.streamCompactScenarios, label, icon, false, {}, Modifier.weight(1f))
                 }
             }
         })

@@ -1,6 +1,20 @@
 package com.prism.music.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import com.prism.music.R
+import com.prism.music.tr
+import com.prism.music.ui.components.PrismButton
+import com.prism.music.ui.components.PrismChip
+import com.prism.music.ui.components.PrismScenarioDisc
+import com.prism.music.ui.theme.PrismIcons
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -79,4 +93,40 @@ internal fun VibePlayerLayout(
             }
         }
     }
+}
+
+
+/** The station is not an album. Before playback it has its own mark, drawn with the current icon pack and accent. */
+@Composable
+internal fun VibeStationMark(icon: ImageVector, tint: Color, modifier: Modifier = Modifier) {
+    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+        Icon(icon, null, Modifier.size((minOf(maxWidth, maxHeight) * 0.58f).coerceAtMost(168.dp)), tint = tint)
+    }
+}
+
+@Composable
+internal fun VibeStationTitle(title: String, modifier: Modifier = Modifier) {
+    Text(title, modifier, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface,
+        textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+}
+
+@Composable
+internal fun VibeStartButton(starting: Boolean, onStart: () -> Unit, modifier: Modifier = Modifier) {
+    val ui = LocalUi.current
+    PrismButton(onClick = onStart, enabled = !starting, modifier = modifier) {
+        if (starting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+        else Icon(PrismIcons.Play, null, Modifier.size(22.dp))
+        Spacer(Modifier.width(ui.gap(8.dp)))
+        Text(tr(if (starting) R.string.prism_stream_finding_music else R.string.prism_stream_start_listening))
+    }
+}
+
+/** One native visual choice for both the actual shortcuts and their read-only preview. */
+@Composable
+internal fun VibeScenarioTile(
+    compact: Boolean, label: String, icon: ImageVector, selected: Boolean,
+    onClick: () -> Unit, modifier: Modifier = Modifier,
+) {
+    if (compact) PrismChip(selected, onClick, label, modifier, icon, fitLabel = true)
+    else PrismScenarioDisc(label, icon, selected, onClick, modifier)
 }

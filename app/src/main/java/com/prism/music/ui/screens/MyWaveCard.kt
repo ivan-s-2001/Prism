@@ -9,7 +9,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import com.prism.music.ui.theme.GlassSurface
 import com.prism.music.ui.components.PrismChip
-import com.prism.music.ui.components.PrismScenarioDisc
 import com.prism.music.ui.components.scenarioEdgeFade
 import com.prism.music.ui.components.WavePresetNameDialog
 import com.prism.music.ui.components.WaveTuningScale
@@ -174,6 +173,9 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
     val activeSaved = savedPresets.firstOrNull { it.id == chosenPresetId && it.origin == style.origin }
         ?: savedPresets.firstOrNull { chosenPresetId == null && it.origin == style.origin }
+    val activeScenario = if (activeSaved == null) WaveScenarios.active(style, chosenPresetId, settings.streamScenarioStyles) else null
+    val mixName = activeSaved?.name ?: activeScenario?.label
+    val stationIcon = activeScenario?.let { PrismIcons.waveScenario(it.glyph) } ?: PrismIcons.Stream
     LaunchedEffect(savedPresets, revealPresetId) {
         val index = savedPresets.indexOfFirst { it.id == revealPresetId }
         if (index >= 0) {
@@ -248,7 +250,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
 
     // Feed refresh never blocks starting playback; only actual playback work does.
-    val pending = starting || (wave && buffering)
     val djOn by c.dj.on.collectAsState()
     val ui = LocalUi.current
     val scheme = MaterialTheme.colorScheme
@@ -292,11 +293,11 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
     @Composable fun Header() {
         com.prism.music.ui.components.ScreenHeader(title,
-            subtitle = status.takeIf { settings.streamShowStatus }) {
+            subtitle = listOfNotNull(mixName?.takeIf { wave }, status.takeIf { settings.streamShowStatus }).joinToString(" · ").ifBlank { null }) {
             if (wave) RoundAction(if (djOn) PrismIcons.TurntableFilled else PrismIcons.Turntable,
                 tr(if (djOn) R.string.dj_mode_off else R.string.dj_mode),
                 modifier = Modifier.testTag("wave:dj")) { c.player.setDjMode(!djOn) }
-            RoundAction(PrismIcons.Shuffle, tr(R.string.prism_stream_refresh_stream),
+            if (wave || onRetry != null) RoundAction(PrismIcons.Shuffle, tr(R.string.prism_stream_refresh_stream),
                 enabled = !starting, modifier = Modifier.testTag("home:my_wave:refresh")) {
                 if (wave && djOn) c.player.toggleShuffle()
                 else if (onRetry != null && !wave) onRetry() else start()
@@ -310,6 +311,10 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 LocalContentColor provides scheme.onSurface) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
             @Composable fun CoverArt(modifier: Modifier) {
+                if (!wave) {
+                    VibeStationMark(stationIcon, scheme.primary, modifier)
+                    return
+                }
                 val scale by animateFloatAsState(
                     pausedCoverScale(playing, settings.artShrinkOnPause, settings.reduceMotion),
                     tween(fadeMs), label = "streamCoverScale")
@@ -351,6 +356,11 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 }
             }
             @Composable fun Metadata(modifier: Modifier = Modifier, reactions: Boolean = false) {
+                if (!wave) {
+                    VibeStationTitle(mixName ?: tr(R.string.prism_stream_music_in_your_rhythm),
+                        modifier = modifier.fillMaxWidth())
+                    return
+                }
                 val centered = settings.player.titleAlign == com.prism.music.data.prefs.PlayerTitleAlign.CENTER
                 val showReactions = reactions && settings.streamShowReactions
                 Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
@@ -378,16 +388,23 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 }
             }
             @Composable fun Transport() {
+                if (!wave) {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        VibeStartButton(starting, { start() }, Modifier.widthIn(max = 320.dp).fillMaxWidth().testTag("home:my_wave:play"))
+                    }
+                    return
+                }
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Box(Modifier.widthIn(max = 340.dp).fillMaxWidth()) {
-                TransportRow(isPlaying = wave && playing, isLoading = pending && !wave,
-                    previousEnabled = wave && hasPrevious, nextEnabled = wave && hasNext,
-                    compact = true, showModes = false, playAction = { if (wave) c.player.togglePlay() else if (!starting) start() },
+                TransportRow(isPlaying = playing, isLoading = false,
+                    previousEnabled = hasPrevious, nextEnabled = hasNext,
+                    compact = true, showModes = false, playAction = { c.player.togglePlay() },
                     playAccent = accent, playTag = "home:my_wave:play")
                     }
                 }
             }
             @Composable fun Progress() {
+                if (!wave) return
                 val id = current?.id
                 val timing by produceState(0L to 0L, id, playing) {
                     while (true) {
@@ -419,8 +436,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
 
     @Composable fun ScenarioTile(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-        if (settings.streamCompactScenarios) PrismChip(selected, onClick, label, modifier, icon, fitLabel = true)
-        else PrismScenarioDisc(label, icon, selected, onClick, modifier)
+        VibeScenarioTile(settings.streamCompactScenarios, label, icon, selected, onClick, modifier)
     }
 
     @Composable fun Controls() {
@@ -443,7 +459,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                     ScenarioTile(
                         label = scenario.label,
                         icon = PrismIcons.waveScenario(scenario.glyph),
-                        selected = activeSaved == null && (chosenPresetId == scenario.id || (chosenPresetId == null && style == WaveScenarios.resolve(scenario, settings.streamScenarioStyles, style.russianPercent))),
+                        selected = activeScenario?.id == scenario.id,
                         onClick = { start(WaveScenarios.resolve(scenario, settings.streamScenarioStyles, style.russianPercent), scenario.id) },
                         modifier = Modifier.testTag("wave:scenario:${scenario.id}"))
                 }

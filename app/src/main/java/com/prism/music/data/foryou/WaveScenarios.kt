@@ -89,6 +89,11 @@ internal object WaveScenarios {
         overrides[scenario.id]?.takeIf(MyWave::isOrigin)?.let(MyWave::style)
             ?: scenario.style.copy(russianPercent = language)
 
+    /** Identify the selected station without coupling the UI to the visible shortcuts. */
+    fun active(style: MyWave.Style, selectedId: String?, overrides: Map<String, String>): Scenario? =
+        if (selectedId != null) all.firstOrNull { it.id == selectedId }
+        else all.firstOrNull { style == resolve(it, overrides, style.russianPercent) }
+
     /** Capture once per screen: playback/selection must never reorder the carousel. */
     fun stripOrder(hour: Int, weekend: Boolean): List<Scenario> = (forDay(hour, weekend) + all).distinctBy { it.id }
 

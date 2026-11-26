@@ -169,6 +169,17 @@ class MyWaveTest {
         assertEquals(listOf(fresh), result)
     }
 
+    @Test fun selectedStationIdentitySurvivesHiddenShortcuts() {
+        val scenarios = com.prism.music.data.foryou.WaveScenarios
+        val focus = scenarios.all.first { it.id == "focus" }
+        val style = scenarios.resolve(focus, emptyMap(), 70)
+        assertEquals("focus", scenarios.active(style, "focus", emptyMap())?.id)
+        assertEquals("focus", scenarios.active(style, null, emptyMap())?.id)
+        assertNull(scenarios.active(style, "custom-preset", emptyMap()))
+        assertTrue(scenarios.visibleOrder(scenarios.all, "-").isEmpty())
+        assertEquals("focus", scenarios.active(style, "focus", emptyMap())?.id)
+    }
+
     @Test fun dailyScenariosAreDistinctAndClockChangesOrderingOnly() {
         val scenarios = com.prism.music.data.foryou.WaveScenarios
         assertEquals(20, scenarios.all.size)
