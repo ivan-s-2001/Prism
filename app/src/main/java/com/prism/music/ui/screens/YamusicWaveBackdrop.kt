@@ -9,6 +9,7 @@
 package com.prism.music.ui.screens
 
 import android.graphics.Bitmap
+import android.os.SystemClock
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
@@ -16,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
@@ -43,6 +45,55 @@ import kotlin.math.sin
 internal data class VibeWaveSignal(val phase: Float, val beat: Float, val bands: FloatArray)
 private data class WaveViewport(val size: IntSize = IntSize.Zero, val origin: Offset = Offset.Zero)
 private data class WaveFrame(val image: ImageBitmap, val drift: Offset)
+internal data class WaveColors(val palette: List<Color>, val opacity: Float)
+private data class WaveInput(val sample: VibeWaveSignal, val anchor: Offset?, val colors: WaveColors)
+
+/** Retarget from the interpolated color, not the previous target: rapid theme changes never flash. */
+internal class WaveColorTransition(initial: WaveColors) {
+    private var from = initial
+    private var target = initial
+    private var startMs = 0L
+
+    fun at(nowMs: Long): WaveColors {
+        if (from == target) return target
+        val t = ((nowMs - startMs).toFloat() / 1200f).coerceIn(0f, 1f)
+        if (t >= 1f) return target
+        val k = t * t * (3f - 2f * t)
+        return WaveColors(from.palette.zip(target.palette) { a, b -> lerp(a, b, k) },
+            from.opacity + (target.opacity - from.opacity) * k)
+    }
+
+    fun update(next: WaveColors, nowMs: Long, animate: Boolean): WaveColors {
+        if (!animate) {
+            from = next
+            target = next
+            startMs = nowMs
+            return next
+        }
+        if (next != target) {
+            from = at(nowMs)
+            target = next
+            startMs = nowMs
+        }
+        return at(nowMs)
+    }
+}
+
+/** Color flows slowly between the three lobes without introducing hues outside the active theme. */
+internal fun flowingWavePalette(colors: List<Color>, phase: Float): List<Color> {
+    if (colors.size != 6 || !phase.isFinite()) return colors
+    val turn = ((phase * 0.045f) % 3f + 3f) % 3f
+    val slot = turn.toInt()
+    val fraction = turn - slot
+    val blend = fraction * fraction * (3f - 2f * fraction)
+    return List(6) { i ->
+        val pair = i / 2
+        val shade = i % 2
+        val a = ((pair + slot) % 3) * 2 + shade
+        val b = ((pair + slot + 1) % 3) * 2 + shade
+        lerp(colors[a], colors[b], blend)
+    }
+}
 
 /** All visual styles share the same ambient field and the same published frame position. */
 @Composable
@@ -55,9 +106,11 @@ internal fun YamusicWaveBackdrop(
     val palette = remember(a, b, c) {
         listOf(a, lerp(a, b, 0.7f), b, lerp(b, c, 0.7f), c, lerp(c, a, 0.7f))
     }
-    val frame by produceState<WaveFrame?>(null, viewport, palette, opacity, scale, style, energy, moving, scene) {
+    val targetColors = rememberUpdatedState(WaveColors(palette, opacity))
+    val transition = remember { WaveColorTransition(targetColors.value) }
+    val frame by produceState<WaveFrame?>(null, viewport, scale, style, energy, moving, scene) {
         val view = viewport.size
-        if (view.width <= 0 || view.height <= 0 || opacity <= 0f) {
+        if (view.width <= 0 || view.height <= 0) {
             scene?.drift = Offset.Zero
             value = null
             return@produceState
@@ -65,14 +118,18 @@ internal fun YamusicWaveBackdrop(
         val aspect = view.width.toFloat() / view.height
         val w = if (aspect >= 1f) 192 else (192 * aspect).roundToInt().coerceAtLeast(1)
         val h = if (aspect <= 1f) 192 else (192 / aspect).roundToInt().coerceAtLeast(1)
-        snapshotFlow { (if (moving) signal.value else VibeWaveSignal(7f, 0f, EMPTY_BANDS)) to scene?.anchor }
-            .conflate().collect { (sample, anchor) ->
+        snapshotFlow {
+            WaveInput(if (moving) signal.value else VibeWaveSignal(7f, 0f, EMPTY_BANDS),
+                scene?.anchor, targetColors.value)
+        }.conflate().collect { (sample, anchor, colors) ->
+                val blended = transition.update(colors, SystemClock.elapsedRealtime(), moving)
+                val framePalette = if (moving) flowingWavePalette(blended.palette, sample.phase) else blended.palette
                 val drift = waveDrift(sample.phase, minOf(view.width, view.height).toFloat(), moving)
                 val at = if (anchor == null) Offset(view.width * 0.5f, view.height * 0.38f) else anchor - viewport.origin
                 val center = Offset(((at.x + drift.x) / view.width).coerceIn(0f, 1f),
                     ((at.y + drift.y) / view.height).coerceIn(0f, 1f))
                 val bitmap = withContext(Dispatchers.Default) {
-                    renderYamusicWave(w, h, palette, sample, opacity, scale, style, energy, center)
+                    renderYamusicWave(w, h, framePalette, sample, blended.opacity, scale, style, energy, center)
                 }
                 // Publish geometry and pixels together; the controls follow the frame actually on screen.
                 value = WaveFrame(bitmap, drift)
