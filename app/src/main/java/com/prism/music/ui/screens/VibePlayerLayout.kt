@@ -39,7 +39,7 @@ import com.prism.music.data.prefs.StreamLayout
 import com.prism.music.data.prefs.StreamVisualStyle
 import com.prism.music.ui.theme.LocalUi
 
-/** Content-driven page: header, station and shelf remain adjacent. Only short windows scroll. */
+/** The station owns the viewport between header and scenarios. Only genuinely short windows scroll. */
 @Composable
 internal fun VibePageLayout(
     settings: AppSettings, modifier: Modifier = Modifier, scrollable: Boolean = true,
@@ -49,22 +49,34 @@ internal fun VibePageLayout(
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         val page = Modifier.widthIn(max = 1040.dp).fillMaxWidth()
         val scroll = rememberScrollState()
-        Column(page.then(if (scrollable) Modifier.verticalScroll(scroll) else Modifier),
-            verticalArrangement = Arrangement.spacedBy(ui.gap(8.dp))) {
-            header()
-            player(Modifier.fillMaxWidth().padding(horizontal = ui.gap(12.dp)))
-            scenarios()
+        if (scrollable && !vibeFillsViewport(maxWidth, maxHeight)) {
+            Column(page.verticalScroll(scroll), verticalArrangement = Arrangement.spacedBy(ui.gap(8.dp))) {
+                header()
+                player(Modifier.fillMaxWidth())
+                scenarios()
+            }
+        } else {
+            // Measure header and shelf first, then give their remaining height to the stage.
+            // A weighted child inside verticalScroll would be measured at infinite height and wrap content.
+            Column(page.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(ui.gap(4.dp))) {
+                header()
+                player(Modifier.weight(1f, fill = true).fillMaxWidth())
+                scenarios()
+            }
         }
     }
 }
 
-/** One visual slot: the station layout owns its geometry, not the full page or track credits. */
+internal fun vibeFillsViewport(width: Dp, height: Dp): Boolean =
+    height != Dp.Infinity && height >= if (width >= 620.dp) 400.dp else 540.dp
+
+/** One visual slot: pass the allocated viewport to the station instead of losing its minimum constraints. */
 @Composable
 internal fun VibeFlowField(
     modifier: Modifier = Modifier, animated: Boolean = false, energy: Float = 0.5f,
     preview: Boolean = false, content: @Composable (visual: @Composable (Modifier) -> Unit) -> Unit,
 ) {
-    Box(modifier, contentAlignment = Alignment.Center) {
+    Box(modifier, contentAlignment = Alignment.Center, propagateMinConstraints = true) {
         content { visualModifier -> VibeSphere(visualModifier, animated, energy, preview) }
     }
 }
@@ -98,7 +110,8 @@ internal fun VibeStationOverlay(
         val compact = layout == StreamLayout.COMPACT || shortWide
         val showVisual = settings.streamVisualStyle != StreamVisualStyle.OFF
         val wide = maxWidth >= 620.dp
-        val stage = vibeStageMinHeight(maxWidth, maxHeight, layout, showVisual)
+        val stage = maxOf(minHeight, vibeStageMinHeight(maxWidth, maxHeight, layout, showVisual))
+        val roomy = stage >= 420.dp && !compact
         val sideWidth = if (maxWidth < 300.dp) 48.dp else 52.dp
         val playGap = ui.gap(if (compact || maxWidth < 300.dp) 8.dp else 18.dp)
         @Composable fun StationTitle() {
@@ -131,7 +144,7 @@ internal fun VibeStationOverlay(
         @Composable fun Controls() {
             Column(Modifier.widthIn(max = 416.dp).fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 6.dp else 16.dp))) {
+                verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 6.dp else if (roomy) 24.dp else 16.dp))) {
                 StationTitle()
                 Transport()
                 TrackDetails()
@@ -144,12 +157,7 @@ internal fun VibeStationOverlay(
                 BoxWithConstraints(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
                     val fraction = settings.streamVisualSize.fraction
                     visual(Modifier.fillMaxSize(fraction))
-                    // A quiet edge fade lets the wave dissolve into Prism's actual screen backdrop.
-                    val bg = MaterialTheme.colorScheme.background
-                    Box(Modifier.matchParentSize().background(Brush.verticalGradient(
-                        0f to bg.copy(alpha = 0.20f), 0.18f to Color.Transparent,
-                        0.80f to Color.Transparent, 1f to bg.copy(alpha = 0.30f)
-                    )))
+                    // The renderer already fades to transparent, preserving photos and custom Prism backdrops.
                 }
             }
             if (wide && (layout == StreamLayout.SEPARATE || shortWide) && hasTrack) {

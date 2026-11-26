@@ -329,7 +329,7 @@ internal fun TvWavePlace(nav: TvNav) {
                     if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (current != null) TvIconButton(PrismIcons.Shuffle, tr(R.string.prism_stream_refresh), { if (!starting) { if (djOn) c.player.toggleShuffle() else start() } }, Modifier.tvItem("tv_wave/refresh"))
                 }
-                com.prism.music.ui.screens.VibeFlowField(Modifier.weight(1f, fill = false).fillMaxWidth(), animated = now?.playing == true,
+                com.prism.music.ui.screens.VibeFlowField(Modifier.weight(1f, fill = true).fillMaxWidth(), animated = now?.playing == true,
                     energy = style.diversity / 100f) { visual ->
                     com.prism.music.ui.screens.VibeStationOverlay(appSettings,
                         vibeStationTitle(activeSaved, activeScenario), hasTrack = current != null,

@@ -82,7 +82,7 @@ float fbm(float2 p) {
 half4 main(float2 fc) {
     float shortest = min(size.x, size.y);
     // The backdrop breathes across the stage, including wide TV compositions.
-    float2 uv = (fc - center) / float2(min(size.x, shortest * 1.65), shortest);
+    float2 uv = (fc - center) / float2(min(size.x, shortest * 1.65), min(size.y, shortest * 1.60));
     uv -= float2(sin(time * 0.37), cos(time * 0.29)) * 0.026;
     float t = time * (0.42 + energy * 0.36);
     // Two independently travelling distortion fields make the light fold, rather than rotate as a flat picture.
@@ -121,7 +121,9 @@ half4 main(float2 fc) {
     col = mix(col, colB, membrane * litRim * 0.32);
     light *= 0.88 + 0.29 * bass;
     float clipEdge = 1.0 - smoothstep(0.35, 0.53, r);
-    float al = clamp(light * opacity * clipEdge, 0.0, 0.95);
+    // Low-contrast atmosphere connects the membrane to the entire stage, instead of a floating sticker.
+    float atmosphere = 0.085 * exp(-r * r * 5.0) * (0.65 + 0.35 * cloud);
+    float al = clamp((light * clipEdge + atmosphere) * opacity, 0.0, 0.95);
     return half4(half3(clamp(col, 0.0, 1.0) * al), half(al));
 }
 """
@@ -278,7 +280,7 @@ internal fun smoothVibe(previous: Float, next: Float, seconds: Float = 1f / 30f)
 /** A portable liquid membrane with continuous curved contours, even without AGSL. */
 private fun DrawScope.drawLiquidVibe(a: Color, b: Color, c: Color, bands: FloatArray, bass: Float, opacity: Float, time: Float) {
     if (size.minDimension <= 0f) return
-    val radius = size.minDimension * (0.30f + 0.035f * bass)
+    val radius = size.minDimension * (0.37f + 0.035f * bass)
     val origin = center + Offset(sin(time * 0.37f), cos(time * 0.29f)) * (radius * 0.09f)
     drawSoftSphere(a, b, c, bass, opacity * 0.36f, time)
     val count = 84
@@ -352,7 +354,7 @@ private fun DrawScope.drawVibeSpectrum(a: Color, b: Color, bands: FloatArray, ti
 /** Portable gradient (API 26–32 and Performance mode); no per-pixel noise shader. */
 private fun DrawScope.drawSoftSphere(a: Color, b: Color, c: Color, bass: Float, opacity: Float, time: Float) {
     if (size.minDimension <= 0f) return
-    val r = size.minDimension * (0.44f + 0.018f * bass)
+    val r = size.minDimension * (0.49f + 0.018f * bass)
     listOf(a, b, c).forEachIndexed { i, color ->
         val phase = time * (0.72f + i * 0.17f) + i * 2.09f
         val at = center + Offset(cos(phase) * r * 0.17f, sin(phase) * r * 0.17f)

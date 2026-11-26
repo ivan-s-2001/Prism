@@ -4,11 +4,19 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.prism.music.data.prefs.StreamLayout
 import com.prism.music.ui.screens.vibeStageMinHeight
+import com.prism.music.ui.screens.vibeFillsViewport
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class VibeLayoutTest {
+    @Test fun normalPhoneAndTvUseRemainingSpace() {
+        assertTrue(vibeFillsViewport(360.dp, 640.dp))
+        assertTrue(vibeFillsViewport(960.dp, 450.dp))
+        assertTrue(!vibeFillsViewport(360.dp, 400.dp))
+        assertTrue(!vibeFillsViewport(360.dp, Dp.Infinity))
+    }
+
     @Test fun compactUsesLessSpace() {
         val center = vibeStageMinHeight(360.dp, Dp.Infinity, StreamLayout.CENTERED, true)
         val compact = vibeStageMinHeight(360.dp, Dp.Infinity, StreamLayout.COMPACT, true)
