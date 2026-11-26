@@ -32,10 +32,17 @@ internal data class WaveSettingsDraft(
     fun choose(preset: SavedWavePreset) = copy(style = MyWave.style(preset.origin), presetId = preset.id)
     fun choose(scenario: WaveScenarios.Scenario) =
         copy(style = WaveScenarios.resolve(scenario, scenarioStyles, style.russianPercent), presetId = scenario.id)
-    fun save(name: String, id: String = java.util.UUID.randomUUID().toString()): WaveSettingsDraft {
+    fun save(name: String, id: String = java.util.UUID.randomUUID().toString(), iconId: String = "bookmark"): WaveSettingsDraft {
         val title = name.trim().take(40)
         require(title.isNotEmpty() && presets.none { it.name.equals(title, ignoreCase = true) })
-        return copy(presets = presets + SavedWavePreset(id, title, style.origin), presetId = id)
+        return copy(presets = presets + SavedWavePreset(id, title, style.origin, normalizePresetIconId(iconId)), presetId = id)
+    }
+    fun editPreset(id: String, name: String, iconId: String): WaveSettingsDraft {
+        val title = name.trim().take(40)
+        require(title.isNotEmpty() && presets.none { it.id != id && it.name.equals(title, ignoreCase = true) })
+        return copy(presets = presets.map {
+            if (it.id == id) it.copy(name = title, iconId = normalizePresetIconId(iconId)) else it
+        })
     }
     fun delete(id: String) = copy(presets = presets.filterNot { it.id == id },
         presetId = presetId.takeUnless { it == id })
@@ -46,3 +53,7 @@ internal data class WaveSettingsDraft(
         else copy(style = MyWave.Style(), presetId = null)
     }
 }
+
+/** Stable upstream slugs are persisted, never ordinal indices or vector objects. */
+internal fun normalizePresetIconId(value: String): String =
+    value.takeIf { it.length <= 100 && it.matches(Regex("[a-z0-9]+(?:-[a-z0-9]+)*")) } ?: "bookmark"

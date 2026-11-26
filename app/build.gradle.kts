@@ -757,6 +757,53 @@ val prepareTablerIcons = tasks.register<PrepareTablerIcons>("prepareTablerIcons"
     outputDir.set(layout.buildDirectory.dir("generated/tablerIcons/svg"))
 }
 
+/** The complete pinned Tabler archive, packaged as one compressed asset rather than thousands of Kotlin declarations. */
+@CacheableTask
+abstract class GenerateVibeIconCatalog : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val archive: RegularFileProperty
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val mapping: RegularFileProperty
+    @get:OutputDirectory
+    abstract val assetsDir: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val dir = assetsDir.get().asFile.resolve("vibe-icons").apply { mkdirs() }
+        val pattern = Regex("icons/(outline|filled)/([a-z0-9-]+)[.]svg")
+        ZipFile(archive.get().asFile).use { zip ->
+            val entries = zip.entries().asSequence().filterNot { it.isDirectory }.mapNotNull { entry ->
+                val match = pattern.matchEntire(entry.name.substringAfter('/')) ?: return@mapNotNull null
+                val (style, name) = match.destructured
+                Triple("$style/$name", entry, style)
+            }.sortedBy { it.first }.toList()
+            require(entries.count { it.third == "outline" } > 1000) { "Full Tabler outline catalog is missing" }
+            dir.resolve("catalog.tsv").bufferedWriter().use { out ->
+                entries.forEach { (key, entry, _) ->
+                    val bytes = zip.getInputStream(entry).use { it.readBytes() }
+                    out.append(key).append('\t').append(java.util.Base64.getEncoder().encodeToString(bytes)).append('\n')
+                }
+            }
+        }
+        dir.resolve("aliases.tsv").writeText(mapping.get().asFile.readLines()
+            .filter { it.isNotBlank() && !it.startsWith("#") }
+            .mapNotNull { row ->
+                val fields = row.split('\t')
+                val path = fields.getOrNull(1) ?: return@mapNotNull null
+                if (!path.startsWith("outline/") || fields[0].endsWith("Filled")) null
+                else path.removePrefix("outline/").removeSuffix(".svg") + "\t" + fields[0]
+            }.joinToString("\n"))
+    }
+}
+
+val generateVibeIconCatalog = tasks.register<GenerateVibeIconCatalog>("generateVibeIconCatalog") {
+    archive.set(layout.file(tablerIconArchive.elements.map { it.single().asFile }))
+    mapping.set(rootProject.layout.projectDirectory.file("design/tabler-icons.tsv"))
+    assetsDir.set(layout.buildDirectory.dir("generated/vibeIconCatalog/assets"))
+}
+
 val generatePrismIcons = tasks.register<GeneratePrismIcons>("generatePrismIcons") {
     drawings.set(prepareTablerIcons.flatMap { it.outputDir })
     outputDir.set(layout.buildDirectory.dir("generated/prismIcons/kotlin"))
@@ -766,6 +813,7 @@ androidComponents {
     onVariants { variant ->
         variant.sources.kotlin?.addGeneratedSourceDirectory(generatePrismIcons, GeneratePrismIcons::outputDir)
         variant.sources.res?.addGeneratedSourceDirectory(generatePrismIcons, GeneratePrismIcons::resDir)
+        variant.sources.assets?.addGeneratedSourceDirectory(generateVibeIconCatalog, GenerateVibeIconCatalog::assetsDir)
     }
 }
 

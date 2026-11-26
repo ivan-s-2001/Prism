@@ -80,7 +80,7 @@ data class PinnedPlaylist(val id: String, val title: String, val thumbnail: Stri
 
 /** Named Stream mix, using the version-compatible MyWave origin format. */
 @Serializable
-data class SavedWavePreset(val id: String, val name: String, val origin: String)
+data class SavedWavePreset(val id: String, val name: String, val origin: String, val iconId: String = "bookmark")
 
 /** Where Autoplay finds what to play next. */
 enum class AutoplaySource(val label: String) { MIXED(tr(R.string.both)), YOURS(tr(R.string.your_music)), YOUTUBE(tr(R.string.prism_music)) }
