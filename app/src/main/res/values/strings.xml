@@ -5777,13 +5777,13 @@
     <string name="prism_stream_appearance_reactions">Like and dislike</string>
     <string name="prism_stream_appearance_status">Playback status</string>
     <string name="prism_stream_appearance_compact_scenarios">Compact scenarios</string>
-    <string name="prism_stream_appearance_panel">Glass player card</string>
+    <string name="prism_stream_appearance_panel">Glass track credits</string>
     <string name="prism_stream_appearance_reverse">Reverse layout</string>
     <string name="prism_stream_appearance_arrange">Order and visibility</string>
     <string name="prism_stream_appearance_scenarios">Vibe scenarios</string>
     <string name="prism_stream_appearance_all_scenarios">All scenarios</string>
     <string name="prism_stream_appearance_no_scenarios">No built-in scenarios</string>
     <string name="prism_stream_appearance_auto_order">Automatic order</string>
-    <string name="prism_stream_appearance_reverse_info">Controls before artwork</string>
+    <string name="prism_stream_appearance_reverse_info">Track actions before credits</string>
     <string name="prism_stream_station_default">My mix</string>
 </resources>

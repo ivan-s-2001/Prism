@@ -156,22 +156,20 @@ private fun MiniVibe(c: ThemeColors, song: Song?) {
                 Icon(PrismIcons.Shuffle, null, Modifier.size(24.dp))
             }
         }, player = { panel ->
-            VibeStationPanel(s, panel, hasTrack = song != null,
-                station = { slot ->
-                    VibeFlowField(slot, palette = c.ring, title = tr(R.string.prism_stream_station_default)) {
-                        VibeStationAction(song != null, starting = false, active = song != null, onPlay = {}, modifier = Modifier.align(Alignment.Center))
-                    }
-                }, track = {
-                    if (song != null) VibeTrackStrip(s, song.title, song.primaryArtist,
-                        artwork = { StandIn(song, it, com.prism.music.ui.theme.CoverShapes.of(s.shapes.player, s.player.artCorners.dp), standIns.first()) },
-                        onOpen = {}, actions = {
-                            if (s.streamShowReactions) {
-                                VibeTrackAction(PrismIcons.Heart, tr(R.string.prism_stream_like), {})
-                                VibeTrackAction(PrismIcons.ThumbDown, tr(R.string.prism_stream_not_for_me), {})
-                            }
-                            VibeTrackAction(PrismIcons.Next, tr(R.string.prism_stream_next), {})
-                        }, progress = { PreviewBar(s, Brush.horizontalGradient(c.ring), ink = scheme.onSurface) })
-                })
+            VibeFlowField(panel, palette = c.ring) {
+                VibeStationOverlay(s, tr(R.string.prism_stream_station_default), hasTrack = song != null,
+                    modifier = Modifier.align(Alignment.Center),
+                    play = { VibeStationAction(song != null, starting = false, active = song != null, onPlay = {}) },
+                    credits = {
+                        if (song != null) VibeCredits(s, song.title, song.primaryArtist,
+                            artwork = { StandIn(song, it, com.prism.music.ui.theme.CoverShapes.of(s.shapes.player, s.player.artCorners.dp), standIns.first()) })
+                    }, actions = {
+                        if (s.streamShowReactions) VibeTrackAction(PrismIcons.ThumbDown, tr(R.string.prism_stream_not_for_me), {})
+                        VibeTrackAction(PrismIcons.Previous, tr(R.string.widget_previous), {})
+                        VibeTrackAction(PrismIcons.Next, tr(R.string.prism_stream_next), {})
+                        if (s.streamShowReactions) VibeTrackAction(PrismIcons.Heart, tr(R.string.prism_stream_like), {})
+                    }, progress = { PreviewBar(s, Brush.horizontalGradient(c.ring), ink = scheme.onSurface) })
+            }
         }, scenarios = {
             val scenarios = com.prism.music.data.foryou.WaveScenarios.visibleOrder(com.prism.music.data.foryou.WaveScenarios.all, s.streamScenarioOrder)
             Row(Modifier.fillMaxWidth().padding(horizontal = ui.gap(16.dp), vertical = ui.gap(6.dp)),

@@ -23,6 +23,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.geometry.Offset
+import kotlin.math.sin
+import kotlin.math.cos
 import com.prism.music.ui.player.rememberVisualizer
 import com.prism.music.ui.theme.LocalAppSettings
 import com.prism.music.ui.theme.LocalIsDark
@@ -39,6 +42,7 @@ uniform float energy;
 uniform float opacity;
 uniform float3 colA;
 uniform float3 colB;
+uniform float3 colC;
 
 float hash(float2 p) { return fract(sin(dot(p, float2(127.1, 311.7))) * 43758.5453); }
 float noise(float2 p) {
@@ -61,24 +65,31 @@ float fbm(float2 p) {
 
 half4 main(float2 fc) {
     float2 uv = (fc - center) / min(size.x, size.y);
+    float t = time * (0.42 + energy * 0.36);
+    // Two independently travelling distortion fields make the light fold, rather than rotate as a flat picture.
+    float angle = atan(uv.y, uv.x);
     float r = length(uv);
-    float spin = time * 0.075 + 0.38 * exp(-r * 2.8);
+    float spin = 0.34 * sin(t * 0.73) + t * 0.16 + 0.56 * exp(-r * 3.2);
     float cs = cos(spin);
     float sn = sin(spin);
     float2 p = float2(uv.x * cs - uv.y * sn, uv.x * sn + uv.y * cs);
-
-    float cloud = fbm(p * 2.0 + float2(time * 0.045, -time * 0.035));
-    float detail = fbm(p * 3.8 + float2(cloud * 1.7, -cloud * 1.4) + float2(-time * 0.025, time * 0.04));
-    float radius = 0.32 * (1.0 + 0.10 * bass);
-    float edge = r + (cloud - 0.5) * (0.14 + 0.12 * energy) + (detail - 0.5) * 0.065;
-    float outer = 1.0 - smoothstep(radius * 0.78, radius * 1.52, edge);
-    float inner = smoothstep(radius * 0.36, radius * 0.86, edge);
-    float silk = smoothstep(0.18, 0.82, detail) * 0.72 + cloud * cloud * 0.28;
-    float light = outer * inner * (0.32 + silk * 1.18) * (0.90 + 0.42 * bass);
-    float3 col = mix(colA, colB, smoothstep(0.18, 0.82, cloud));
-    float3 c = col * light * 1.35;
-    float al = clamp(max(c.r, max(c.g, c.b)), 0.0, 1.0);
-    return half4(half3(min(c, float3(al))) * half(opacity), half(al * opacity));
+    float cloud = fbm(p * 3.1 + float2(t * 0.21, -t * 0.16));
+    float detail = fbm(p * 5.4 + float2(cloud * 1.8, -cloud * 1.6) + float2(-t * 0.15, t * 0.12));
+    float fold = 0.025 * sin(angle * 3.0 + t * 1.15) + 0.017 * sin(angle * 5.0 - t * 0.82);
+    float radius = 0.325 + 0.018 * sin(t * 1.08) + 0.035 * bass;
+    float edge = r + (cloud - 0.5) * (0.11 + 0.10 * energy) + (detail - 0.5) * 0.042 + fold;
+    float outer = 1.0 - smoothstep(radius * 0.91, radius * 1.48, edge);
+    float inner = smoothstep(radius * 0.56, radius * 0.94, edge);
+    float ribbon = 0.5 + 0.5 * sin(angle * 2.0 + detail * 6.2 + t * 0.9);
+    float sheen = pow(ribbon, 2.1) * (0.30 + 0.70 * detail);
+    float tone = 0.5 + 0.5 * sin(angle + cloud * 4.5 - t * 0.8);
+    float3 col = mix(mix(colA, colB, smoothstep(0.0, 0.56, tone)), colC, smoothstep(0.52, 1.0, tone));
+    col = mix(col, colC, sheen * 0.23);
+    // A soft transparent center protects text contrast even in a light theme.
+    float light = outer * inner * (0.33 + 0.56 * cloud + sheen * 0.62) * (0.88 + 0.29 * bass);
+    float clipEdge = 1.0 - smoothstep(0.42, 0.50, r);
+    float al = clamp(light * opacity * clipEdge, 0.0, 0.95);
+    return half4(half3(clamp(col, 0.0, 1.0) * al), half(al));
 }
 """
 
@@ -99,6 +110,7 @@ internal fun VibeSphere(
     val a = colors.firstOrNull() ?: scheme.primary
     // Spectrum often ends with its starting color; choose a hue within it instead.
     val b = colors.getOrElse((colors.size * 2 / 3).coerceAtMost(colors.lastIndex)) { scheme.secondary }
+    val c = colors.getOrElse(colors.size / 3) { scheme.tertiary }
     val motion = animated && !settings.reduceMotion && !settings.performanceMode
     val visualizer = rememberVisualizer(motion)
     val time = remember { mutableFloatStateOf(7f) }
@@ -126,16 +138,16 @@ internal fun VibeSphere(
     val bass = { if (motion) level.floatValue else 0f }
     val opacity = if (dark) 0.90f else 0.70f
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !settings.performanceMode) {
-        ShaderSphere(modifier, a, b, energy.coerceIn(0f, 1f), opacity, { time.floatValue }, bass)
+        ShaderSphere(modifier, a, b, c, energy.coerceIn(0f, 1f), opacity, { time.floatValue }, bass)
     } else {
-        Canvas(modifier) { drawSoftSphere(a, b, bass(), opacity) }
+        Canvas(modifier) { drawSoftSphere(a, b, c, bass(), opacity, if (motion) time.floatValue else 7f) }
     }
 }
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
 private fun ShaderSphere(
-    modifier: Modifier, a: Color, b: Color, energy: Float, opacity: Float,
+    modifier: Modifier, a: Color, b: Color, c: Color, energy: Float, opacity: Float,
     time: () -> Float, bass: () -> Float,
 ) {
     // RuntimeShader compilation can fail on a device's Skia implementation. Keep the screen usable.
@@ -145,7 +157,7 @@ private fun ShaderSphere(
         if (size.minDimension <= 0f) return@Canvas
         val level = bass()
         if (shader == null || brush == null) {
-            drawSoftSphere(a, b, level, opacity)
+            drawSoftSphere(a, b, c, level, opacity, time())
         } else {
             shader.setFloatUniform("size", size.width, size.height)
             shader.setFloatUniform("center", center.x, center.y)
@@ -155,25 +167,23 @@ private fun ShaderSphere(
             shader.setFloatUniform("opacity", opacity)
             shader.setFloatUniform("colA", a.red, a.green, a.blue)
             shader.setFloatUniform("colB", b.red, b.green, b.blue)
+            shader.setFloatUniform("colC", c.red, c.green, c.blue)
             drawRect(brush)
         }
     }
 }
 
 /** Portable gradient (API 26–32 and Performance mode); no per-pixel noise shader. */
-private fun DrawScope.drawSoftSphere(a: Color, b: Color, bass: Float, opacity: Float) {
+private fun DrawScope.drawSoftSphere(a: Color, b: Color, c: Color, bass: Float, opacity: Float, time: Float) {
     if (size.minDimension <= 0f) return
-    val r = size.minDimension * (0.48f + 0.025f * bass)
-    drawCircle(
-        Brush.radialGradient(
-            0f to Color.Transparent,
-            0.28f to Color.Transparent,
-            0.50f to b.copy(alpha = 0.20f * opacity),
-            0.65f to a.copy(alpha = (0.55f + bass * 0.15f) * opacity),
-            0.84f to b.copy(alpha = 0.18f * opacity),
-            1f to Color.Transparent,
-            center = center,
-            radius = r,
-        ), radius = r, center = center,
-    )
+    val r = size.minDimension * (0.44f + 0.018f * bass)
+    listOf(a, b, c).forEachIndexed { i, color ->
+        val phase = time * (0.26f + i * 0.08f) + i * 2.09f
+        val at = center + Offset(cos(phase) * r * 0.10f, sin(phase) * r * 0.10f)
+        drawCircle(Brush.radialGradient(
+            0f to Color.Transparent, 0.49f to Color.Transparent,
+            0.76f to color.copy(alpha = (0.39f + bass * 0.14f) * opacity),
+            1f to Color.Transparent, center = at, radius = r
+        ), radius = r, center = at)
+    }
 }

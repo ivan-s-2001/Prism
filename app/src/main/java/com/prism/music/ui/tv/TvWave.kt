@@ -70,7 +70,6 @@ internal fun TvWavePlace(nav: TvNav) {
     val activeSaved = savedPresets.firstOrNull { it.id == chosenPresetId && it.origin == style.origin }
         ?: savedPresets.firstOrNull { chosenPresetId == null && it.origin == style.origin }
     val activeScenario = if (activeSaved == null) WaveScenarios.active(style, chosenPresetId, appSettings.streamScenarioStyles) else null
-    val mixName = activeSaved?.name ?: activeScenario?.label
     var tuning by remember { mutableStateOf(false) }
     var starting by remember { mutableStateOf(false) }
     var job by remember { mutableStateOf<Job?>(null) }
@@ -270,56 +269,41 @@ internal fun TvWavePlace(nav: TvNav) {
                     if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (current != null) TvIconButton(PrismIcons.Shuffle, tr(R.string.prism_stream_refresh), { if (!starting) { if (djOn) c.player.toggleShuffle() else start() } }, Modifier.tvItem("tv_wave/refresh"))
                 }
-                Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(28.dp)),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    @Composable fun Station(modifier: Modifier) {
-                        com.prism.music.ui.screens.VibeFlowField(modifier, animated = now?.playing == true,
-                            energy = style.diversity / 100f, title = mixName ?: tr(R.string.prism_stream_station_default)) {
+                com.prism.music.ui.screens.VibeFlowField(Modifier.weight(1f).fillMaxWidth(), animated = now?.playing == true,
+                    energy = style.diversity / 100f) {
+                    com.prism.music.ui.screens.VibeStationOverlay(appSettings,
+                        (chosenPresetId?.let { id -> savedPresets.firstOrNull { it.id == id }?.name
+                        ?: WaveScenarios.all.firstOrNull { it.id == id }?.label } ?: tr(R.string.prism_stream_station_default)), hasTrack = current != null,
+                        modifier = Modifier.align(Alignment.Center),
+                        play = {
                             TvIconButton(if (now?.playing == true) PrismIcons.Pause else PrismIcons.Play, tr(when {
                                 starting && current == null -> R.string.prism_stream_finding_music
                                 now?.playing == true -> R.string.widget_pause
                                 current != null -> R.string.widget_play
                                 else -> R.string.prism_stream_start_listening
                             }), { if (current != null) c.player.togglePlay() else if (!starting) start() },
-                                Modifier.align(Alignment.Center).tvItem("tv_wave/play", entry = true), big = true)
-                        }
-                    }
-                    @Composable fun Track(modifier: Modifier) {
-                        if (current == null) return
-                        TvFitColumn(modifier.then(if (appSettings.streamGlassPanel) Modifier.tvGlass(ui.shape(20.dp)).padding(ui.gap(16.dp)) else Modifier)) {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
-                                if (appSettings.streamShowCover) Artwork(now?.art, Modifier.size(76.dp * appSettings.streamCoverSize.fraction),
-                                    shape = com.prism.music.ui.theme.CoverShapes.of(appSettings.shapes.player, appSettings.player.artCorners.dp), size = 360)
-                                Column(Modifier.weight(1f)) {
-                                    Text(now?.title ?: current.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    Text(now?.artist ?: current.primaryArtist, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                }
+                                Modifier.tvItem("tv_wave/play", entry = true), big = true)
+                        }, credits = {
+                            if (current != null) com.prism.music.ui.screens.VibeCredits(appSettings,
+                                now?.title ?: current.title, now?.artist ?: current.primaryArtist,
+                                artwork = { Artwork(now?.art, it, shape = com.prism.music.ui.theme.CoverShapes.of(appSettings.shapes.player, appSettings.player.artCorners.dp), size = 180) })
+                        }, actions = {
+                            if (current != null) {
+                                if (appSettings.streamShowReactions) TvIconButton(if (current.id in disliked) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown, tr(R.string.prism_stream_not_for_me),
+                                    { val on = current.id in disliked; c.library.setDisliked(current, !on); if (!on && c.player.hasNext.value) c.player.next() },
+                                    Modifier.tvItem("tv_wave/dislike"), on = current.id in disliked)
+                                TvIconButton(PrismIcons.Previous, tr(R.string.widget_previous),
+                                    { if (c.player.hasPrevious.value) c.player.previous() }, Modifier.tvItem("tv_wave/previous"))
+                                TvIconButton(PrismIcons.Next, tr(R.string.prism_stream_next),
+                                    { if (c.player.hasNext.value) c.player.next() }, Modifier.tvItem("tv_wave/next"))
+                                if (appSettings.streamShowReactions) TvIconButton(if (now?.liked == true) PrismIcons.HeartFilled else PrismIcons.Heart, tr(R.string.prism_stream_like),
+                                    { c.library.toggleLike(current) }, Modifier.tvItem("tv_wave/like"), on = now?.liked == true)
+                                TvIconButton(PrismIcons.ChevronRight, tr(R.string.prism_stream_player), { nav.go(TvRoute.Player) }, Modifier.tvItem("tv_wave/player"))
                             }
-                            if (appSettings.streamShowProgress && now != null && now.total.isNotEmpty()) {
-                                TvFitGap(ui.gap(12.dp))
-                                TvSeekLine(now, onSeek = { c.player.seekBy(it) }, onPlayPause = { c.player.togglePlay() },
-                                    modifier = Modifier.fillMaxWidth().tvItem("tv_wave/seek"))
-                            }
-                            TvFitGap(ui.gap(12.dp))
-                            Row(Modifier.layoutId(TV_FIT_WIDE), horizontalArrangement = Arrangement.spacedBy(ui.gap(10.dp)), verticalAlignment = Alignment.CenterVertically) {
-                                if (appSettings.streamShowReactions) {
-                                    TvIconButton(if (now?.liked == true) PrismIcons.HeartFilled else PrismIcons.Heart, tr(R.string.prism_stream_like),
-                                        { c.library.toggleLike(current) }, Modifier.tvItem("tv_wave/like"), on = now?.liked == true)
-                                    TvIconButton(if (current.id in disliked) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown, tr(R.string.prism_stream_not_for_me),
-                                        { val on = current.id in disliked; c.library.setDisliked(current, !on); if (!on && c.player.hasNext.value) c.player.next() },
-                                        Modifier.tvItem("tv_wave/dislike"), on = current.id in disliked)
-                                }
-                                TvIconButton(PrismIcons.Next, tr(R.string.prism_stream_next), { c.player.next() }, Modifier.tvItem("tv_wave/next"))
-                            }
-                            TvFitGap(ui.gap(12.dp))
-                            WaveTvButton(tr(R.string.prism_stream_player), { nav.go(TvRoute.Player) },
-                                Modifier.tvItem("tv_wave/player"))
-                        }
-                    }
-                    if (appSettings.streamReverseLayout && current != null) Track(Modifier.weight(0.75f).fillMaxHeight())
-                    Station(Modifier.weight(1.25f).fillMaxHeight())
-                    if (!appSettings.streamReverseLayout && current != null) Track(Modifier.weight(0.75f).fillMaxHeight())
+                        }, progress = {
+                            if (now != null && now.total.isNotEmpty()) TvSeekLine(now, onSeek = { c.player.seekBy(it) }, onPlayPause = { c.player.togglePlay() },
+                                modifier = Modifier.fillMaxWidth().tvItem("tv_wave/seek"))
+                        })
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ui.gap(16.dp)), verticalAlignment = Alignment.CenterVertically) {
                     Row(Modifier.weight(1f).scenarioEdgeFade({ scenarioScroll.canScrollBackward }, { scenarioScroll.canScrollForward })

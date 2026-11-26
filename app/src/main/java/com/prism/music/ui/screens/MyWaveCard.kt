@@ -166,7 +166,6 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val activeSaved = savedPresets.firstOrNull { it.id == chosenPresetId && it.origin == style.origin }
         ?: savedPresets.firstOrNull { chosenPresetId == null && it.origin == style.origin }
     val activeScenario = if (activeSaved == null) WaveScenarios.active(style, chosenPresetId, settings.streamScenarioStyles) else null
-    val mixName = activeSaved?.name ?: activeScenario?.label
     LaunchedEffect(savedPresets, revealPresetId) {
         val index = savedPresets.indexOfFirst { it.id == revealPresetId }
         if (index >= 0) {
@@ -247,6 +246,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val liked by c.library.likedIds.collectAsState()
     val disliked by c.library.dislikedIds.collectAsState()
     val hasNext by c.player.hasNext.collectAsState()
+    val hasPrevious by c.player.hasPrevious.collectAsState()
     val current = song.takeIf { wave }
     val cover = current?.let { c.covers.art(SongItem(it)) }
     // An embedded card always follows Prism's active appearance; no independent Vibe palette.
@@ -326,16 +326,30 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                 }
             })
         }
-        @Composable fun Track() {
-            val item = current ?: return
+        VibeFlowField(modifier.testTag("home:my_wave"), animated = wave && playing && !buffering,
+            energy = style.diversity / 100f) {
             CompositionLocalProvider(com.prism.music.ui.player.LocalEmbeddedPlayerInk provides scheme.onSurface,
                 LocalContentColor provides scheme.onSurface) {
-                VibeTrackStrip(settings, item.title, item.primaryArtist, artwork = { TrackArtwork(it) },
-                    onOpen = onOpenPlayer, actions = {
-                        if (settings.streamShowReactions) { Reaction(true); Reaction(false) }
+                VibeStationOverlay(settings, (chosenPresetId?.let { id -> savedPresets.firstOrNull { it.id == id }?.name
+                        ?: WaveScenarios.all.firstOrNull { it.id == id }?.label } ?: tr(R.string.prism_stream_station_default)),
+                    hasTrack = current != null, modifier = Modifier.align(Alignment.Center),
+                    play = {
+                        VibeStationAction(playing = wave && playing, starting = starting && !wave, active = wave,
+                            onPlay = { if (wave) c.player.togglePlay() else if (!starting) start() })
+                    },
+                    credits = {
+                        current?.let { item -> VibeCredits(settings, item.title, item.primaryArtist,
+                            artwork = { TrackArtwork(it) }, onOpen = onOpenPlayer) }
+                    },
+                    actions = {
+                        if (settings.streamShowReactions) Reaction(false)
+                        VibeTrackAction(PrismIcons.Previous, tr(R.string.widget_previous), { c.player.previous() }, enabled = hasPrevious)
                         VibeTrackAction(PrismIcons.Next, tr(R.string.prism_stream_next), { c.player.next() }, enabled = hasNext)
-                    }, progress = {
-                        if (settings.streamShowProgress) {
+                        if (settings.streamShowReactions) Reaction(true)
+                    },
+                    progress = {
+                        val item = current
+                        if (item != null) {
                             val timing by produceState(0L to 0L, item.id, playing) {
                                 while (true) {
                                     value = if (c.player.currentSong.value?.id == item.id)
@@ -343,23 +357,11 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
                                     kotlinx.coroutines.delay(if (playing) 250L else 500L)
                                 }
                             }
-                            if (timing.second > 0L) Box(Modifier.testTag("stream:seek")) {
-                                PlayerScrubber(timing.first, timing.second)
-                            }
+                            if (timing.second > 0L) Box(Modifier.testTag("stream:seek")) { PlayerScrubber(timing.first, timing.second) }
                         }
                     })
             }
         }
-        VibeStationPanel(settings, modifier.testTag("home:my_wave"), hasTrack = current != null,
-            station = { slot ->
-                VibeFlowField(slot, animated = wave && playing && !buffering, energy = style.diversity / 100f,
-                    title = mixName ?: tr(R.string.prism_stream_station_default)) {
-                    VibeStationAction(
-                        playing = wave && playing, starting = starting && !wave, active = wave,
-                        onPlay = { if (wave) c.player.togglePlay() else if (!starting) start() },
-                        modifier = Modifier.align(Alignment.Center))
-                }
-            }, track = { Track() })
     }
 
     @Composable fun ScenarioTile(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {

@@ -44,7 +44,7 @@ internal fun VibePageLayout(
     val ui = LocalUi.current
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         val wide = maxWidth >= 520.dp
-        val minimum = (if (wide) 360.dp else 530.dp) *
+        val minimum = (if (wide) 440.dp else 550.dp) *
             settings.textScale.coerceAtLeast(1f)
         val height = if (scrollable) maxOf(maxHeight, minimum) else maxHeight
         val scroll = rememberScrollState()
@@ -58,53 +58,43 @@ internal fun VibePageLayout(
     }
 }
 
-/** Station and current track are different levels of the same page. The visual field never becomes album art. */
-@Composable
-internal fun VibeStationPanel(
-    settings: AppSettings, modifier: Modifier = Modifier, hasTrack: Boolean,
-    station: @Composable (Modifier) -> Unit, track: @Composable () -> Unit,
-) {
-    val ui = LocalUi.current
-    BoxWithConstraints(modifier) {
-        val wide = maxWidth >= 520.dp
-        val spacing = ui.gap(12.dp)
-        @Composable fun TrackSlot(modifier: Modifier) {
-            Box(modifier, contentAlignment = Alignment.Center) { track() }
-        }
-        if (wide && hasTrack) {
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(spacing),
-                verticalAlignment = Alignment.CenterVertically) {
-                if (settings.streamReverseLayout) TrackSlot(Modifier.weight(0.8f))
-                station(Modifier.weight(1.2f).fillMaxHeight())
-                if (!settings.streamReverseLayout) TrackSlot(Modifier.weight(0.8f))
-            }
-        } else {
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(spacing)) {
-                if (hasTrack && settings.streamReverseLayout) TrackSlot(Modifier.fillMaxWidth())
-                station(Modifier.weight(1f).fillMaxWidth())
-                if (hasTrack && !settings.streamReverseLayout) TrackSlot(Modifier.fillMaxWidth())
-            }
-        }
-    }
-}
-
-/** The fluid field is the hero. Its only overlay is the primary station action; the title sits on quiet page ink. */
+/** One immersive field, including all station controls; no duplicate player strip. */
 @Composable
 internal fun VibeFlowField(
     modifier: Modifier = Modifier, animated: Boolean = false, energy: Float = 0.5f,
-    palette: List<Color>? = null, title: String, content: @Composable BoxScope.() -> Unit,
+    palette: List<Color>? = null, content: @Composable BoxScope.() -> Unit,
+) {
+    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+        VibeSphere(Modifier.size(minOf(maxWidth, maxHeight, 520.dp)), animated, energy, palette)
+        content()
+    }
+}
+
+@Composable
+internal fun VibeStationOverlay(
+    settings: AppSettings, title: String, hasTrack: Boolean,
+    modifier: Modifier = Modifier, play: @Composable () -> Unit,
+    credits: @Composable () -> Unit, actions: @Composable RowScope.() -> Unit,
+    progress: @Composable () -> Unit = {},
 ) {
     val ui = LocalUi.current
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(ui.gap(6.dp))) {
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            // Keep the visible shader within its square, including on large TV screens.
-            VibeSphere(Modifier.size(minOf(maxWidth, maxHeight, 460.dp)), animated, energy, palette)
-            content()
+    BoxWithConstraints(modifier.widthIn(max = 350.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val gap = ui.gap(if (maxHeight < 280.dp) 3.dp else 8.dp)
+        Column(Modifier.fillMaxWidth().padding(horizontal = ui.gap(8.dp)),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(gap)) {
+            Text(title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            play()
+            if (hasTrack) {
+                @Composable fun Actions() {
+                    Row(horizontalArrangement = Arrangement.spacedBy(ui.gap(4.dp)), verticalAlignment = Alignment.CenterVertically, content = actions)
+                }
+                if (settings.streamReverseLayout) Actions()
+                credits()
+                if (!settings.streamReverseLayout) Actions()
+                if (settings.streamShowProgress) progress()
+            }
         }
-        Text(title, Modifier.fillMaxWidth().padding(horizontal = ui.gap(12.dp)),
-            style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -149,41 +139,29 @@ internal fun VibeTrackAction(
     }
 }
 
-/** Compact attribution, with the existing cover size/visibility, glass and progress options retained. */
+/** Center the credits even when a small artwork thumbnail is enabled. */
 @Composable
-internal fun VibeTrackStrip(
+internal fun VibeCredits(
     settings: AppSettings, title: String, artist: String, artwork: @Composable (Modifier) -> Unit,
-    onOpen: () -> Unit, actions: @Composable RowScope.() -> Unit, progress: @Composable () -> Unit,
+    onOpen: (() -> Unit)? = null,
 ) {
     val ui = LocalUi.current
     val scheme = MaterialTheme.colorScheme
+    val coverSize = 42.dp * settings.streamCoverSize.fraction
     @Composable fun Body() {
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val inline = maxWidth >= 300.dp && settings.textScale <= 1.15f
-            val pad = if (settings.streamGlassPanel) ui.gap(10.dp) else ui.gap(4.dp)
-            @Composable fun Credits(modifier: Modifier) {
-                Row(modifier.clickable(onClick = onOpen).padding(vertical = ui.gap(4.dp)),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ui.gap(10.dp))) {
-                    if (settings.streamShowCover) artwork(Modifier.size(60.dp * settings.streamCoverSize.fraction))
-                    Column(Modifier.weight(1f)) {
-                        Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(artist, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
+        Row(Modifier.fillMaxWidth().then(if (onOpen != null) Modifier.clickable(onClick = onOpen) else Modifier)
+            .padding(vertical = ui.gap(3.dp), horizontal = ui.gap(4.dp)),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ui.gap(6.dp))) {
+            if (settings.streamShowCover) artwork(Modifier.size(coverSize))
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                Text(artist, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
             }
-            Column(Modifier.fillMaxWidth().padding(pad), verticalArrangement = Arrangement.spacedBy(ui.gap(4.dp))) {
-                if (inline) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Credits(Modifier.weight(1f))
-                    actions()
-                } else {
-                    Credits(Modifier.fillMaxWidth())
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically, content = actions)
-                }
-                if (settings.streamShowProgress) progress()
-            }
+            if (settings.streamShowCover) Spacer(Modifier.width(coverSize))
         }
     }
-    if (settings.streamGlassPanel) GlassSurface(Modifier.fillMaxWidth(), shape = ui.shape(20.dp), onMedia = false, inPage = true) { Body() }
+    if (settings.streamGlassPanel) GlassSurface(Modifier.fillMaxWidth(), shape = ui.shape(16.dp), onMedia = false, inPage = true) { Body() }
     else Body()
 }
 

@@ -5876,13 +5876,13 @@
     <string name="prism_stream_appearance_reactions">Лайк и дизлайк</string>
     <string name="prism_stream_appearance_status">Статус воспроизведения</string>
     <string name="prism_stream_appearance_compact_scenarios">Компактные сценарии</string>
-    <string name="prism_stream_appearance_panel">Стеклянная карточка плеера</string>
+    <string name="prism_stream_appearance_panel">Стеклянная плашка трека</string>
     <string name="prism_stream_appearance_reverse">Обратная компоновка</string>
     <string name="prism_stream_appearance_arrange">Порядок и видимость</string>
     <string name="prism_stream_appearance_scenarios">Сценарии Вайба</string>
     <string name="prism_stream_appearance_all_scenarios">Все сценарии</string>
     <string name="prism_stream_appearance_no_scenarios">Без встроенных сценариев</string>
     <string name="prism_stream_appearance_auto_order">Автоматический порядок</string>
-    <string name="prism_stream_appearance_reverse_info">Управление перед обложкой</string>
+    <string name="prism_stream_appearance_reverse_info">Действия перед названием трека</string>
     <string name="prism_stream_station_default">Мой поток</string>
 </resources>
