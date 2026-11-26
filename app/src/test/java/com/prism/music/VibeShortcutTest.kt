@@ -6,6 +6,21 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class VibeShortcutTest {
+    @Test fun contextStreamKeepsItsOriginalTitle() {
+        val source = com.prism.music.playback.QueueSource(
+            com.prism.music.playback.QueueKind.RADIO, "Vibe · Original track", seedId = "seed")
+        assertEquals(true, source.continuousRecommendations)
+        assertEquals(false, source.isMyWave)
+        assertEquals("Vibe · Original track",
+            com.prism.music.ui.screens.activeVibeTitle(source, null, null))
+    }
+
+    @Test fun aRegularAlbumIsNotAnActiveVibe() {
+        val source = com.prism.music.playback.QueueSource(
+            com.prism.music.playback.QueueKind.ALBUM, "Album", seedId = "track")
+        assertEquals(false, source.continuousRecommendations)
+    }
+
     @Test fun personalRestoresDefaultMixButPreservesLanguage() {
         val custom = MyWave.Style(character = MyWave.Character.FAMILIAR, mood = MyWave.Mood.CALM,
             depth = MyWave.Depth.DEEP, activity = MyWave.Activity.SLEEP,
