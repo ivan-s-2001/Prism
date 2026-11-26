@@ -32,6 +32,15 @@ enum class SyncState { IDLE, SYNCING, DONE, ERROR }
 
 internal enum class SongReaction { NONE, LIKE, DISLIKE }
 
+internal fun mergeProfileArtists(
+    local: List<FavoriteArtist>,
+    remote: List<BrowseItem>,
+    blocked: List<com.prism.music.data.foryou.Excluded>,
+): List<FavoriteArtist> =
+    (local + remote.filterIsInstance<ArtistItem>().map { FavoriteArtist(it.id, it.title, it.thumbnail) })
+        .distinctBy { it.id }
+        .filterNot { favorite -> blocked.any { it.id == favorite.id || it.name.equals(favorite.name, true) } }
+
 internal fun reactionAfterLike(current: SongReaction): SongReaction =
     if (current == SongReaction.LIKE) SongReaction.NONE else SongReaction.LIKE
 
@@ -106,10 +115,8 @@ class LibraryRepository(private val c: AppContainer) {
     /** One view of local stars and the account's subscriptions, shared by both profile editors and Wave. */
     val profileArtists: StateFlow<List<FavoriteArtist>> by lazy {
         combine(c.artistPrefs.favorites, artists, c.exclusions.artists) { local, remote, blocked ->
-            (local + remote.filterIsInstance<ArtistItem>().map { FavoriteArtist(it.id, it.title, it.thumbnail) })
-                .distinctBy { it.id }
-                .filterNot { favorite -> blocked.any { it.id == favorite.id || it.name.equals(favorite.name, true) } }
-        }.stateIn(c.scope, SharingStarted.Eagerly, emptyList())
+            mergeProfileArtists(local, remote, blocked)
+        }.stateIn(c.scope, SharingStarted.Eagerly, mergeProfileArtists(c.artistPrefs.favorites.value, artists.value, c.exclusions.artists.value))
     }
     val syncState = MutableStateFlow(SyncState.IDLE)
     val lastError = MutableStateFlow<String?>(null)
