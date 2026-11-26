@@ -1223,6 +1223,19 @@ class AppContainer(val app: Application) {
             }
         }
 
+    /** Separate transport for on-demand public HLS. Do not reuse live-radio parsing, caching or YouTube cookies. */
+    fun externalHlsDataSourceFactory(): DataSource.Factory =
+        ResolvingDataSource.Factory(OkHttpDataSource.Factory(http)) { spec ->
+            val id = spec.uri.lastPathSegment
+            if (spec.uri.scheme != "prism") spec
+            else if (spec.uri.authority != "external-hls" || id == null) throw IOException("Invalid external HLS request")
+            else {
+                val url = try { streams.externalHlsManifest(id) }
+                    catch (e: Exception) { throw IOException(e.message ?: tr(R.string.no_playable_audio_stream_was_found), e) }
+                spec.buildUpon().setUri(url).build()
+            }
+        }
+
     /** Song downloads (prism://audio/<id>) and saved music videos' pictures (prism://video/<id>). */
     fun downloadDataSourceFactory(): DataSource.Factory {
         val http = OkHttpDataSource.Factory(streamHttp)

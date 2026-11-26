@@ -18,8 +18,12 @@ internal object SoundCloudVersion {
         return p.takeIf { path.matches(it) }?.replace('/', ':')?.let { PREFIX + it }
     }
 
-    fun url(id: String): String? = id.takeIf { it.startsWith(PREFIX) }
-        ?.removePrefix(PREFIX)?.replace(':', '/')?.takeIf { path.matches(it) }
+    private const val HLS_PREFIX = "sc-hls:"
+    fun isHls(id: String): Boolean = id.startsWith(HLS_PREFIX) && url(id) != null
+    fun hlsId(recordingId: String): String? = url(recordingId)?.let { id(it)?.replace(PREFIX, HLS_PREFIX) }
+
+    fun url(id: String): String? = id.takeIf { it.startsWith(PREFIX) || it.startsWith(HLS_PREFIX) }
+        ?.removePrefix(HLS_PREFIX)?.removePrefix(PREFIX)?.replace(':', '/')?.takeIf { path.matches(it) }
         ?.let { "https://soundcloud.com/$it" }
 
     fun matches(song: Song, title: String, uploader: String, seconds: Long): Boolean {

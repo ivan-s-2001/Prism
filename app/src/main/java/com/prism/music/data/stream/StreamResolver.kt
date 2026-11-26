@@ -587,6 +587,8 @@ class StreamResolver(
         val videoId = versionOf(songId) ?: songId
         refusedSongs.forget(videoId)
         val was = cache.remove(videoId)
+        // A SoundCloud refusal must never change YouTube client/account retry state.
+        if (SoundCloudVersion.url(videoId) != null) return
         if (unavailable) {
             // Told by the stream already, as a rule ([fetched]): the same way noted twice is noted once.
             was?.let { busyWays.note(videoId, it.way.name) }
@@ -692,6 +694,7 @@ class StreamResolver(
 
     /** [url], one of [f]'s links for [videoId], as it's handed out: marked when it was asked over IPv4 only, and noted. */
     private fun handOut(videoId: String, f: Formats, url: String): String {
+        if (SoundCloudVersion.url(videoId) != null) return url
         if (links.note(url, LinkBook.Entry(videoId, f.way, f.asked, remember = f.afterRefusal || f.ipv4, formats = f))) {
             diag("$videoId: link from ${f.way}: ${NetFamily.linkLine(f.asked, NetFamily.ofLink(url))}")
         }
@@ -1065,7 +1068,7 @@ class StreamResolver(
         return f.takeIf { it.audio.isNotEmpty() }?.also { Log.i("PrismStream", "$videoId resolved directly (visionOS)") }
     }
 
-    /** Public, non-DRM progressive SoundCloud audio only. Never resolve a preview or paid track. */
+    /** Public, non-DRM SoundCloud audio. NewPipe rejects snippets and blocked tracks. */
     private fun publicSoundCloudFormats(url: String): Formats {
         val info = StreamInfo.getInfo(ServiceList.SoundCloud, url)
         val audio = info.audioStreams.filter {
@@ -1078,8 +1081,11 @@ class StreamResolver(
                 sampleRate = 0, channels = 2, contentLength = -1,
             ) { a.content }
         }
-        if (audio.isEmpty() || info.duration <= 0) throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
-        return Formats(audio, emptyList(), emptyList(), info.duration, System.currentTimeMillis() + 5 * 60_000, via = "SoundCloud")
+        val hls = info.audioStreams.filter {
+            it.isUrl && it.deliveryMethod == DeliveryMethod.HLS && it.content.startsWith("https://")
+        }.maxByOrNull { it.averageBitrate }?.content
+        if ((audio.isEmpty() && hls == null) || info.duration <= 0) throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
+        return Formats(audio, emptyList(), emptyList(), info.duration, System.currentTimeMillis() + 5 * 60_000, hlsUrl = hls, via = "SoundCloud")
     }
 
     /** Candidates only: the listener must select a recording. No automatic replacement or claim of uncensored audio. */
@@ -1098,12 +1104,17 @@ class StreamResolver(
                     durationSec = item.duration.toInt(), thumbnail = item.thumbnails.firstOrNull()?.url,
                 )
             }.distinctBy { it.id }.take(6)
-            .filter { candidate ->
-                // Check that the full recording actually has a playable progressive stream before offering it.
+            .mapNotNull { candidate ->
+                // Select the transport before ExoPlayer creates a media source.
                 runCatching {
                     val f = formats(candidate.id)
-                    f.audio.isNotEmpty() && kotlin.math.abs(f.durationSec - song.durationSec) <= 5
-                }.getOrDefault(false)
+                    if (kotlin.math.abs(f.durationSec - song.durationSec) > 5) null
+                    else if (f.audio.isNotEmpty()) candidate
+                    else if (f.hlsUrl != null) SoundCloudVersion.hlsId(candidate.id)?.let { id ->
+                        cache[id] = f
+                        candidate.copy(id = id)
+                    } else null
+                }.getOrNull()
             }
     }
 
@@ -1403,6 +1414,12 @@ class StreamResolver(
 
     /** Whether [videoId] is a live stream (resolving it if it hasn't been). Blocking. */
     fun isLive(videoId: String): Boolean = formats(videoId).live
+
+    /** On-demand HLS from a selected public recording; never treated as a live radio. */
+    fun externalHlsManifest(id: String): String {
+        if (!SoundCloudVersion.isHls(id)) throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
+        return formats(id).hlsUrl ?: throw StreamException(tr(R.string.no_playable_audio_stream_was_found))
+    }
 
     /** A live stream's HLS manifest, fresh enough to play. Blocking; called from ExoPlayer loader threads. */
     fun liveManifest(videoId: String): String {

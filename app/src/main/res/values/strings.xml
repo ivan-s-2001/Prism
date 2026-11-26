@@ -5788,6 +5788,6 @@
     <string name="prism_stream_station_default">My mix</string>
     <string name="prism_sc_versions">SoundCloud (experimental)</string>
     <string name="prism_sc_versions_note">Free public recordings. Audio may differ; listen to verify. Streaming only.</string>
-    <string name="prism_sc_no_versions">No matching full progressive stream found</string>
+    <string name="prism_sc_no_versions">No matching full stream found</string>
     <string name="prism_sc_stream_only">This SoundCloud version is streaming only</string>
 </resources>

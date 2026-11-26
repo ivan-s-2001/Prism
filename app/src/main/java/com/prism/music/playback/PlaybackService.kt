@@ -270,6 +270,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                     localFiles(),
                     localAudio = { item -> losslessFileFor(item) },
                     liveDsf = c.liveDataSourceFactory(),
+                    externalHlsDsf = c.externalHlsDataSourceFactory(),
+                    externalHlsId = { id -> c.versions.streamedOf(id)?.takeIf(com.prism.music.data.stream.SoundCloudVersion::isHls) },
                 )
             )
             .setAudioAttributes(
@@ -807,6 +809,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                     localFiles(),
                     localAudio = { item -> losslessFileFor(item) },
                     liveDsf = c.liveDataSourceFactory(),
+                    externalHlsDsf = c.externalHlsDataSourceFactory(),
+                    externalHlsId = { id -> c.versions.streamedOf(id)?.takeIf(com.prism.music.data.stream.SoundCloudVersion::isHls) },
                 )
             )
             // The whole ending (a blend plus its lead-in is at most 35 s, #351) is loaded as soon as the tail is made, seconds
@@ -1570,7 +1574,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         val song = player.currentMediaItem?.toSong()
         // Reddit R2: also a song whose stream YouTube keeps refusing ("BUZZ" skipped while its video played), since the
         // video has to be the song's length (below), so it's the same recording.
-        if (song != null && !song.isVideo && !song.isLocal && !song.isLive && !song.isEpisode && !c.soundFrom.containsKey(id) && wontPlayHere(error, refused = httpCode == 403)) {
+        if (song != null && !song.isVideo && !song.isLocal && !song.isLive && !song.isEpisode && !c.soundFrom.containsKey(id) && c.versions.of(id) == null && wontPlayHere(error, refused = httpCode == 403)) {
             val idx = player.currentMediaItemIndex
             scope.launch {
                 val video = videoIdFor(song).id?.takeIf { it != id }
@@ -2861,6 +2865,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 return uri
             }
         }
+        // An explicitly selected public source wins over automatic local matching.
+        if (c.versions.streamedOf(item.mediaId)?.let(com.prism.music.data.stream.SoundCloudVersion::url) != null) return null
         // Lossless files need lossless playback, as in 1.8.0; your own MP3/AAC/Ogg files (#314) need only their switch,
         // and give way to a lossless file of the same song ([com.prism.music.data.local.PlaySourceRule]).
         val kinds = com.prism.music.data.local.OwnFiles.kinds(c.settings.current)

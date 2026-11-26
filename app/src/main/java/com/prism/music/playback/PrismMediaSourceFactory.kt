@@ -30,18 +30,22 @@ class PrismMediaSourceFactory(
     private val localAudio: ((MediaItem) -> Uri?)? = null,
     /** Live streams: prism://live/<id> resolved to the stream's HLS manifest. */
     liveDsf: DataSource.Factory? = null,
+    externalHlsDsf: DataSource.Factory? = null,
+    private val externalHlsId: (String) -> String? = { null },
 ) : MediaSource.Factory {
     private val extractors = DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true)
     private val audio = ProgressiveMediaSource.Factory(audioDsf, extractors).setLoadErrorHandlingPolicy(NoteVideoLegFailures(picture = false, DefaultLoadErrorHandlingPolicy()))
     private val video = ProgressiveMediaSource.Factory(videoDsf, extractors).setLoadErrorHandlingPolicy(NoteVideoLegFailures(picture = true, DefaultLoadErrorHandlingPolicy()))
     private val local = localDsf?.let { ProgressiveMediaSource.Factory(it, extractors) }
     private val live = liveDsf?.let { HlsMediaSource.Factory(it).setPlaylistParserFactory(BestLiveAudioParserFactory()) }
+    private val externalHls = externalHlsDsf?.let { HlsMediaSource.Factory(it) }
 
     override fun setDrmSessionManagerProvider(drmSessionManagerProvider: DrmSessionManagerProvider): MediaSource.Factory {
         audio.setDrmSessionManagerProvider(drmSessionManagerProvider)
         local?.setDrmSessionManagerProvider(drmSessionManagerProvider)
         video.setDrmSessionManagerProvider(drmSessionManagerProvider)
         live?.setDrmSessionManagerProvider(drmSessionManagerProvider)
+        externalHls?.setDrmSessionManagerProvider(drmSessionManagerProvider)
         return this
     }
 
@@ -50,6 +54,7 @@ class PrismMediaSourceFactory(
         local?.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
         video.setLoadErrorHandlingPolicy(NoteVideoLegFailures(picture = true, loadErrorHandlingPolicy))
         live?.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
+        externalHls?.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
         return this
     }
 
@@ -61,6 +66,11 @@ class PrismMediaSourceFactory(
         }
         val videoId = mediaItem.localConfiguration?.uri?.getQueryParameter("video")
         if (videoId == null) {
+            if (externalHls != null) externalHlsId(mediaItem.mediaId)?.let { id ->
+                val uri = Uri.Builder().scheme("prism").authority("external-hls").appendPath(id).build()
+                return externalHls.createMediaSource(mediaItem.buildUpon().setUri(uri)
+                    .setMimeType(MimeTypes.APPLICATION_M3U8).setCustomCacheKey(null).build())
+            }
             if (local != null) localAudio?.invoke(mediaItem)?.let { uri ->
                 return local.createMediaSource(mediaItem.buildUpon().setUri(uri).setCustomCacheKey(null).build())
             }

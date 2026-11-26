@@ -5887,6 +5887,6 @@
     <string name="prism_stream_station_default">Мой поток</string>
     <string name="prism_sc_versions">SoundCloud (экспериментально)</string>
     <string name="prism_sc_versions_note">Бесплатные публичные записи. Проверьте звук на слух. Только потоковое воспроизведение.</string>
-    <string name="prism_sc_no_versions">Подходящая полная запись для потокового воспроизведения не найдена</string>
+    <string name="prism_sc_no_versions">Подходящая полная запись не найдена</string>
     <string name="prism_sc_stream_only">Версия SoundCloud доступна только для потокового воспроизведения</string>
 </resources>

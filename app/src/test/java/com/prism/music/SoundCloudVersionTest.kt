@@ -18,6 +18,16 @@ class SoundCloudVersionTest {
         assertNull(SoundCloudVersion.id("https://soundcloud.com/band/track?secret_token=abc"))
     }
 
+    @Test fun hlsAndProgressiveIdsAreDistinctButPointToSameRecording() {
+        val progressive = SoundCloudVersion.id("https://soundcloud.com/band/track")!!
+        val hls = SoundCloudVersion.hlsId(progressive)!!
+        assertNotEquals(progressive, hls)
+        assertFalse(SoundCloudVersion.isHls(progressive))
+        assertTrue(SoundCloudVersion.isHls(hls))
+        assertEquals(SoundCloudVersion.url(progressive), SoundCloudVersion.url(hls))
+        assertNull(SoundCloudVersion.hlsId("youtube"))
+    }
+
     @Test fun candidatesRequireTitleArtistAndDuration() {
         assertTrue(SoundCloudVersion.matches(song, "Ночной город", "Группа", 201))
         assertTrue(SoundCloudVersion.matches(song, "Группа - Ночной город", "Label", 200))

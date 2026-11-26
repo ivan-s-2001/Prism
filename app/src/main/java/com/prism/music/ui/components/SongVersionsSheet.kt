@@ -149,7 +149,8 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                     sc.isFailure -> Quiet(tr(R.string.couldn_t_look_for_other_versions))
                     candidates.isEmpty() -> Quiet(tr(R.string.prism_sc_no_versions))
                     else -> candidates.forEach { v ->
-                        VersionRow(v, "SoundCloud", picked == v.id, Modifier.testTag("version:${v.id}")) {
+                        val source = if (com.prism.music.data.stream.SoundCloudVersion.isHls(v.id)) "SoundCloud · HLS" else "SoundCloud"
+                        VersionRow(v, source, picked == v.id, Modifier.testTag("version:${v.id}")) {
                             choose(SongVersions.Pick(v.id, "SoundCloud · " + versionLabel(v), v))
                         }
                     }
