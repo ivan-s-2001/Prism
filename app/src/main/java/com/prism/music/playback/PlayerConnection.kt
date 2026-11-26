@@ -644,9 +644,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
             c.queue.smartShuffle.value = false
             c.queue.smartPicks.value = emptySet()
             c.queue.source.value = source
-            c.queue.autoplayContinuation = null
-            c.queue.autoplayStart.value = -1
-            c.queue.waveQuotaStart = 0
+            c.queue.resetRecommendationBoundaries()
             c.queue.userQueued.value = emptySet()
             val start = startIndex.coerceIn(0, songs.lastIndex)
             val was = when { !p.shuffleModeEnabled -> ShuffleMode.OFF; wasSmart -> ShuffleMode.SMART; else -> ShuffleMode.SHUFFLE }
@@ -731,9 +729,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
             c.queue.smartShuffle.value = false
             c.queue.smartPicks.value = emptySet()
             c.queue.source.value = source
-            c.queue.autoplayContinuation = null
-            c.queue.autoplayStart.value = -1
-            c.queue.waveQuotaStart = 0
+            c.queue.resetRecommendationBoundaries()
             val manual = c.queue.userQueued.value
             p.shuffleModeEnabled = false
             p.repeatMode = Player.REPEAT_MODE_OFF
@@ -823,8 +819,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         c.queue.filling = true
         try {
             c.queue.source.value = next
-            c.queue.autoplayContinuation = null
-            c.queue.autoplayStart.value = -1
+            c.queue.resetRecommendationBoundaries()
             // Add first so the active item always has a successor. Keep anything explicitly queued.
             p.addMediaItems(songs.map { it.toMediaItem() })
             p.removeMatchingRuns(at + 1, oldSize) { _, item -> item.mediaId !in manual }
@@ -932,8 +927,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         ++playToken
         stopFill()
         c.queue.source.value = QueueSource(QueueKind.OTHER, title)
-        c.queue.autoplayContinuation = null
-        c.queue.autoplayStart.value = -1
+        c.queue.resetRecommendationBoundaries()
         c.queue.userQueued.value = emptySet()
         ensureStarted()
         withPlayer { p ->
@@ -953,8 +947,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         ++playToken
         stopFill()
         c.queue.source.value = QueueSource(QueueKind.SINGLE, tr(R.string.autoplay), seedId = song.id)
-        c.queue.autoplayContinuation = null
-        c.queue.autoplayStart.value = -1
+        c.queue.resetRecommendationBoundaries()
         c.queue.userQueued.value = emptySet()
         ensureStarted()
         withPlayer { p ->
@@ -975,8 +968,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         c.queue.smartShuffle.value = false
         c.queue.smartPicks.value = emptySet()
         c.queue.source.value = QueueSource(QueueKind.OTHER, title)
-        c.queue.autoplayContinuation = null
-        c.queue.autoplayStart.value = -1
+        c.queue.resetRecommendationBoundaries()
         c.queue.userQueued.value = emptySet()
         ensureStarted()
         withPlayer { p ->
@@ -1018,7 +1010,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         stopFill()
         val i = p.currentMediaItemIndex
         if (i + 1 < p.mediaItemCount) p.removeMediaItems(i + 1, p.mediaItemCount)
-        c.queue.autoplayStart.value = -1
+        c.queue.resetRecommendationBoundaries()
         c.queue.userQueued.value = emptySet()
     }
 
@@ -1028,8 +1020,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         stopFill()
         p.stop()
         p.clearMediaItems()
-        c.queue.autoplayStart.value = -1
-        c.queue.autoplayContinuation = null
+        c.queue.resetRecommendationBoundaries()
         c.queue.userQueued.value = emptySet()
     }
 

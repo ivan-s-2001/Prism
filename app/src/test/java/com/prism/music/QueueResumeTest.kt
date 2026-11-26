@@ -102,6 +102,20 @@ class QueueResumeTest {
         assertEquals(origin, com.prism.music.ui.screens.activeVibeOrigin(resumed.source, songs[2]))
     }
 
+    @Test fun retunedWaveRestoresItsQuotaEpoch() {
+        val style = com.prism.music.data.foryou.MyWave.Style(discoveryPercent = 35)
+        val source = com.prism.music.playback.QueueSource(com.prism.music.playback.QueueKind.VIBE, "Wave", originId = style.origin)
+        val encoded = songs.map { InnerTube.json.encodeToString(Song.serializer(), it) }
+        val text = com.prism.music.playback.savedQueueText(
+            listOf(encoded[0], null, encoded[1], encoded[2]), 0, 0L, "Wave", false, emptyList(), 0,
+            source = source, autoplayStart = 2, waveQuotaStart = 3)
+        val r = resumptionOf(text, null)!!
+        assertEquals(2, r.waveQuotaStart)
+        assertEquals(1, r.autoplayStart)
+        assertTrue(r.source.isMyWave)
+        assertEquals(listOf("a", "b", "c"), r.songs.map { it.id })
+    }
+
     @Test fun oldQueueFileRemainsReadableWithoutInventingContext() {
         val r = resumptionOf(saved(), null)!!
         assertFalse(r.source.continuousRecommendations)

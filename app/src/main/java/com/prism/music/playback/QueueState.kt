@@ -76,7 +76,6 @@ class QueueState {
         }
         private companion object { const val RETRY_MS = 60 * 60_000L }
     }
-    @Volatile var autoplayContinuation: String? = null
     /** The other song's radio this queue moved on to when its own ran dry (No repeats this session), and for which queue. */
     @Volatile private var reseeded: Pair<QueueSource, String>? = null
     fun reseed(source: QueueSource, seed: String) { reseeded = source to seed }
@@ -89,6 +88,12 @@ class QueueState {
     val autoplayStart = MutableStateFlow(-1)
     /** First track of the current Vibe tuning epoch; earlier tracks cannot affect its quota. */
     @Volatile var waveQuotaStart = 0
+
+    /** Start a fresh recommendation epoch whenever the active queue is replaced. */
+    fun resetRecommendationBoundaries() {
+        autoplayStart.value = -1
+        waveQuotaStart = 0
+    }
     /** Songs the listener added themselves (Play next, Add to queue) and hasn't reached yet: "Next in queue". */
     val userQueued = MutableStateFlow<Set<String>>(emptySet())
     /** Playing along with a Listen Together host: their queue decides what's next (no autoplay or skipping here). */
