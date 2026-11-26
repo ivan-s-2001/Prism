@@ -113,6 +113,8 @@ import com.prism.music.data.prefs.ScrubberStyle
 import com.prism.music.data.prefs.TransportStyle
 import com.prism.music.playback.AudioEffects
 import com.prism.music.ui.theme.LocalAppSettings
+import com.prism.music.data.prefs.PlayerPart
+import com.prism.music.data.prefs.shows
 import com.prism.music.ui.theme.LocalContainer
 import com.prism.music.ui.theme.PrismIcons
 import com.prism.music.ui.theme.rememberHaptics
@@ -1019,7 +1021,7 @@ fun PlayerActionRow(
     val source by c.queue.source.collectAsState()
     val continuous = source.continuousRecommendations
     val currentSong by pc.currentSong.collectAsState()
-    val chosen = settings.player.buttons.filter {
+    val chosen = pairedPlayerReactions(settings.player.buttons, settings.shows(PlayerPart.LIKE)).filter {
         (it != PlayerButton.VIDEO || settings.showVideoSwitch) &&
             (it != PlayerButton.RADIO || (!source.isMyWave && currentSong?.let { song -> !song.isLive && !song.isEpisode &&
                 !song.isLocal && !source.matchesTrackStream(song.id, tr(R.string.radio, song.title)) } == true))

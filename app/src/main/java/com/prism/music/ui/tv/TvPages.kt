@@ -288,6 +288,9 @@ fun TvPlayerPage(nav: TvNav) {
                 // The video page turns video mode on (and off as it's left).
                 onVideo = { nav.go(TvRoute.Video) },
                 onLike = { c.player.currentSong.value?.let { c.library.toggleLike(it) } },
+                onDislike = song?.let { current -> { val on = !c.library.isDisliked(current.id); c.library.setDisliked(current, on); if (on && c.player.currentSong.value?.id == current.id && c.player.hasNext.value) c.player.next() } },
+                disliked = song?.id?.let { it in c.library.dislikedIds.collectAsState().value } == true,
+                onVibe = song?.takeIf { com.prism.music.ui.player.canStartTrackVibe(it) }?.let { current -> { c.player.playRadio(current, announce = true) } },
                 onMore = { panel = Panel.MORE },
                 accent = accent,
                 onSeek = { ms -> c.player.seekBy(ms) },

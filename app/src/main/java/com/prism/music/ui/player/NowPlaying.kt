@@ -142,16 +142,16 @@ import kotlin.math.roundToInt
 private val THUMB_SIZE = 54.dp
 private val HEADER_HEIGHT = 60.dp
 private val ART_TITLE_GAP = 20.dp
-private val DISMISS_STRIP = 32.dp
+private val DISMISS_STRIP = 44.dp
 /** How far a swipe on the controls goes before it opens or closes the queue or the lyrics (#200), in pixels. */
 private const val PANEL_SWIPE_PX = 90f
 private val ART_BOX_TOP_PAD = 8.dp
 /** How far the title may drop below the cover toward the scrubber, when the screen has room to spare. */
 private val TITLE_DROP_MAX = 24.dp
 /** What the like and ⋯ buttons beside the title take up (a centred title is balanced against it). */
-private val TITLE_BUTTONS_WIDTH = 98.dp
+private val TITLE_BUTTONS_WIDTH = 146.dp
 /** The heart beside the title and the space after it, left out when the buttons row has Like. */
-private val LIKE_GLYPH_ROOM = 48.dp
+private val LIKE_GLYPH_ROOM = 96.dp
 /** The space under each part of the deck when another follows it (as the deck was laid out before it could be arranged). */
 private val DECK_GAP_AFTER = mapOf(
     com.prism.music.data.prefs.DeckPart.STRIP to 0.dp, com.prism.music.data.prefs.DeckPart.SCRUBBER to 8.dp,
@@ -1134,10 +1134,14 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                         .clip(RoundedCornerShape(2.dp))
                         .background(Color.White.copy(alpha = 0.6f)),
                 )
+                val trackVibe = canStartTrackVibe(song)
+                if (trackVibe) com.prism.music.ui.screens.ContextVibePill(
+                    onClick = { pc.playRadio(song, announce = true) },
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp).testTag("player:trackVibe"))
                 if (collapse.value < 0.999f && settings.showPlayingFrom && originAlbum != null) PlaybackOriginCaption(
                     // The song's own album, which needn't be what's playing (a playlist, a radio): not "Playing from".
                     tr(R.string.from_the_album_2, originAlbum.title),
-                    Modifier.align(Alignment.BottomCenter).graphicsLayer { alpha = 1f - p() },
+                    Modifier.align(Alignment.BottomCenter).padding(horizontal = if (trackVibe) 102.dp else 0.dp).graphicsLayer { alpha = 1f - p() },
                 ) {
                     onCollapse(); nav.go(Routes.album(originAlbum.id!!))
                 }
@@ -1341,7 +1345,7 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                     ) {
                         // Settings → Player → Title (1.7.4): centred titles sit in the middle of the screen (a space as wide
                         // as the buttons on the right balances them), until the cover shrinks into the header.
-                        val centred = settings.player.titleAlign == com.prism.music.data.prefs.PlayerTitleAlign.CENTER && !collapsePastHalf
+                        val centred = settings.player.titleAlign == com.prism.music.data.prefs.PlayerTitleAlign.CENTER && !collapsePastHalf && sleeveMaxWidth >= 420.dp
                         // Like picked for the buttons row: one heart is enough while that row is on screen (the
                         // header keeps its own over the lyrics and the queue, and with Cover / Minimal, which hide the row).
                         val heartBelow = com.prism.music.data.prefs.PlayerButton.LIKE in settings.player.buttons &&
@@ -1414,6 +1418,8 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                             CircleGlyph(if (isLiked) PrismIcons.HeartFilled else PrismIcons.Heart, if (isLiked) tr(R.string.remove_from_liked) else tr(R.string.widget_like), isLiked, com.prism.music.ui.tour.TourAnchor.PLAYER_LIKE.mark) {
                                 c.library.toggleLike(song)
                             }
+                            Spacer(Modifier.width(8.dp))
+                            PlayerDislikeGlyph(song)
                             Spacer(Modifier.width(8.dp))
                         }
                         if (settings.showsMenuButton() || collapsePastHalf) CircleGlyph(PrismIcons.More, tr(R.string.song_options)) { showActions = true }

@@ -78,6 +78,9 @@ fun TvNowPlayingScreen(
     accent: Color? = null,
     /** Seeks by this many ms: the progress line takes focus and ← → move along it (1.8.3, D29). Null: only a line. */
     onSeek: ((Long) -> Unit)? = null,
+    onDislike: (() -> Unit)? = null,
+    disliked: Boolean = false,
+    onVibe: (() -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     Box(modifier.fillMaxSize().testTag(TAG_PLAYER)) {
@@ -127,6 +130,9 @@ fun TvNowPlayingScreen(
                     TvButton(tr(R.string.queue), onQueue, (if (now.hasLyrics) Modifier else Modifier.focusRequester(rowStart)).tvItem("$TAG_PLAYER/queue"), icon = PrismIcons.Queue)
                     if (now.hasVideo) TvButton(tr(R.string.video), onVideo, Modifier.tvItem("$TAG_PLAYER/video"), icon = PrismIcons.Video)
                     TvIconButton(if (now.liked) PrismIcons.HeartFilled else PrismIcons.Heart, tr(if (now.liked) R.string.liked else R.string.widget_like), onLike, Modifier.tvItem("$TAG_PLAYER/like"), on = now.liked)
+                    if (onDislike != null) TvIconButton(if (disliked) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown,
+                        tr(R.string.not_for_me), onDislike, Modifier.tvItem("$TAG_PLAYER/dislike"), on = disliked)
+                    if (onVibe != null) TvButton(tr(R.string.stream), onVibe, Modifier.tvItem("$TAG_PLAYER/vibe"), icon = PrismIcons.Stream)
                     TvIconButton(PrismIcons.More, tr(R.string.more), onMore, Modifier.tvItem("$TAG_PLAYER/more"))
                 }
                 if (now.next != null) {

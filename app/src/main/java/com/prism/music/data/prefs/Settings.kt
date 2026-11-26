@@ -1243,8 +1243,8 @@ enum class PlayerButton(val label: String) {
     EQUALIZER(tr(R.string.equalizer)), DOWNLOAD(tr(R.string.download)), RADIO(tr(R.string.start_radio)), SPEED(tr(R.string.speed));
 
     companion object {
-        /** The full player owns negative feedback; the mini player only offers like. */
-        val DEFAULT = listOf(LYRICS, VIDEO, QUEUE, DISLIKE)
+        /** Reactions beside the credits are separate from the customizable deck. */
+        val DEFAULT = listOf(LYRICS, VIDEO, QUEUE)
         const val MIN = 3
         const val MAX = 6
     }

@@ -186,7 +186,10 @@ internal fun WidePlayerContent(
         BoxWithConstraints(Modifier.weight(if (window.shortLandscape) 0.5f else 0.46f).fillMaxHeight().padding(horizontal = 24.dp)) {
             val short = maxHeight < 520.dp
             Column(Modifier.fillMaxSize()) {
-                Box(Modifier.fillMaxWidth().height(if (short) 18.dp else 28.dp).then(dismissGesture)) {
+                Box(Modifier.fillMaxWidth().height(if (canStartTrackVibe(song)) 44.dp else if (short) 18.dp else 28.dp).then(dismissGesture)) {
+                    if (canStartTrackVibe(song)) com.prism.music.ui.screens.ContextVibePill(
+                        onClick = { pc.playRadio(song, announce = true) },
+                        modifier = Modifier.align(Alignment.CenterEnd))
                     if (com.prism.music.ui.theme.LocalAppSettings.current.player.handle) Box(
                         Modifier.align(Alignment.Center).size(38.dp, 5.dp).clip(RoundedCornerShape(3.dp))
                             .background(Color.White.copy(alpha = 0.6f)),
@@ -370,6 +373,8 @@ internal fun PlayerCredits(song: Song, onMore: () -> Unit, onCollapse: () -> Uni
         val isLiked = song.id in liked
         if (heart) {
             CircleGlyph(if (isLiked) PrismIcons.HeartFilled else PrismIcons.Heart, if (isLiked) tr(R.string.remove_from_liked) else tr(R.string.widget_like), isLiked) { c.library.toggleLike(song) }
+            Spacer(Modifier.width(8.dp))
+            PlayerDislikeGlyph(song)
             Spacer(Modifier.width(8.dp))
         }
         if (settings.showsMenuButton(wide = true)) CircleGlyph(PrismIcons.More, tr(R.string.song_options), onClick = onMore)
