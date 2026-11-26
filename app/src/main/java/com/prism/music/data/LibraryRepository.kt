@@ -493,6 +493,7 @@ class LibraryRepository(private val c: AppContainer) {
         if (!c.settings.current.isLoggedIn || syncState.value == SyncState.SYNCING) return@withContext
         syncState.value = SyncState.SYNCING
         try {
+            restoreReactionJournal()
             remoteReactionLock.withLock {
             val key = remoteReactionKey()
             val beforeFetch = reactionLock.withLock { pendingRemote(key) }
