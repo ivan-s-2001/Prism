@@ -410,7 +410,7 @@ internal fun TvWavePlace(nav: TvNav) {
                                 val index = scenarioScroll.firstVisibleItemIndex
                                 val anchor = previousKeys.getOrNull(vibeOrbitIndex(index, previousKeys.size))
                                 val next = previousKeys.getOrNull(vibeOrbitIndex(index + 1, previousKeys.size))
-                                val target = keys.indexOf(anchor).takeIf { it >= 0 } ?: keys.indexOf(next).coerceAtLeast(0)
+                                val target = anchor?.let { keys.indexOf(it) }?.takeIf { it >= 0 } ?: (next?.let { keys.indexOf(it) } ?: -1).coerceAtLeast(0)
                                 scenarioScroll.scrollToItem(vibeOrbitNearest(index, keys.size, target))
                             }
                             previousKeys = keys

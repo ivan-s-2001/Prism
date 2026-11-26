@@ -175,7 +175,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             val index = scenarioScroll.firstVisibleItemIndex
             val anchor = old.getOrNull(vibeOrbitIndex(index, old.size))
             val next = old.getOrNull(vibeOrbitIndex(index + 1, old.size))
-            val target = orbitKeys.indexOf(anchor).takeIf { it >= 0 } ?: orbitKeys.indexOf(next).coerceAtLeast(0)
+            val target = anchor?.let { orbitKeys.indexOf(it) }?.takeIf { it >= 0 } ?: (next?.let { orbitKeys.indexOf(it) } ?: -1).coerceAtLeast(0)
             scenarioScroll.scrollToItem(vibeOrbitNearest(index, orbitKeys.size, target))
         }
         previousOrbitKeys = orbitKeys
