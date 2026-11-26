@@ -5884,4 +5884,5 @@
     <string name="prism_stream_appearance_no_scenarios">Без встроенных сценариев</string>
     <string name="prism_stream_appearance_auto_order">Автоматический порядок</string>
     <string name="prism_stream_appearance_reverse_info">Управление перед обложкой</string>
+    <string name="prism_stream_station_default">Мой поток</string>
 </resources>

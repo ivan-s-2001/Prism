@@ -5785,4 +5785,5 @@
     <string name="prism_stream_appearance_no_scenarios">No built-in scenarios</string>
     <string name="prism_stream_appearance_auto_order">Automatic order</string>
     <string name="prism_stream_appearance_reverse_info">Controls before artwork</string>
+    <string name="prism_stream_station_default">My mix</string>
 </resources>

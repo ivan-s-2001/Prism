@@ -156,34 +156,22 @@ private fun MiniVibe(c: ThemeColors, song: Song?) {
                 Icon(PrismIcons.Shuffle, null, Modifier.size(24.dp))
             }
         }, player = { panel ->
-            VibePlayerLayout(s, panel.then(if (s.streamGlassPanel) Modifier.clip(ui.shape(24.dp)).background(scheme.surfaceContainerHigh.copy(alpha = 0.80f)) else Modifier),
-                cover = { modifier ->
-                    if (song == null) VibeStationMark(PrismIcons.Stream, scheme.primary, modifier)
-                    else StandIn(song, modifier, com.prism.music.ui.theme.CoverShapes.of(s.shapes.player, s.player.artCorners.dp), standIns.first())
-                },
-                metadata = {
-                    if (song == null) VibeStationTitle(tr(R.string.prism_stream_music_in_your_rhythm), Modifier.fillMaxWidth())
-                    else Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        val centered = s.player.titleAlign == com.prism.music.data.prefs.PlayerTitleAlign.CENTER
-                        if (centered && s.streamShowReactions) Icon(PrismIcons.Heart, null, Modifier.padding(6.dp))
-                        Column(Modifier.weight(1f), horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start) {
-                            Text(song?.title ?: tr(R.string.prism_stream_music_in_your_rhythm), style = com.prism.music.ui.player.playerTitleStyle(MaterialTheme.typography, s), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text(song?.primaryArtist ?: tr(R.string.prism_stream_start_listening), style = com.prism.music.ui.player.playerArtistStyle(MaterialTheme.typography, s), color = scheme.onSurfaceVariant, maxLines = 1)
-                        }
-                        if (s.streamShowReactions) {
-                            if (!centered) Icon(PrismIcons.Heart, null, Modifier.padding(6.dp))
-                            Icon(PrismIcons.ThumbDown, null, Modifier.padding(6.dp))
-                        }
+            VibeStationPanel(s, panel, hasTrack = song != null,
+                station = { slot ->
+                    VibeFlowField(slot, palette = c.ring) {
+                        VibeStationCenter(PrismIcons.Stream, tr(R.string.prism_stream_station_default), song != null,
+                            starting = false, active = song != null, onPlay = {}, modifier = Modifier.align(Alignment.Center))
                     }
-                }, progress = {
-                    if (song != null) PreviewBar(s, Brush.horizontalGradient(c.ring), ink = scheme.onSurface)
-                }, transport = {
-                    if (song == null) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { VibeStartButton(false, {}, Modifier.fillMaxWidth(0.85f)) }
-                    else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                        Icon(PrismIcons.Previous, null)
-                        PreviewPlay(s, c, 52.dp, ink = scheme.onSurface, inverseInk = scheme.surface, ring = s.view.playRing)
-                        Icon(PrismIcons.Next, null)
-                    }
+                }, track = {
+                    if (song != null) VibeTrackStrip(s, song.title, song.primaryArtist,
+                        artwork = { StandIn(song, it, com.prism.music.ui.theme.CoverShapes.of(s.shapes.player, s.player.artCorners.dp), standIns.first()) },
+                        onOpen = {}, actions = {
+                            if (s.streamShowReactions) {
+                                Icon(PrismIcons.Heart, null, Modifier.padding(8.dp))
+                                Icon(PrismIcons.ThumbDown, null, Modifier.padding(8.dp))
+                            }
+                            Icon(PrismIcons.Next, null, Modifier.padding(8.dp))
+                        }, progress = { PreviewBar(s, Brush.horizontalGradient(c.ring), ink = scheme.onSurface) })
                 })
         }, scenarios = {
             val scenarios = com.prism.music.data.foryou.WaveScenarios.visibleOrder(com.prism.music.data.foryou.WaveScenarios.all, s.streamScenarioOrder)

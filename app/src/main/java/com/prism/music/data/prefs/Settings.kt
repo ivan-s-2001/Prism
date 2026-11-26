@@ -1923,7 +1923,7 @@ data class AppSettings(
     val streamGlassPanel: Boolean = false,
     val streamReverseLayout: Boolean = false,
     val streamScenarioOrder: String = "",
-    val streamShowProgress: Boolean = true,
+    val streamShowProgress: Boolean = false,
     val streamShowReactions: Boolean = true,
     val streamShowStatus: Boolean = true,
     val streamCompactScenarios: Boolean = false,

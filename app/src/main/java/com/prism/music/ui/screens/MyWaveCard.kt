@@ -7,7 +7,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
-import com.prism.music.ui.theme.GlassSurface
 import com.prism.music.ui.components.PrismChip
 import com.prism.music.ui.components.scenarioEdgeFade
 import com.prism.music.ui.components.WavePresetNameDialog
@@ -21,7 +20,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import com.prism.music.ui.components.RoundAction
-import com.prism.music.ui.components.pageTitleStyle
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import com.prism.music.ui.components.Segmented
@@ -31,8 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -41,13 +37,9 @@ import coil3.compose.AsyncImagePainter
 import coil3.request.ImageRequest
 import com.prism.music.data.model.hiRes
 import com.prism.music.ui.player.playerCoverRequest
-import com.prism.music.ui.player.pausedCoverScale
 import androidx.compose.animation.core.tween
-import com.prism.music.ui.player.TransportRow
 import com.prism.music.ui.player.PlayerScrubber
 import com.prism.music.ui.player.CircleGlyph
-import com.prism.music.ui.player.playerTitleStyle
-import com.prism.music.ui.player.playerArtistStyle
 import com.prism.music.data.model.SongItem
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
@@ -257,13 +249,11 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val liked by c.library.likedIds.collectAsState()
     val disliked by c.library.dislikedIds.collectAsState()
     val hasNext by c.player.hasNext.collectAsState()
-    val hasPrevious by c.player.hasPrevious.collectAsState()
     val current = song.takeIf { wave }
     val cover = current?.let { c.covers.art(SongItem(it)) }
     // An embedded card always follows Prism's active appearance; no independent Vibe palette.
-    val accent = scheme.primary
     val context = LocalContext.current
-    val artUrl = hiRes(cover, 1200)
+    val artUrl = hiRes(cover, 360)
     var artTry by remember(artUrl) { mutableIntStateOf(0) }
     var artFailed by remember(artUrl) { mutableStateOf(false) }
     val artRequest = remember(artUrl, artTry) { playerCoverRequest(context, artUrl, false) }
@@ -294,7 +284,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
     @Composable fun Header() {
         com.prism.music.ui.components.ScreenHeader(title,
-            subtitle = listOfNotNull(mixName?.takeIf { wave }, status.takeIf { settings.streamShowStatus }).joinToString(" · ").ifBlank { null }) {
+            subtitle = status.takeIf { settings.streamShowStatus }) {
             if (wave) RoundAction(if (djOn) PrismIcons.TurntableFilled else PrismIcons.Turntable,
                 tr(if (djOn) R.string.dj_mode_off else R.string.dj_mode),
                 modifier = Modifier.testTag("wave:dj")) { c.player.setDjMode(!djOn) }
@@ -305,135 +295,73 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             }
         }
     }
-    // One player card, not a decorative hero followed by a second mini player.
+    // A station first; the currently playing recording is a small, separately accessible attribution.
     @Composable fun Hero(modifier: Modifier) {
-        @Composable fun Body() {
+        @Composable fun TrackArtwork(modifier: Modifier) {
+            val shape = com.prism.music.ui.theme.CoverShapes.of(settings.shapes.player, settings.player.artCorners.dp)
+            Box(modifier.clip(shape).background(scheme.surfaceContainerHighest), contentAlignment = Alignment.Center) {
+                if (shownCover == null) Icon(PrismIcons.Song, null, Modifier.fillMaxSize(0.45f), tint = scheme.onSurfaceVariant)
+                Crossfade(targetState = shownCover, animationSpec = tween(fadeMs), label = "streamArtwork",
+                    modifier = Modifier.matchParentSize()) { image ->
+                    if (image != null) AsyncImage(image, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                }
+                if (artUrl != null && shownCover != artRequest) AsyncImage(
+                    artRequest, null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.matchParentSize().graphicsLayer { alpha = 0f },
+                    onState = { state ->
+                        if (state is AsyncImagePainter.State.Success) shownCover = artRequest
+                        else if (state is AsyncImagePainter.State.Error) artFailed = true
+                    })
+            }
+        }
+        @Composable fun Reaction(like: Boolean) {
+            val item = current ?: return
+            val on = if (like) item.id in liked else item.id in disliked
+            val glyph = if (like) {
+                if (on) PrismIcons.HeartFilled else PrismIcons.Heart
+            } else if (on) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown
+            CircleGlyph(glyph, if (like) tr(R.string.prism_stream_like) else tr(R.string.prism_stream_not_for_me), active = on) {
+                if (like) c.library.toggleLike(item)
+                else {
+                    c.library.setDisliked(item, !on)
+                    if (!on && c.player.hasNext.value) c.player.next()
+                }
+            }
+        }
+        @Composable fun Track() {
+            val item = current ?: return
             CompositionLocalProvider(com.prism.music.ui.player.LocalEmbeddedPlayerInk provides scheme.onSurface,
                 LocalContentColor provides scheme.onSurface) {
-            BoxWithConstraints(Modifier.fillMaxSize()) {
-            @Composable fun CoverArt(modifier: Modifier) {
-                if (!wave) {
-                    VibeStationMark(stationIcon, scheme.primary, modifier)
-                    return
-                }
-                val scale by animateFloatAsState(
-                    pausedCoverScale(playing, settings.artShrinkOnPause, settings.reduceMotion),
-                    tween(fadeMs), label = "streamCoverScale")
-                val shape = com.prism.music.ui.theme.CoverShapes.of(settings.shapes.player, settings.player.artCorners.dp)
-                Box(modifier.graphicsLayer { scaleX = scale; scaleY = scale }
-                    .shadow(ui.gap(10.dp), com.prism.music.ui.theme.CoverShapes.shadowOf(shape)).clip(shape).background(scheme.surfaceContainerHighest)
-                    .clickable(enabled = current != null, onClick = onOpenPlayer), contentAlignment = Alignment.Center) {
-                    if (shownCover == null) Icon(if (current == null) PrismIcons.Stream else PrismIcons.Song, null, Modifier.fillMaxSize(0.32f), tint = scheme.onSurfaceVariant.copy(alpha = 0.65f))
-                    Crossfade(targetState = shownCover, animationSpec = tween(fadeMs), label = "streamArtwork",
-                        modifier = Modifier.matchParentSize()) { image ->
-                        if (image != null) AsyncImage(image, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                        else Box(Modifier.fillMaxSize())
-                    }
-                    if (artUrl != null && shownCover != artRequest) AsyncImage(
-                        artRequest, null, contentScale = ContentScale.Crop,
-                        modifier = Modifier.matchParentSize().graphicsLayer { alpha = 0f },
-                        onState = { state ->
-                            if (state is AsyncImagePainter.State.Success) shownCover = artRequest
-                            else if (state is AsyncImagePainter.State.Error) artFailed = true
-                        })
-                }
-            }
-            @Composable fun Reaction(like: Boolean) {
-                val item = current
-                val on = if (like) item?.id in liked else item?.id in disliked
-                val glyph = if (like) {
-                    if (on) PrismIcons.HeartFilled else PrismIcons.Heart
-                } else if (on) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown
-                val label = if (like) tr(R.string.prism_stream_like) else tr(R.string.prism_stream_not_for_me)
-                Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                    if (item == null) Icon(glyph, label, tint = scheme.onSurfaceVariant.copy(alpha = 0.4f), modifier = Modifier.size(20.dp))
-                    else CircleGlyph(glyph, label, active = on) {
-                        if (like) c.library.toggleLike(item)
-                        else {
-                            c.library.setDisliked(item, !on)
-                            if (!on && c.player.hasNext.value) c.player.next()
+                VibeTrackStrip(settings, item.title, item.primaryArtist, artwork = { TrackArtwork(it) },
+                    onOpen = onOpenPlayer, actions = {
+                        if (settings.streamShowReactions) { Reaction(true); Reaction(false) }
+                        RoundAction(PrismIcons.Next, tr(R.string.prism_stream_next), enabled = hasNext) { c.player.next() }
+                    }, progress = {
+                        if (settings.streamShowProgress) {
+                            val timing by produceState(0L to 0L, item.id, playing) {
+                                while (true) {
+                                    value = if (c.player.currentSong.value?.id == item.id)
+                                        c.player.position to c.player.duration.coerceAtLeast(0L) else 0L to 0L
+                                    kotlinx.coroutines.delay(if (playing) 250L else 500L)
+                                }
+                            }
+                            if (timing.second > 0L) Box(Modifier.testTag("stream:seek")) {
+                                PlayerScrubber(timing.first, timing.second)
+                            }
                         }
-                    }
-                }
-            }
-            @Composable fun Metadata(modifier: Modifier = Modifier, reactions: Boolean = false) {
-                if (!wave) {
-                    VibeStationTitle(mixName ?: tr(R.string.prism_stream_music_in_your_rhythm),
-                        modifier = modifier.fillMaxWidth())
-                    return
-                }
-                val centered = settings.player.titleAlign == com.prism.music.data.prefs.PlayerTitleAlign.CENTER
-                val showReactions = reactions && settings.streamShowReactions
-                Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(ui.gap(4.dp))) {
-                    if (showReactions && centered) Reaction(true)
-                    Column(Modifier.weight(1f).then(if (current != null) Modifier.clickable(onClick = onOpenPlayer) else Modifier),
-                        horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
-                        verticalArrangement = Arrangement.spacedBy(ui.gap(4.dp))) {
-                        val align = if (centered) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start
-                        com.prism.music.ui.player.PlayerMarquee(
-                            current?.title ?: tr(R.string.prism_stream_music_in_your_rhythm),
-                            playerTitleStyle(MaterialTheme.typography, settings).copy(textAlign = align),
-                            scheme.onSurface, enabled = settings.player.titleScroll && !settings.reduceMotion,
-                            modifier = Modifier.fillMaxWidth())
-                        com.prism.music.ui.player.PlayerMarquee(
-                            current?.primaryArtist ?: tr(R.string.prism_stream_start_listening),
-                            playerArtistStyle(MaterialTheme.typography, settings).copy(textAlign = align),
-                            scheme.onSurfaceVariant, enabled = settings.player.titleScroll && !settings.reduceMotion,
-                            modifier = Modifier.fillMaxWidth())
-                    }
-                    if (showReactions) {
-                        if (!centered) Reaction(true)
-                        Reaction(false)
-                    }
-                }
-            }
-            @Composable fun Transport() {
-                if (!wave) {
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        VibeStartButton(starting, { start() }, Modifier.widthIn(max = 320.dp).fillMaxWidth().testTag("home:my_wave:play"))
-                    }
-                    return
-                }
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    Box(Modifier.widthIn(max = 340.dp).fillMaxWidth()) {
-                TransportRow(isPlaying = playing, isLoading = false,
-                    previousEnabled = hasPrevious, nextEnabled = hasNext,
-                    compact = true, showModes = false, playAction = { c.player.togglePlay() },
-                    playAccent = accent, playTag = "home:my_wave:play")
-                    }
-                }
-            }
-            @Composable fun Progress() {
-                if (!wave) return
-                val id = current?.id
-                val timing by produceState(0L to 0L, id, playing) {
-                    while (true) {
-                        value = if (id != null && c.player.currentSong.value?.id == id)
-                            c.player.position to c.player.duration.coerceAtLeast(0L) else 0L to 0L
-                        kotlinx.coroutines.delay(if (playing) 250L else 500L)
-                    }
-                }
-                // Reuse the actual player scrubber and its theme/shape/time settings.
-                // Never bind an inactive Stream to playback from another queue.
-                Box(Modifier.fillMaxWidth().testTag("stream:seek")) {
-                    if (id != null && timing.second > 0L) key(id) {
-                        PlayerScrubber(timing.first, timing.second)
-                    } else if (id != null) {
-                        Box(Modifier.fillMaxWidth().height(ui.gap(24.dp)), contentAlignment = Alignment.Center) {
-                            Box(Modifier.fillMaxWidth().height(2.dp).background(scheme.outlineVariant))
-                        }
-                    }
-                }
-            }
-            VibePlayerLayout(settings, Modifier.fillMaxSize(), cover = { CoverArt(it) },
-                metadata = { Metadata(reactions = true) }, progress = { Progress() }, transport = { Transport() })
-        }
+                    })
             }
         }
-        val panel = modifier.testTag("home:my_wave")
-        if (settings.streamGlassPanel) GlassSurface(panel, shape = ui.shape(24.dp), onMedia = false, inPage = true) { Body() }
-        else Box(panel) { Body() }
+        VibeStationPanel(settings, modifier.testTag("home:my_wave"), hasTrack = current != null,
+            station = { slot ->
+                VibeFlowField(slot, animated = wave && playing && !buffering, energy = style.diversity / 100f) {
+                    VibeStationCenter(
+                        icon = stationIcon, title = mixName ?: tr(R.string.prism_stream_station_default),
+                        playing = wave && playing, starting = starting && !wave, active = wave,
+                        onPlay = { if (wave) c.player.togglePlay() else if (!starting) start() },
+                        modifier = Modifier.align(Alignment.Center))
+                }
+            }, track = { Track() })
     }
 
     @Composable fun ScenarioTile(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
