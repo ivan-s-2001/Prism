@@ -53,9 +53,11 @@ import com.prism.music.ui.theme.LocalUi
 internal fun VibePageLayout(
     settings: AppSettings, modifier: Modifier = Modifier, scrollable: Boolean = true,
     header: @Composable () -> Unit, player: @Composable (Modifier) -> Unit, scenarios: @Composable () -> Unit,
+    backdrop: @Composable (Modifier) -> Unit = {},
 ) {
     val ui = LocalUi.current
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        backdrop(Modifier.matchParentSize())
         val page = Modifier.widthIn(max = 1040.dp).fillMaxWidth()
         val scroll = rememberScrollState()
         if (scrollable && !vibeFillsViewport(maxWidth, maxHeight)) {
@@ -77,7 +79,7 @@ internal fun VibePageLayout(
 }
 
 internal fun vibeFillsViewport(width: Dp, height: Dp): Boolean =
-    height != Dp.Infinity && height >= if (width >= 620.dp) 360.dp else 440.dp
+    height != Dp.Infinity && height >= if (width >= 620.dp) 400.dp else 480.dp
 
 /** One visual slot: pass the allocated viewport to the station instead of losing its minimum constraints. */
 @Composable
@@ -94,16 +96,16 @@ internal fun VibeFlowField(
 @Composable
 internal fun VibeDiscoveryStage(settings: AppSettings, title: String, active: Boolean, playing: Boolean, starting: Boolean,
     onStart: () -> Unit, onTune: () -> Unit, modifier: Modifier = Modifier,
-    visual: @Composable (Modifier) -> Unit) {
+    visual: @Composable (Modifier) -> Unit = {}) {
     val ui = LocalUi.current
     BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         val height = maxOf(minHeight, vibeStageMinHeight(maxWidth, maxHeight, settings.streamLayout,
             settings.streamVisualStyle != StreamVisualStyle.OFF), minOf(maxHeight, 180.dp))
-        val compact = settings.streamLayout == StreamLayout.COMPACT || height < 200.dp
-        Box(Modifier.fillMaxWidth().heightIn(min = height).clipToBounds(), contentAlignment = Alignment.Center) {
+        val compact = settings.streamLayout == StreamLayout.COMPACT || height < 300.dp
+        Box(Modifier.fillMaxWidth().heightIn(min = height), contentAlignment = Alignment.Center) {
             if (settings.streamVisualStyle != StreamVisualStyle.OFF) {
                 Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
-                    visual(Modifier.fillMaxSize(settings.streamVisualSize.fraction))
+                    visual(Modifier.fillMaxSize())
                 }
             }
             val groupAlignment = if (settings.streamLayout == StreamLayout.SEPARATE && height >= 320.dp) Alignment.BottomCenter else Alignment.Center
@@ -218,11 +220,10 @@ internal fun VibeStationOverlay(
         }
 
         // The wave is an ambient layer behind the entire station, never a separate layout item.
-        Box(Modifier.fillMaxWidth().heightIn(min = stage).clipToBounds(), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth().heightIn(min = stage), contentAlignment = Alignment.Center) {
             if (showVisual) {
                 BoxWithConstraints(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
-                    val fraction = settings.streamVisualSize.fraction
-                    visual(Modifier.fillMaxSize(fraction))
+                    visual(Modifier.fillMaxSize())
                     // The renderer already fades to transparent, preserving photos and custom Prism backdrops.
                 }
             }

@@ -320,6 +320,8 @@ internal fun TvWavePlace(nav: TvNav) {
             }
             }
         } else {
+            Box(Modifier.fillMaxSize()) {
+            com.prism.music.ui.screens.VibeSphere(Modifier.matchParentSize(), now?.playing == true, style.diversity / 100f)
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(ui.gap(8.dp))) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(title, Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium)
@@ -332,11 +334,10 @@ internal fun TvWavePlace(nav: TvNav) {
                     if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (current != null) TvIconButton(PrismIcons.Shuffle, tr(R.string.prism_stream_refresh), { if (!starting) { if (djOn) c.player.toggleShuffle() else start() } }, Modifier.tvItem("tv_wave/refresh"))
                 }
-                com.prism.music.ui.screens.VibeFlowField(Modifier.weight(1f, fill = true).fillMaxWidth(), animated = now?.playing == true,
-                    energy = style.diversity / 100f) { visual ->
+                Box(Modifier.weight(1f, fill = true).fillMaxWidth(), propagateMinConstraints = true) {
                     com.prism.music.ui.screens.VibeStationOverlay(appSettings,
                         vibeStationTitle(activeSaved, activeScenario), hasTrack = current != null,
-                        visual = visual, artist = now?.artist ?: current?.primaryArtist,
+                        artist = now?.artist ?: current?.primaryArtist,
                         play = {
                             TvIconButton(if (now?.playing == true) PrismIcons.Pause else PrismIcons.Play, tr(when {
                                 starting && current == null -> R.string.prism_stream_finding_music
@@ -392,6 +393,7 @@ internal fun TvWavePlace(nav: TvNav) {
                             }
                     }
                 }
+            }
             }
         }
     }

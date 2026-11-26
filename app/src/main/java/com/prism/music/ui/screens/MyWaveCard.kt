@@ -277,13 +277,10 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     }
     // One discovery surface; Prism's global mini player handles the song, reactions and transport.
     @Composable fun Hero(modifier: Modifier) {
-        VibeFlowField(modifier.testTag("home:my_wave").customizable(CustomizeTarget.VIBE),
-            animated = wave && playing && !buffering, energy = style.diversity / 100f) { visual ->
-            VibeDiscoveryStage(settings, vibeStationTitle(activeSaved, activeScenario),
-                active = wave, playing = wave && playing, starting = starting && !wave,
-                onStart = { if (wave) c.player.togglePlay() else if (!starting) start() },
-                onTune = { openSettings() }, visual = visual)
-        }
+        VibeDiscoveryStage(settings, vibeStationTitle(activeSaved, activeScenario),
+            active = wave, playing = wave && playing, starting = starting && !wave,
+            onStart = { if (wave) c.player.togglePlay() else if (!starting) start() },
+            onTune = { openSettings() }, modifier = modifier.testTag("home:my_wave").customizable(CustomizeTarget.VIBE))
     }
 
     @Composable fun ScenarioTile(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -305,7 +302,8 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
         }
     }
 
-    VibePageLayout(settings, header = { Header() }, player = { Hero(it) }, scenarios = { Controls() })
+    VibePageLayout(settings, header = { Header() }, player = { Hero(it) }, scenarios = { Controls() },
+        backdrop = { VibeSphere(it, wave && playing && !buffering, style.diversity / 100f) })
     val editing = editor
     if (settingsOpen && editing != null) {
         val draftStyle = editing.style

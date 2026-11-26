@@ -1851,6 +1851,8 @@ data class AppSettings(
     val titleSize: TitleSize = TitleSize.LARGE,
     val cardSize: CardSize = CardSize.MEDIUM,
     val reduceMotion: Boolean = false,
+    // Keep the explicit accessibility choice even when Performance forces reduced UI motion.
+    val reduceMotionRequested: Boolean? = null,
     // Navigation
     // Aura × Spectrum: a floating glass capsule.
     val navStyle: NavBarStyle = NavBarStyle.FLOATING,
@@ -1998,6 +2000,7 @@ data class AppSettings(
         // A solid color too (#413, 1.8.4): one flat fill, lighter than any of them.
         backdrops = backdrops.filterValues { it.substringBefore('|').let { word -> word == "PHOTO" || word == "COLOR" } },
         backdropMotion = false,
+        reduceMotionRequested = reduceMotionRequested ?: reduceMotion,
         reduceMotion = true,
         // 1.8.6: no loops cut from music videos either (Canvas is off here; this keeps a reader of the nested value honest).
         // 1.8.7 (#336): no fast refresh rate asked of the screen either.

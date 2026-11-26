@@ -53,6 +53,20 @@ class PerformanceModeTest {
     }
 
     @Test
+    fun vibeKeepsExplicitMotionChoiceInBothModes() {
+        val normal = AppSettings(reduceMotion = false)
+        val fast = normal.copy(performanceMode = true).effective()
+        assertTrue(fast.reduceMotion)
+        assertFalse(fast.reduceMotionRequested ?: fast.reduceMotion)
+        assertEquals(normal.streamMotion, fast.streamMotion)
+        assertEquals(normal.streamVisualStyle, fast.streamVisualStyle)
+        assertEquals(normal.streamVisualSize, fast.streamVisualSize)
+        assertEquals(normal.streamOpacity, fast.streamOpacity)
+        val explicit = AppSettings(reduceMotion = true, performanceMode = true).effective()
+        assertTrue(explicit.reduceMotionRequested ?: explicit.reduceMotion)
+    }
+
+    @Test
     fun featuresAndLayoutStay() {
         val e = heavy.copy(performanceMode = true).effective()
         assertEquals(PlayerLayout.VINYL, e.player.layout)

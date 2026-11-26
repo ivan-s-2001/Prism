@@ -157,10 +157,8 @@ private fun MiniVibe(c: ThemeColors, song: Song?, live: Boolean) {
                     Icon(PrismIcons.Palette, null, Modifier.size(24.dp))
                 }
             }, player = { panel ->
-                VibeFlowField(panel, animated = live, preview = !live) { visual ->
-                    VibeDiscoveryStage(s, tr(R.string.prism_stream_station_default), active = true,
-                        playing = true, starting = false, onStart = {}, onTune = {}, visual = visual)
-                }
+                VibeDiscoveryStage(s, tr(R.string.prism_stream_station_default), active = true,
+                    playing = true, starting = false, onStart = {}, onTune = {}, modifier = panel)
             }, scenarios = {
                 val scenarios = com.prism.music.data.foryou.WaveScenarios.visibleOrder(com.prism.music.data.foryou.WaveScenarios.all, s.streamScenarioOrder)
                 Row(Modifier.fillMaxWidth().padding(horizontal = ui.gap(12.dp), vertical = ui.gap(2.dp)),
@@ -170,7 +168,7 @@ private fun MiniVibe(c: ThemeColors, song: Song?, live: Boolean) {
                         VibeScenarioTile(s.streamCompactScenarios, tile.label, tile.icon, tile.selected, {}, Modifier.weight(1f))
                     }
                 }
-            })
+            }, backdrop = { VibeSphere(it, animated = live, energy = 0.5f, preview = !live) })
             Box(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) { MiniBar(c, song) }
             Box(Modifier.padding(horizontal = 12.dp).padding(bottom = 14.dp)) { TabBarPreview(c) }
         }
