@@ -62,7 +62,7 @@ private class AgslWaveRenderer : WaveGpuRenderer {
             shader.setFloatUniform("uOpacity", frame.colors.opacity.coerceIn(0f, 1f))
             shader.setFloatUniform("uEnergy", frame.energy.coerceIn(0f, 1f))
             shader.setFloatUniform("uMode", waveShaderMode(frame.style).toFloat())
-            shader.setFloatUniform("uBands", *fft)
+            shader.setFloatUniform("uBands", fft)
             frame.colors.palette.forEachIndexed { i, color ->
                 shader.setFloatUniform("uColor$i", color.red, color.green, color.blue)
             }
