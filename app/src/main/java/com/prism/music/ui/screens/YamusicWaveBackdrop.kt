@@ -260,11 +260,26 @@ private fun renderYamusicWave(
             cos(ang), sin(ang), (0.27f - fi * 0.025f) * (1f + 0.16f * beat),
             fi * 1.7f, 0.88f - fi * 0.14f)
     }
-    // Precompute ribbon response once per column rather than sampling the FFT per pixel.
-    val ribbon = FloatArray(w) { ribbonBand(sample.bands, it / maxOf(1f, w - 1f)) }
-    val fine = FloatArray(w) { ribbonBand(sample.bands, (it / maxOf(1f, w - 1f) * 0.82f + 0.18f)) }
-    val low = Array(3) { palette[it * 2 + 1] }
-    val high = Array(3) { palette[it * 2] }
+    // Reuse scratch storage and only calculate the column spectrum for ribbon mode.
+    val ribbon = buffers.ribbon
+    val fine = buffers.fine
+    if (style == StreamVisualStyle.EQUALIZER) {
+        val span = maxOf(1f, w - 1f)
+        for (i in 0 until w) {
+            val p = i / span
+            ribbon[i] = ribbonBand(sample.bands, p)
+            fine[i] = ribbonBand(sample.bands, p * 0.82f + 0.18f)
+        }
+    }
+    val low = buffers.low
+    val delta = buffers.delta
+    for (i in 0..2) {
+        val l = palette[i * 2 + 1]
+        val high = palette[i * 2]
+        val j = i * 3
+        low[j] = l.red; low[j + 1] = l.green; low[j + 2] = l.blue
+        delta[j] = high.red - l.red; delta[j + 1] = high.green - l.green; delta[j + 2] = high.blue - l.blue
+    }
     val raw = buffers.raw
     for (y in 0 until h) {
         val v = 1f - (y + 0.5f) / h
@@ -285,16 +300,17 @@ private fun renderYamusicWave(
             for (i in 0..2) {
                 val amount = when (i) { 0 -> light.first; 1 -> light.second; else -> light.third }
                 val mix = smoothstep(0.1f, 0.85f, amount)
-                red += (low[i].red + (high[i].red - low[i].red) * mix) * amount
-                green += (low[i].green + (high[i].green - low[i].green) * mix) * amount
-                blue += (low[i].blue + (high[i].blue - low[i].blue) * mix) * amount
+                val j = i * 3
+                red += (low[j] + delta[j] * mix) * amount
+                green += (low[j + 1] + delta[j + 1] * mix) * amount
+                blue += (low[j + 2] + delta[j + 2] * mix) * amount
             }
             // Continue the moving atmosphere under the mini player.
             val sweep = 0.72f + 0.28f * sin(u * 4.8f + v * 3.2f - t * 0.42f)
             val ambient = (1f - smoothstep(0f, 0.78f, v)) * 0.105f * sweep
-            red += (palette[1].red + (palette[3].red - palette[1].red) * u) * ambient
-            green += (palette[1].green + (palette[3].green - palette[1].green) * u) * ambient
-            blue += (palette[1].blue + (palette[3].blue - palette[1].blue) * u) * ambient
+            red += (low[0] + (low[3] - low[0]) * u) * ambient
+            green += (low[1] + (low[4] - low[1]) * u) * ambient
+            blue += (low[2] + (low[5] - low[2]) * u) * ambient
             val i = (y * w + x) * 3
             raw[i] = red
             raw[i + 1] = green
@@ -340,6 +356,10 @@ private fun renderYamusicWave(
 }
 
 private class WaveLightBuffers(w: Int, h: Int) {
+    val ribbon = FloatArray(w)
+    val fine = FloatArray(w)
+    val low = FloatArray(9)
+    val delta = FloatArray(9)
     val pixels = IntArray(w * h)
     val raw = FloatArray(w * h * 3)
     val inner = FloatArray(raw.size)
