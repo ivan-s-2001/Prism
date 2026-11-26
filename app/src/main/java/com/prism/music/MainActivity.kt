@@ -17,6 +17,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -398,11 +400,21 @@ private fun navHeight(style: NavBarStyle, size: com.prism.music.data.prefs.NavBa
  */
 internal class PageSlides(on: Boolean, rtl: Boolean) {
     private val side = if (rtl) -1 else 1
-    private val ms = 360
-    val enter: EnterTransition? = if (!on) null else slideInHorizontally(tween(ms)) { it * side } + fadeIn(tween(ms / 2))
-    val exit: ExitTransition? = if (!on) null else slideOutHorizontally(tween(ms)) { -it * side / 4 } + fadeOut(tween(ms))
-    val popEnter: EnterTransition? = if (!on) null else slideInHorizontally(tween(ms)) { -it * side / 4 } + fadeIn(tween(ms))
-    val popExit: ExitTransition? = if (!on) null else slideOutHorizontally(tween(ms)) { it * side } + fadeOut(tween(ms / 2, delayMillis = ms / 2))
+    private val ms = 230
+    val enter: EnterTransition? = if (!on) null else slideInHorizontally(tween(ms, easing = FastOutSlowInEasing)) { it * side / 12 } + fadeIn(tween(160))
+    val exit: ExitTransition? = if (!on) null else slideOutHorizontally(tween(ms, easing = FastOutSlowInEasing)) { -it * side / 24 } + fadeOut(tween(110, delayMillis = 120))
+    val popEnter: EnterTransition? = if (!on) null else slideInHorizontally(tween(ms, easing = FastOutSlowInEasing)) { -it * side / 24 } + fadeIn(tween(160))
+    val popExit: ExitTransition? = if (!on) null else slideOutHorizontally(tween(ms, easing = FastOutSlowInEasing)) { it * side / 12 } + fadeOut(tween(110, delayMillis = 120))
+}
+
+/** Keep tab changes distinct from pushes/pops, including when a saved nested page is restored. */
+internal enum class ScreenMotion { NONE, TAB, DETAIL, FADE }
+internal fun screenMotion(enabled: Boolean, slide: Boolean, initialId: String, targetId: String,
+    tabChange: Pair<String, String>?): ScreenMotion = when {
+    !enabled || initialId == targetId -> ScreenMotion.NONE
+    tabChange == (initialId to targetId) -> ScreenMotion.TAB
+    slide -> ScreenMotion.DETAIL
+    else -> ScreenMotion.FADE
 }
 
 private fun miniHeight(style: MiniPlayerStyle): Dp = when (style) {
@@ -585,7 +597,8 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
         LaunchedEffect(route) { barCompact = false }
         val barT by animateFloatAsState(
             if (barCompact && settings.navHideOnScroll) 1f else 0f,
-            spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow), label = "bar",
+            if (settings.reduceMotion || settings.performanceMode) snap()
+            else spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMedium), label = "bar",
         )
 
         LaunchedEffect(Unit) {
@@ -607,7 +620,9 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
             deepLink.collect { uri -> if (uri != null) { handleDeepLink(uri, navigator, c); deepLink.value = null } }
         }
 
+        var tabChange by remember { mutableStateOf<Pair<String, String>?>(null) }
         val selectTab: (String) -> Unit = { r ->
+            val previous = navController.currentBackStackEntry?.id
             // The tab whose pages are showing: the first tab page above the root, else the root's own.
             val tabRoutes = tabs.map { it.route }.toSet()
             // Optional arguments aside ("liked?genre={genre}" is the Liked songs tab).
@@ -624,6 +639,10 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
                     launchSingleTop = true
                     restoreState = true
                 }
+            }
+            val next = navController.currentBackStackEntry?.id
+            if (previous != null && next != null && previous != next) {
+                tabChange = if (r != currentTab) previous to next else null
             }
         }
 
@@ -680,21 +699,32 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
                         .then(if (settings.swipeTabs && !useRail) swipeBetweenTabs(tabs, route, selectTab) else Modifier),
                 ) {
                   CompositionLocalProvider(com.prism.music.ui.components.LocalHiddenByPlayer provides hiddenByPlayer) {
-                    // The same cross-fade both ways, and for the back gesture too: left to its default,
-                    // a predictive back (swipe from the edge) shrinks the page like a card instead.
-                    // "Fades between screens" off (#227): pages swap at once, so a tap can't land on the one fading out.
-                    val fadeMs = if (settings.behavior.screenFades && !settings.reduceMotion && !settings.performanceMode) 200 else 0
-                    // "Slide between screens" (#208, 1.7.9.2): a new page comes in from the side and Back takes it
-                    // away the same way (from the left in right-to-left languages); the page underneath moves a little.
-                    val slides = PageSlides(settings.behavior.screenFades && settings.behavior.pageSlide, androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl)
+                    // Root tabs share the same visual plane; only detail pages have depth.
+                    val motionEnabled = settings.behavior.screenFades && !settings.reduceMotion && !settings.performanceMode
+                    val slides = PageSlides(motionEnabled && settings.behavior.pageSlide, layoutDirection == androidx.compose.ui.unit.LayoutDirection.Rtl)
+                    fun enterMotion(initial: String, target: String, pop: Boolean): EnterTransition =
+                        when (screenMotion(motionEnabled, settings.behavior.pageSlide, initial, target, tabChange)) {
+                            ScreenMotion.NONE -> EnterTransition.None
+                            ScreenMotion.TAB -> fadeIn(tween(140))
+                            ScreenMotion.FADE -> fadeIn(tween(170))
+                            ScreenMotion.DETAIL -> (if (pop) slides.popEnter else slides.enter) ?: EnterTransition.None
+                        }
+                    fun exitMotion(initial: String, target: String, pop: Boolean): ExitTransition =
+                        when (screenMotion(motionEnabled, settings.behavior.pageSlide, initial, target, tabChange)) {
+                            ScreenMotion.NONE -> ExitTransition.None
+                            ScreenMotion.TAB -> fadeOut(tween(80, delayMillis = 60))
+                            ScreenMotion.FADE -> fadeOut(tween(90, delayMillis = 80))
+                            ScreenMotion.DETAIL -> (if (pop) slides.popExit else slides.exit) ?: ExitTransition.None
+                        }
                     NavHost(
                         navController, startDestination = start,
-                        enterTransition = { slides.enter ?: if (fadeMs == 0) EnterTransition.None else fadeIn(tween(fadeMs)) },
-                        exitTransition = { slides.exit ?: if (fadeMs == 0) ExitTransition.None else fadeOut(tween(fadeMs)) },
-                        popEnterTransition = { slides.popEnter ?: if (fadeMs == 0) EnterTransition.None else fadeIn(tween(fadeMs)) },
-                        popExitTransition = { slides.popExit ?: if (fadeMs == 0) ExitTransition.None else fadeOut(tween(fadeMs)) },
-                        predictivePopEnterTransition = { slides.popEnter ?: if (fadeMs == 0) EnterTransition.None else fadeIn(tween(fadeMs)) },
-                        predictivePopExitTransition = { slides.popExit ?: if (fadeMs == 0) ExitTransition.None else fadeOut(tween(fadeMs)) },
+                        modifier = Modifier.fillMaxSize().clipToBounds(),
+                        enterTransition = { enterMotion(initialState.id, targetState.id, false) },
+                        exitTransition = { exitMotion(initialState.id, targetState.id, false) },
+                        popEnterTransition = { enterMotion(initialState.id, targetState.id, true) },
+                        popExitTransition = { exitMotion(initialState.id, targetState.id, true) },
+                        predictivePopEnterTransition = { enterMotion(initialState.id, targetState.id, true) },
+                        predictivePopExitTransition = { exitMotion(initialState.id, targetState.id, true) },
                     ) {
                         composable(Routes.WELCOME) {
                             WelcomeScreen(
