@@ -65,7 +65,12 @@ class HomeEntry(
 private val GRID_CARD = 140.dp
 private val GRID_ROW = 212.dp
 private val LIST_ROW = 64.dp
-private val LIST_WIDTH = 330.dp
+/** One column on a compact phone, a preview of the next column on wider phones. */
+@Composable
+internal fun homeListCardWidth(): Dp {
+    val width = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
+    return (width - 40.dp).coerceIn(220.dp, 360.dp)
+}
 
 /**
  * [entries] in a Home section's [style], the same way for every section that can be added to Home:
@@ -77,7 +82,8 @@ fun StyledEntries(style: SectionStyle, entries: List<HomeEntry>) {
     if (entries.isEmpty()) return
     val ui = LocalUi.current
     // The same entry twice (a mood YouTube lists twice) is a key used twice, which a lazy list refuses (#330's kind).
-    val keys = rowKeys(entries) { it.key }
+    val keys = androidx.compose.runtime.remember(entries) { rowKeys(entries) { it.key } }
+    val listWidth = homeListCardWidth()
     when (style) {
         SectionStyle.CAROUSEL -> LazyRow(contentPadding = PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             items(entries.size, key = { keys[it] }) { i -> EntryCard(entries[i], ui.cardWidth) }
@@ -92,7 +98,7 @@ fun StyledEntries(style: SectionStyle, entries: List<HomeEntry>) {
         SectionStyle.LIST -> {
             val rows = entries.size.coerceIn(1, 4)
             LazyHorizontalGrid(GridCells.Fixed(rows), Modifier.height(LIST_ROW * rows), contentPadding = PaddingValues(horizontal = 4.dp)) {
-                items(entries.size, key = { keys[it] }) { i -> EntryRow(entries[i], Modifier.width(LIST_WIDTH)) }
+                items(entries.size, key = { keys[it] }) { i -> EntryRow(entries[i], Modifier.width(listWidth)) }
             }
         }
         SectionStyle.HERO -> LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -108,8 +114,11 @@ fun StyledEntries(style: SectionStyle, entries: List<HomeEntry>) {
 @Composable
 fun StyledItems(style: SectionStyle, listed: List<BrowseItem>, open: (BrowseItem) -> Unit) {
     // #216: "Hide them" leaves explicit songs off Home's shelves (albums, artists and playlists stay).
-    val items = com.prism.music.data.ExplicitFilter.items(com.prism.music.ui.theme.LocalAppSettings.current.behavior.explicitContent, listed)
+    val explicit = com.prism.music.ui.theme.LocalAppSettings.current.behavior.explicitContent
+    val items = androidx.compose.runtime.remember(explicit, listed) { com.prism.music.data.ExplicitFilter.items(explicit, listed) }
     if (items.isEmpty()) return
+    val keys = androidx.compose.runtime.remember(items) { rowKeys(items) { it.id } }
+    val listWidth = homeListCardWidth()
     when (style) {
         SectionStyle.CAROUSEL -> ItemCarousel(items, open)
         SectionStyle.HERO -> HeroRow(items, open)
@@ -119,22 +128,22 @@ fun StyledItems(style: SectionStyle, listed: List<BrowseItem>, open: (BrowseItem
             GridCells.Fixed(if (items.size > 2) 2 else 1), Modifier.height(if (items.size > 2) GRID_ROW * 2 else GRID_ROW),
             contentPadding = PaddingValues(horizontal = 12.dp),
         ) {
-            items(items.size) { i -> ItemCard(items[i], width = GRID_CARD) { open(items[i]) } }
+            items(items.size, key = { keys[it] }) { i -> ItemCard(items[i], width = GRID_CARD) { open(items[i]) } }
         }
         SectionStyle.LIST -> {
             val rows = items.size.coerceIn(1, 4)
             LazyHorizontalGrid(GridCells.Fixed(rows), Modifier.height(LIST_ROW * rows), contentPadding = PaddingValues(horizontal = 4.dp)) {
-                items(items.size) { i -> Box(Modifier.width(LIST_WIDTH)) { ResultRow(items[i]) { open(items[i]) } } }
+                items(items.size, key = { keys[it] }) { i -> Box(Modifier.width(listWidth)) { ResultRow(items[i]) { open(items[i]) } } }
             }
         }
     }
 }
 
 @Composable
-private fun EntryArt(e: HomeEntry, modifier: Modifier, shape: Shape, iconSize: Dp) {
+private fun EntryArt(e: HomeEntry, modifier: Modifier, shape: Shape, iconSize: Dp, artworkSize: Int = 544) {
     when {
         e.art != null -> e.art.invoke(modifier.clip(shape))
-        e.image != null -> Artwork(e.image, modifier, shape, size = 544)
+        e.image != null -> Artwork(e.image, modifier, shape, size = artworkSize)
         else -> Box(
             modifier.clip(shape).background(e.fill ?: Brush.linearGradient(listOf(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.surfaceContainerHigh))),
             contentAlignment = Alignment.Center,
@@ -164,7 +173,7 @@ private fun EntryRow(e: HomeEntry, modifier: Modifier) {
         modifier.height(LIST_ROW).combinedClickable(onClick = e.onClick, onLongClick = e.onLongClick).padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        EntryArt(e, Modifier.size(50.dp), ui.smallArt, 22.dp)
+        EntryArt(e, Modifier.size(50.dp), ui.smallArt, 22.dp, artworkSize = 160)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(e.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)

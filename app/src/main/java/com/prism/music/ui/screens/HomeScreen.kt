@@ -466,15 +466,11 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
         modifier = Modifier.fillMaxSize(),
     ) {
         LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = bottomPadding + 16.dp)) {
-            item { HomeTopBar() }
-            item(key = "update") { UpdateBanner() }
-            // 1.8.8 (plan-tour.md D11): neither offer while a new install's First steps is still to come.
-            item(key = "performance") { if (!com.prism.music.ui.tour.FirstSteps.offersWait()) PerformanceOffer() }
-            item(key = "smartDownloads") { if (!com.prism.music.ui.tour.FirstSteps.offersWait()) SmartDownloadsOffer(smartAnswered) { smartAnswered = true } }
-            // 1.8.7.6: the 100-hour card, never beside another offer (one ask at a time).
-            item(key = "support") {
-                com.prism.music.ui.support.SupportHomeCard(otherOffer = performanceOfferShows() || smartAnswered != true && settings.onboarded)
+            item(key = "header") { HomeTopBar() }
+            if (settings.home.continueLine) item(key = "continue") {
+                Box(Modifier.padding(horizontal = 16.dp)) { ContextLine() }
             }
+            item(key = "update") { UpdateBanner() }
             if (!online) item(key = "offline") { OfflineNote() }
             if (online && home.state is Load.Loading && shelves.isEmpty()) item { LoadingState() }
             // With the last Home on show, a failed refresh leaves it there (pull to refresh tries again).
@@ -583,6 +579,13 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
                     }
                     }
                 }
+            }
+            // 1.8.8 (plan-tour.md D11): neither offer while a new install's First steps is still to come.
+            item(key = "performance") { if (!com.prism.music.ui.tour.FirstSteps.offersWait()) PerformanceOffer() }
+            item(key = "smartDownloads") { if (!com.prism.music.ui.tour.FirstSteps.offersWait()) SmartDownloadsOffer(smartAnswered) { smartAnswered = true } }
+            // 1.8.7.6: the 100-hour card, never beside another offer (one ask at a time).
+            item(key = "support") {
+                com.prism.music.ui.support.SupportHomeCard(otherOffer = performanceOfferShows() || smartAnswered != true && settings.onboarded)
             }
             if (settings.home.customizeButton) item {
                 Row(
@@ -700,24 +703,16 @@ private fun HomeTopBar() {
     // The hour and the day, looked at again when Prism comes back on screen and each minute while it's shown (1.7.9.3:
     // left open overnight, Home still said "Friday … Good evening" on Saturday morning). Only a change redraws.
     var hour by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) }
-    var day by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.DAY_OF_YEAR)) }
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle) {
         lifecycle.tickWhileShown(60_000) {
             val now = Calendar.getInstance()
             hour = now.get(Calendar.HOUR_OF_DAY)
-            day = now.get(Calendar.DAY_OF_YEAR)
         }
     }
     val greeting = settings.greetingText.trim().ifBlank {
         when (hour) { in 5..11 -> tr(R.string.good_morning); in 12..17 -> tr(R.string.good_afternoon); else -> tr(R.string.good_evening) }
     }
-    // In the language's own order ("Thursday 15 October", "10월 15일 목요일"), not English's with translated words.
-    val today = remember(day) {
-        val locale = java.util.Locale.getDefault()
-        java.text.SimpleDateFormat(android.text.format.DateFormat.getBestDateTimePattern(locale, tr(R.string.eeeedmmmm)), locale).format(java.util.Date())
-    }
-    val ui = com.prism.music.ui.theme.LocalUi.current
     val header = settings.home.header
     // A picture behind the greeting (1.7.6): it runs up under the status bar and fades into the page at its foot.
     if (header == com.prism.music.data.prefs.HomeHeader.PICTURE || header == com.prism.music.data.prefs.HomeHeader.NOW_PLAYING) {
@@ -735,11 +730,11 @@ private fun HomeTopBar() {
                         )
                     },
             )
-            Box(Modifier.align(Alignment.BottomStart)) { HomeTopRow(greeting, today, showGreeting = true) }
+            Box(Modifier.align(Alignment.BottomStart)) { HomeTopRow(greeting, showGreeting = true) }
         }
         return
     }
-    HomeTopRow(greeting, today, showGreeting = header != com.prism.music.data.prefs.HomeHeader.NONE)
+    HomeTopRow(greeting, showGreeting = header != com.prism.music.data.prefs.HomeHeader.NONE)
 }
 
 /** What's behind a picture header: a background design or your photo, or the playing cover frosted. */
@@ -762,24 +757,25 @@ private fun HeaderPicture(header: com.prism.music.data.prefs.HomeHeader, picture
 
 /** The greeting (unless [showGreeting] is off: just the buttons) and Home's round buttons. */
 @Composable
-private fun HomeTopRow(greeting: String, today: String, showGreeting: Boolean) {
+private fun HomeTopRow(greeting: String, showGreeting: Boolean) {
     val nav = LocalNavigator.current
     val settings = LocalAppSettings.current
     val ui = com.prism.music.ui.theme.LocalUi.current
     Row(
-        Modifier.fillMaxWidth().statusBarsPadding().padding(start = 20.dp, end = 14.dp, top = ui.gap(14.dp)),
+        Modifier.fillMaxWidth().statusBarsPadding().padding(start = 16.dp, end = 16.dp, top = ui.gap(8.dp), bottom = ui.gap(8.dp)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (showGreeting) Column(Modifier.weight(1f)) {
-            Text(tr(R.string.prism_for_you_page), style = com.prism.music.ui.components.pageTitleStyle(), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        Column(Modifier.weight(1f)) {
+            Text(tr(R.string.prism_for_you_page), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (showGreeting) {
             val profile by LocalContainer.current.account.profile.collectAsState()
             val name = profile?.name ?: settings.accountName
             val subtitle = if (settings.greetingShowName && name.isNotBlank()) "$greeting, $name" else greeting
             Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             // Settings, Home screen, Continue line hides it.
-            if (settings.home.continueLine) ContextLine()
-        } else Spacer(Modifier.weight(1f))
+            }
+        }
         // Podcasts live a tap away from Home (as on Spotify's), in the same quiet round button as Customize.
         // With the top Customize button off, Podcasts moves over into its place, beside the account.
         // Settings → Home screen → "Podcasts button" off (#28): Podcasts opens from Library instead.
@@ -970,26 +966,26 @@ private fun GreetingSection(cfg: HomeSectionConfig, recent: List<Song>) {
         Spacer(Modifier.height(ui.gap(8.dp)))
         return
     }
-    Column(Modifier.padding(horizontal = 16.dp, vertical = ui.gap(16.dp)), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = ui.gap(8.dp)), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         tiles.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 row.forEach { t ->
                     Row(
-                        Modifier.weight(1f).height(58.dp).pane(ui.tile, scheme.surfaceContainerHigh.copy(alpha = 0.9f))
+                        Modifier.weight(1f).height(54.dp).clip(ui.tile).background(scheme.surfaceContainerHigh)
                             .combinedClickable(onClick = t.onClick, onLongClick = t.playable?.let { p -> { menu(p) } }),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         // Liked songs wears the prism's colors; the other pages a tile of stronger glass.
                         if (t.icon != null) Box(
-                            Modifier.size(58.dp).background(
+                            Modifier.size(54.dp).background(
                                 if (t.playable == Playable.Liked) com.prism.music.ui.theme.PrismTokens.spectrumRing()
                                 else androidx.compose.ui.graphics.SolidColor(com.prism.music.ui.components.glassFill(2f)),
                             ),
                             contentAlignment = Alignment.Center,
                         ) { Icon(t.icon, null, Modifier.size(22.dp), tint = if (t.playable == Playable.Liked) Color.White else scheme.onSurface) }
-                        else Artwork(t.image, Modifier.size(58.dp), androidx.compose.ui.graphics.RectangleShape, size = 226)
+                        else Artwork(t.image, Modifier.size(54.dp), androidx.compose.ui.graphics.RectangleShape, size = 180)
                         Text(
-                            t.title, Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.labelLarge,
+                            t.title, Modifier.padding(horizontal = 10.dp), style = MaterialTheme.typography.labelLarge,
                             maxLines = 2, overflow = TextOverflow.Ellipsis,
                         )
                     }
@@ -1017,6 +1013,7 @@ internal fun SongSection(
     val songs = remember(explicit, listed) { com.prism.music.data.ExplicitFilter.shown(explicit, listed) }
     if (songs.isEmpty()) return
     val start: (Int) -> Unit = { i -> play?.invoke(songs, i) ?: c.player.playQueue(songs, i, QueueSource(QueueKind.OTHER, title)) }
+    val keys = remember(songs) { com.prism.music.ui.components.rowKeys(songs) { it.id } }
     val indexOf: (BrowseItem) -> Int = { item -> songs.indexOfFirst { it.id == item.id }.coerceAtLeast(0) }
     SectionHeader(title, strapline = strapline, onMore = onMore)
     when (cfg.style) {
@@ -1026,10 +1023,11 @@ internal fun SongSection(
             GridCells.Fixed(if (songs.size > 2) 2 else 1), Modifier.height(if (songs.size > 2) 2 * 212.dp else 212.dp),
             contentPadding = PaddingValues(horizontal = 12.dp),
         ) {
-            items(songs.size) { i -> ItemCard(SongItem(songs[i]), (if (i == 0) firstAnchor?.mark else null) ?: Modifier, width = 140.dp) { start(i) } }
+            items(songs.size, key = { keys[it] }) { i -> ItemCard(SongItem(songs[i]), (if (i == 0) firstAnchor?.mark else null) ?: Modifier, width = 140.dp) { start(i) } }
         }
         SectionStyle.LIST -> {
             val current by c.player.currentSong.collectAsState()
+            val width = homeListCardWidth()
             val grid = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
             val snapping = androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior(
                 remember(grid) {
@@ -1044,9 +1042,9 @@ internal fun SongSection(
                 contentPadding = PaddingValues(horizontal = 4.dp),
                 flingBehavior = if (snap) snapping else androidx.compose.foundation.gestures.ScrollableDefaults.flingBehavior(),
             ) {
-                items(songs.size) { i ->
+                items(songs.size, key = { keys[it] }) { i ->
                     // The song playing is marked, as in a playlist (#242: Quick picks never showed it).
-                    Box(Modifier.width(330.dp).then((if (i == 0) firstAnchor?.mark else null) ?: Modifier)) { SongRow(songs[i], playing = current?.id == songs[i].id) { start(i) } }
+                    Box(Modifier.width(width).then((if (i == 0) firstAnchor?.mark else null) ?: Modifier)) { SongRow(songs[i], playing = current?.id == songs[i].id) { start(i) } }
                 }
             }
         }

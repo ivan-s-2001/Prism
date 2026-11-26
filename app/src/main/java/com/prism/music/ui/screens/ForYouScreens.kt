@@ -143,7 +143,8 @@ fun MadeForYouSection(cfg: HomeSectionConfig, offline: Boolean = false, yours: L
         c.scope.launch { runCatching { c.forYou.refresh() } }
         if (c.releaseRadar.due()) ReleaseRadar.runSoon(c.app)
     }
-    val list = mixes ?: return
+    // Local mixes can be shown immediately even while the daily mix request is pending.
+    val list = mixes.orEmpty()
     // Offline, each mix keeps to its songs that play without a connection (and one with too few of them waits).
     val shown = remember(list, offline, yours) {
         val made = if (!offline) list.filter { it.songs.isNotEmpty() }
@@ -171,7 +172,7 @@ fun MadeForYouSection(cfg: HomeSectionConfig, offline: Boolean = false, yours: L
         }
         return
     }
-    SectionHeader(cfg.title, strapline = tr(R.string.made_on_your_phone_from_what))
+    SectionHeader(cfg.title)
     // Carousel (the default) is the row of covers below; the other styles show the same mixes their way.
     if (cfg.style != com.prism.music.data.prefs.SectionStyle.CAROUSEL) {
         val playMix: (Mix) -> Unit = { mix ->
