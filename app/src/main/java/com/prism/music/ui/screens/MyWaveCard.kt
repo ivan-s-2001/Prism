@@ -346,14 +346,14 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             CompositionLocalProvider(com.prism.music.ui.player.LocalEmbeddedPlayerInk provides scheme.onSurface,
                 LocalContentColor provides scheme.onSurface) {
                 VibeStationOverlay(settings, vibeStationTitle(activeSaved, activeScenario),
-                    hasTrack = current != null, visual = visual,
+                    hasTrack = current != null, visual = visual, artist = current?.primaryArtist,
                     play = {
                         VibeStationAction(playing = wave && playing, starting = starting && !wave, active = wave,
                             onPlay = { if (wave) c.player.togglePlay() else if (!starting) start() })
                     },
                     credits = {
                         current?.let { item -> VibeCredits(settings, item.title, item.primaryArtist,
-                            artwork = { TrackArtwork(it) }, onOpen = onOpenPlayer) }
+                            artwork = { TrackArtwork(it) }, onOpen = onOpenPlayer, showArtist = item.primaryArtist.isBlank()) }
                     },
                     previous = {
                         VibeTrackAction(PrismIcons.Previous, tr(R.string.widget_previous), { c.player.previous() }, enabled = hasPrevious)

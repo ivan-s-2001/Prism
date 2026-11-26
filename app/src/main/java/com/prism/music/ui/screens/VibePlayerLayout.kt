@@ -6,6 +6,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -25,7 +27,6 @@ import com.prism.music.R
 import com.prism.music.tr
 import com.prism.music.ui.components.PrismButton
 import com.prism.music.ui.components.PrismChip
-import com.prism.music.ui.components.PrismScenarioDisc
 import com.prism.music.ui.theme.PrismIcons
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -102,6 +103,7 @@ internal fun VibeStationOverlay(
     extra: (@Composable () -> Unit)? = null,
     progress: @Composable () -> Unit = {},
     visual: @Composable (Modifier) -> Unit = {},
+    artist: String? = null,
 ) {
     val ui = LocalUi.current
     BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -115,8 +117,7 @@ internal fun VibeStationOverlay(
         val sideWidth = if (maxWidth < 300.dp) 48.dp else 52.dp
         val playGap = ui.gap(if (compact || maxWidth < 300.dp) 8.dp else 18.dp)
         @Composable fun StationTitle() {
-            Text(title, style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            VibeIdentity(title, artist.takeIf { hasTrack }, compact, roomy)
         }
         @Composable fun Transport() {
             Row(horizontalArrangement = Arrangement.spacedBy(playGap), verticalAlignment = Alignment.CenterVertically) {
@@ -131,20 +132,24 @@ internal fun VibeStationOverlay(
         }
         @Composable fun TrackDetails() {
             if (hasTrack) {
-                if (settings.streamReverseLayout && settings.streamShowProgress) progress()
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.width(sideWidth), contentAlignment = Alignment.Center) { previous() }
-                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { credits() }
-                    Box(Modifier.width(sideWidth), contentAlignment = Alignment.Center) { next() }
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(ui.gap(4.dp))) {
+                    if (settings.streamReverseLayout && settings.streamShowProgress) progress()
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(ui.gap(4.dp))) {
+                        Box(Modifier.width(sideWidth), contentAlignment = Alignment.Center) { previous() }
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { credits() }
+                        Box(Modifier.width(sideWidth), contentAlignment = Alignment.Center) { next() }
+                    }
+                    if (!settings.streamReverseLayout && settings.streamShowProgress) progress()
+                    if (extra != null) extra()
                 }
-                if (!settings.streamReverseLayout && settings.streamShowProgress) progress()
-                if (extra != null) extra()
             }
         }
         @Composable fun Controls() {
-            Column(Modifier.widthIn(max = 416.dp).fillMaxWidth(),
+            Column(Modifier.widthIn(max = 460.dp).fillMaxWidth().padding(horizontal = ui.gap(12.dp)),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 6.dp else if (roomy) 24.dp else 16.dp))) {
+                verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 6.dp else if (roomy) 20.dp else 12.dp))) {
                 StationTitle()
                 Transport()
                 TrackDetails()
@@ -167,16 +172,43 @@ internal fun VibeStationOverlay(
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 6.dp else 12.dp))) {
                         StationTitle()
-                        Transport()
                     }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(ui.gap(6.dp))) { TrackDetails() }
+                        verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 6.dp else 14.dp))) {
+                        Transport()
+                        TrackDetails()
+                    }
                 }
             } else {
                 Box(Modifier.fillMaxWidth().padding(vertical = ui.gap(if (compact) 6.dp else 18.dp)),
                     contentAlignment = Alignment.Center) { Controls() }
             }
         }
+    }
+}
+
+/** Vibe's typographic hero: source is context, the artist is the visual subject.
+ * Inspired by the hierarchy of yamusic-rs's WavePage; all components and styles are Prism's. */
+@Composable
+private fun VibeIdentity(source: String, artist: String?, compact: Boolean, roomy: Boolean) {
+    val scheme = MaterialTheme.colorScheme
+    val ui = LocalUi.current
+    val subject = artist?.takeIf { it.isNotBlank() }
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(ui.gap(if (compact) 3.dp else 8.dp))) {
+        if (subject != null) {
+            Text(source, style = MaterialTheme.typography.labelLarge,
+                color = scheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        }
+        Text(subject ?: source,
+            style = (when {
+                compact -> MaterialTheme.typography.titleLarge
+                roomy -> MaterialTheme.typography.displaySmall
+                else -> MaterialTheme.typography.headlineMedium
+            }).copy(fontWeight = FontWeight.SemiBold),
+            modifier = Modifier.fillMaxWidth(),
+            color = scheme.onSurface, textAlign = TextAlign.Center,
+            maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -226,16 +258,17 @@ internal fun VibeTrackAction(
 internal fun VibeCredits(
     settings: AppSettings, title: String, artist: String, artwork: @Composable (Modifier) -> Unit,
     onOpen: (() -> Unit)? = null,
+    showArtist: Boolean = true,
 ) {
     val ui = LocalUi.current
     val scheme = MaterialTheme.colorScheme
-    val inline = settings.streamLayout != StreamLayout.CENTERED
-    val coverSize = (if (inline) 54.dp else 40.dp) * settings.streamCoverSize.fraction
+    val inline = settings.streamLayout != StreamLayout.CENTERED && settings.streamShowCover
+    val coverSize = (if (inline) 48.dp else 58.dp) * settings.streamCoverSize.fraction
     @Composable fun Labels(modifier: Modifier = Modifier) {
         Column(modifier, horizontalAlignment = if (inline) Alignment.Start else Alignment.CenterHorizontally) {
             Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 textAlign = if (inline) TextAlign.Start else TextAlign.Center)
-            Text(artist, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1,
+            if (showArtist) Text(artist, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, textAlign = if (inline) TextAlign.Start else TextAlign.Center)
         }
     }
@@ -258,6 +291,33 @@ internal fun VibeCredits(
     else Body()
 }
 
+/** Compact new Vibe shortcut: one focusable/clickable surface, not a row of glued chips. */
+@Composable
+private fun VibeScenarioCard(label: String, icon: ImageVector, selected: Boolean,
+    onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val ui = LocalUi.current
+    val scheme = MaterialTheme.colorScheme
+    val shape = ui.shape(20.dp)
+    val fill = if (selected) scheme.primary.copy(alpha = 0.17f) else scheme.onSurface.copy(alpha = 0.055f)
+    val edge = if (selected) scheme.primary.copy(alpha = 0.56f) else scheme.outlineVariant.copy(alpha = 0.38f)
+    Column(modifier.width(96.dp).clip(shape).background(fill).border(1.dp, edge, shape)
+        .clickable(onClick = onClick).semantics { this.selected = selected }
+        .padding(horizontal = ui.gap(6.dp), vertical = ui.gap(10.dp)),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(ui.gap(7.dp))) {
+        Box(Modifier.size(44.dp).clip(ui.shape(16.dp)).background(
+            Brush.verticalGradient(listOf(scheme.primary.copy(alpha = if (selected) 0.30f else 0.12f), Color.Transparent))),
+            contentAlignment = Alignment.Center) {
+            Icon(icon, null, Modifier.size(26.dp), tint = if (selected) scheme.primary else scheme.onSurface)
+        }
+        Box(Modifier.fillMaxWidth().heightIn(min = 36.dp), contentAlignment = Alignment.TopCenter) {
+            Text(label, style = MaterialTheme.typography.labelMedium,
+                color = if (selected) scheme.onSurface else scheme.onSurfaceVariant,
+                maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        }
+    }
+}
+
 /** One native visual choice for both the actual shortcuts and their read-only preview. */
 @Composable
 internal fun VibeScenarioTile(
@@ -265,5 +325,5 @@ internal fun VibeScenarioTile(
     onClick: () -> Unit, modifier: Modifier = Modifier,
 ) {
     if (compact) PrismChip(selected, onClick, label, modifier, icon, fitLabel = true)
-    else PrismScenarioDisc(label, icon, selected, onClick, modifier)
+    else VibeScenarioCard(label, icon, selected, onClick, modifier)
 }

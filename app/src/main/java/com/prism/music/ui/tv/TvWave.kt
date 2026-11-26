@@ -194,6 +194,7 @@ internal fun TvWavePlace(nav: TvNav) {
                                 }
                                 com.prism.music.ui.screens.VibeStationOverlay(appSettings,
                                     tr(R.string.prism_stream_station_default), hasTrack = true, visual = visual,
+                                    artist = current?.primaryArtist ?: tr(R.string.artist),
                                     play = { PreviewIcon(PrismIcons.Play, 44.dp) },
                                     credits = {
                                         com.prism.music.ui.screens.VibeCredits(appSettings, current?.title ?: tr(R.string.song),
@@ -201,7 +202,7 @@ internal fun TvWavePlace(nav: TvNav) {
                                                 com.prism.music.ui.screens.StandIn(current, it,
                                                     com.prism.music.ui.theme.CoverShapes.of(appSettings.shapes.player, appSettings.player.artCorners.dp),
                                                     com.prism.music.ui.screens.standIns.first())
-                                            })
+                                            }, showArtist = false)
                                     },
                                     previous = { PreviewIcon(PrismIcons.Previous) }, next = { PreviewIcon(PrismIcons.Next) },
                                     dislike = { PreviewIcon(PrismIcons.ThumbDown) }, like = { PreviewIcon(PrismIcons.Heart) })
@@ -333,7 +334,7 @@ internal fun TvWavePlace(nav: TvNav) {
                     energy = style.diversity / 100f) { visual ->
                     com.prism.music.ui.screens.VibeStationOverlay(appSettings,
                         vibeStationTitle(activeSaved, activeScenario), hasTrack = current != null,
-                        visual = visual,
+                        visual = visual, artist = now?.artist ?: current?.primaryArtist,
                         play = {
                             TvIconButton(if (now?.playing == true) PrismIcons.Pause else PrismIcons.Play, tr(when {
                                 starting && current == null -> R.string.prism_stream_finding_music
@@ -345,7 +346,7 @@ internal fun TvWavePlace(nav: TvNav) {
                         }, credits = {
                             if (current != null) com.prism.music.ui.screens.VibeCredits(appSettings,
                                 now?.title ?: current.title, now?.artist ?: current.primaryArtist,
-                                artwork = { Artwork(now?.art, it, shape = com.prism.music.ui.theme.CoverShapes.of(appSettings.shapes.player, appSettings.player.artCorners.dp), size = 180) })
+                                artwork = { Artwork(now?.art, it, shape = com.prism.music.ui.theme.CoverShapes.of(appSettings.shapes.player, appSettings.player.artCorners.dp), size = 180) }, showArtist = false)
                         }, previous = {
                             TvIconButton(PrismIcons.Previous, tr(R.string.widget_previous),
                                 { if (c.player.hasPrevious.value) c.player.previous() }, Modifier.tvItem("tv_wave/previous"))
