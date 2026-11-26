@@ -224,6 +224,11 @@ fun LibraryScreen(bottomPadding: Dp) {
     val prismLists by c.prismLibrary.lists.collectAsState()
     val savedAlbums by c.prismLibrary.albums.collectAsState()
     val scope = rememberCoroutineScope()
+    var auditingVersions by remember { mutableStateOf(false) }
+    if (auditingVersions) {
+        val collection = remember(liked, prismLists) { (liked + prismLists.flatMap { it.songs }).distinctBy { it.id } }
+        CollectionVersionAuditSheet(collection) { auditingVersions = false }
+    }
     var creating by remember { mutableStateOf(false) }
     var newSmart by remember { mutableStateOf(false) }
     if (newSmart) com.prism.music.ui.components.SmartEditorSheet(null) { newSmart = false }
@@ -669,6 +674,11 @@ fun LibraryScreen(bottomPadding: Dp) {
                             ShortcutTile(tr(R.string.prism_vibe_dislikes_count, disliked.size),
                                 tr(R.string.prism_vibe_blocked_artists_count, blockedArtists.size),
                                 PrismIcons.ThumbDown, true) { editingReactions = true }
+                        }
+                        item(key = "overview-versions", span = { GridItemSpan(maxLineSpan) }) {
+                            CollectionQuickLink(tr(R.string.prism_censorship_audit), tr(R.string.prism_censorship_audit_subtitle),
+                                PrismIcons.Search, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                                    .testTag("collectionVersionAudit")) { auditingVersions = true }
                         }
                         item(key = "overview-access", span = { GridItemSpan(maxLineSpan) }) {
                             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

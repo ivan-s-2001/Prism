@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit
 /** Reads only public report indexes. No account data, audio URLs or song queries are sent upstream. */
 internal class CensorshipReports(private val dir: File, http: OkHttpClient) {
     data class Report(val fck: Boolean, val liberty: Boolean)
+    data class Audit(val reports: Map<String, Report>, val linked: Int, val total: Int, val feedsAvailable: Int)
     private data class Feed(val name: String, val url: String, val parse: (String) -> Set<String>)
     private val feeds = listOf(
         Feed("fck", "https://raw.githubusercontent.com/Hazzz895/FckCensorData/main/list_v2.json", CensorshipIndex::fckIds),
@@ -35,6 +36,22 @@ internal class CensorshipReports(private val dir: File, http: OkHttpClient) {
             val fck = read(feeds[0]).any { it in ids }
             val liberty = read(feeds[1]).any { it in ids }
             Report(fck, liberty).takeIf { fck || liberty }
+        }
+    }
+
+    /** One bounded refresh per feed, not one HTTP request per song. */
+    suspend fun audit(sourceIds: Map<String, Collection<String>>): Audit = withContext(Dispatchers.IO) {
+        val linked = sourceIds.mapValues { (_, ids) -> ids.mapNotNull(CensorshipIndex::yandexId).toSet() }
+            .filterValues { it.isNotEmpty() }
+        if (linked.isEmpty()) return@withContext Audit(emptyMap(), 0, sourceIds.size, 0)
+        lock.withLock {
+            val fck = read(feeds[0])
+            val liberty = read(feeds[1])
+            val hits = linked.mapNotNull { (songId, ids) ->
+                val report = Report(ids.any { it in fck }, ids.any { it in liberty })
+                if (report.fck || report.liberty) songId to report else null
+            }.toMap()
+            Audit(hits, linked.size, sourceIds.size, listOf(fck, liberty).count { it.isNotEmpty() })
         }
     }
 

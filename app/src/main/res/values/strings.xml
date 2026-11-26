@@ -5792,4 +5792,14 @@
     <string name="prism_sc_stream_only">This SoundCloud version is streaming only</string>
     <string name="prism_censorship_report_title">Reported Yandex recording</string>
     <string name="prism_censorship_report_note">Community report: %1$s. This refers to the linked Yandex track, not proof of censorship in the current audio. Listen before choosing a version.</string>
+    <string name="prism_censorship_audit">Check recording versions</string>
+    <string name="prism_censorship_audit_subtitle">Community censorship reports</string>
+    <string name="prism_censorship_audit_scope">Liked songs and local playlists. Reports concern linked Yandex recordings, not proof that the current sound is censored.</string>
+    <string name="prism_censorship_audit_counts">Linked: %1$d of %2$d · Reported: %3$d</string>
+    <string name="prism_censorship_audit_error">Could not check the collection</string>
+    <string name="prism_censorship_audit_unlinked">No linked Yandex recordings. Import your Yandex library first.</string>
+    <string name="prism_censorship_audit_partial">Some report indexes are unavailable. Results may be incomplete.</string>
+    <string name="prism_censorship_audit_empty">No community reports found for linked recordings.</string>
+    <string name="prism_censorship_audit_picked">Alternative version selected · audio not verified</string>
+    <string name="prism_censorship_audit_retry">Check again</string>
 </resources>
