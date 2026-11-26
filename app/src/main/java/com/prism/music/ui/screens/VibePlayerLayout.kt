@@ -197,6 +197,7 @@ internal fun VibeStationOverlay(
     visual: @Composable (Modifier) -> Unit = {},
     artist: String? = null,
     tune: @Composable () -> Unit = {},
+    origin: com.prism.music.playback.VibeOrigin? = null,
 ) {
     val ui = LocalUi.current
     BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -211,7 +212,8 @@ internal fun VibeStationOverlay(
         val sideWidth = if (maxWidth < 300.dp) 48.dp else 52.dp
         val playGap = ui.gap(if (compact || maxWidth < 300.dp) 10.dp else 24.dp)
         @Composable fun StationTitle() {
-            VibeIdentity(title, compact, roomy)
+            if (origin == null) VibeIdentity(title, compact, roomy)
+            else VibeOriginIdentity(origin, compact, roomy)
         }
         @Composable fun Transport() {
             Row(horizontalArrangement = Arrangement.spacedBy(playGap), verticalAlignment = Alignment.CenterVertically) {
@@ -294,6 +296,43 @@ internal fun VibeStationOverlay(
                 Box(Modifier.fillMaxWidth().padding(vertical = ui.gap(if (compact) 6.dp else 18.dp)),
                     contentAlignment = Alignment.Center) { Controls() }
             }
+        }
+    }
+}
+
+/** Source artwork is distinct from the changing now-playing cover. */
+@Composable
+private fun VibeOriginIdentity(origin: com.prism.music.playback.VibeOrigin, compact: Boolean, roomy: Boolean) {
+    val ui = LocalUi.current
+    val scheme = MaterialTheme.colorScheme
+    val artist = origin.kind == com.prism.music.playback.VibeOriginKind.ARTIST
+    val type = tr(when (origin.kind) {
+        com.prism.music.playback.VibeOriginKind.TRACK -> R.string.song
+        com.prism.music.playback.VibeOriginKind.ALBUM -> R.string.album
+        com.prism.music.playback.VibeOriginKind.ARTIST -> R.string.artist
+        com.prism.music.playback.VibeOriginKind.PLAYLIST -> R.string.playlist
+        else -> R.string.stream
+    })
+    val shape = if (artist) CircleShape else ui.albumArt
+    val artSize = if (compact) 48.dp else if (roomy) 80.dp else 64.dp
+    Row(Modifier.widthIn(max = 400.dp).padding(horizontal = ui.gap(8.dp)),
+        horizontalArrangement = Arrangement.spacedBy(ui.gap(14.dp), Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(artSize).clip(shape).background(scheme.surfaceVariant.copy(alpha = 0.45f))
+            .border(1.dp, scheme.onSurface.copy(alpha = 0.12f), shape), contentAlignment = Alignment.Center) {
+            if (!origin.artwork.isNullOrBlank()) {
+                com.prism.music.ui.components.Artwork(origin.artwork, Modifier.fillMaxSize(), shape, size = 320)
+            } else {
+                Icon(if (artist) PrismIcons.Person else PrismIcons.Stream, null, Modifier.size(artSize * 0.42f),
+                    tint = scheme.primary)
+            }
+        }
+        Column(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(tr(R.string.stream) + " · " + type, style = MaterialTheme.typography.labelMedium,
+                color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(origin.name, style = (if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall)
+                .copy(fontWeight = FontWeight.SemiBold), color = scheme.onSurface,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
