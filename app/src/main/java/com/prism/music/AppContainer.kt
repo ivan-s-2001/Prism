@@ -176,8 +176,8 @@ class PrismApp : Application(), coil3.SingletonImageLoader.Factory {
             runCatching { com.prism.music.data.Rewinds.schedule(this@PrismApp) }
             // The monthly recap's notice (1.8.5), posted only if its switch is on when the 1st comes.
             runCatching { com.prism.music.data.Recaps.schedule(this@PrismApp) }
-            // DJ mode: the songs played most and liked get their key read once a day, on Wi-Fi while charging.
-            runCatching { com.prism.music.playback.DjPrescanWorker.schedule(this@PrismApp) }
+            // DJ is retired. Cancel periodic work left behind by older installations.
+            runCatching { com.prism.music.playback.DjPrescanWorker.cancel(this@PrismApp) }
             // Bring your history: the daily look at whether a fresh Spotify or Takeout download is due (only once one
             // was imported; a restored backup brings the dates with it).
             runCatching { com.prism.music.data.imports.ImportReminders.schedule(this@PrismApp) }

@@ -245,6 +245,7 @@ class LibraryRepository(private val c: AppContainer) {
      * songs playlist go, and the new one's are synced. Replay and the phone's own history stay: they're this phone's.
      */
     suspend fun switchAccount(a: com.prism.music.data.model.YtAccount, cookie: String? = null) = withContext(Dispatchers.IO) {
+        librarySyncLock.withLock {
         remoteReactionLock.withLock {
         artistSyncLock.withLock {
         reactionLock.withLock {
@@ -258,6 +259,7 @@ class LibraryRepository(private val c: AppContainer) {
         refreshDislikeScope()
         forgetAccount()
         refreshArtistScope()
+        }
         }
         }
         }
@@ -302,6 +304,7 @@ class LibraryRepository(private val c: AppContainer) {
     private val reactionJournal = c.app.getSharedPreferences("reaction_journal", android.content.Context.MODE_PRIVATE)
     private val reactionLock = Mutex()
     private val remoteReactionLock = Mutex()
+    private val librarySyncLock = Mutex()
     private val remoteReactionWake = Channel<Unit>(Channel.CONFLATED)
     private val reactionRequests = Channel<ReactionRequest>(Channel.UNLIMITED)
     private val pendingReactions = mutableMapOf<String, ReactionRequest>()
@@ -518,12 +521,14 @@ class LibraryRepository(private val c: AppContainer) {
 
     /** Pulls liked songs, playlists, albums and artists from the account. */
     suspend fun sync() = withContext(Dispatchers.IO) {
-        if (!c.settings.current.isLoggedIn || syncState.value == SyncState.SYNCING) return@withContext
+        librarySyncLock.withLock {
+        if (!c.settings.current.isLoggedIn) return@withContext
+        val syncKey = remoteReactionKey()
         syncState.value = SyncState.SYNCING
         try {
             restoreReactionJournal()
             remoteReactionLock.withLock {
-            val key = remoteReactionKey()
+            val key = syncKey
             val beforeFetch = reactionLock.withLock { pendingRemote(key) }
             for ((id, reaction) in beforeFetch) sendPendingReaction(key, id, reaction)
             val fetched = c.ytm.likedSongs(requireComplete = true)
@@ -567,12 +572,13 @@ class LibraryRepository(private val c: AppContainer) {
             }
             }
             }
+            if (!c.settings.current.isLoggedIn || remoteReactionKey() != syncKey) { syncState.value = SyncState.IDLE; return@withContext }
             refreshArtistScope()
-            val artistKey = remoteReactionKey() + ":artists"
+            val artistKey = syncKey + ":artists"
             val artistEdits = synchronized(artistEditLock) { pendingArtists(artistKey) }
             flushArtistEdits()
             reloadPlaylists()
-            runCatching { albums.value = c.ytm.libraryAlbums() }
+            reloadAlbumsFor(syncKey)
             runCatching {
                 artistSyncLock.withLock {
                 val remote = c.ytm.librarySubscriptions(requireComplete = true)
@@ -605,8 +611,9 @@ class LibraryRepository(private val c: AppContainer) {
                 if (c.settings.current.isLoggedIn && artistKey == remoteReactionKey() + ":artists") artists.value = remote
             }
             runCatching {
-                c.ytm.accountInfo()?.let { c.settings.saveAccountInfo(it.name, it.email, it.avatar) }
+                c.ytm.accountInfo()?.let { if (c.settings.current.isLoggedIn && remoteReactionKey() == syncKey) c.settings.saveAccountInfo(it.name, it.email, it.avatar) }
             }
+            if (!c.settings.current.isLoggedIn || remoteReactionKey() != syncKey) { syncState.value = SyncState.IDLE; return@withContext }
             persist()
             c.scope.launch(Dispatchers.IO) { runCatching { keepForOffline() } }
             syncState.value = SyncState.DONE
@@ -621,6 +628,7 @@ class LibraryRepository(private val c: AppContainer) {
         } catch (e: Exception) {
             lastError.value = e.friendlyMessage()
             syncState.value = SyncState.ERROR
+        }
         }
     }
 
@@ -973,11 +981,23 @@ class LibraryRepository(private val c: AppContainer) {
     /** Fetches the library's playlists and albums again (after one is saved, created or changed). */
     fun refreshCollections() {
         if (!c.settings.current.isLoggedIn) return
+        val key = remoteReactionKey()
         c.scope.launch(Dispatchers.IO) {
-            reloadPlaylists()
-            runCatching { albums.value = c.ytm.libraryAlbums() }
-            persist()
+            librarySyncLock.withLock {
+                if (!c.settings.current.isLoggedIn || remoteReactionKey() != key) return@withLock
+                reloadPlaylists()
+                reloadAlbumsFor(key)
+                if (c.settings.current.isLoggedIn && remoteReactionKey() == key) persist()
+            }
         }
+    }
+
+    private suspend fun reloadAlbumsFor(key: String) {
+        try {
+            val fetched = c.ytm.libraryAlbums()
+            if (c.settings.current.isLoggedIn && remoteReactionKey() == key) albums.value = fetched
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (_: Exception) { /* retain last known albums */ }
     }
 
     /** Where the library's playlists are read from (a test hands in its own). */
@@ -985,7 +1005,12 @@ class LibraryRepository(private val c: AppContainer) {
 
     /** The library's playlists from YouTube, with the ones just made here that it doesn't list yet ([created]). */
     internal suspend fun reloadPlaylists() {
-        runCatching { playlists.value = withPending(fetchPlaylists()) }
+        val key = remoteReactionKey()
+        try {
+            val fetched = fetchPlaylists()
+            if (c.settings.current.isLoggedIn && remoteReactionKey() == key) playlists.value = withPending(fetched)
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (_: Exception) { /* retain last known playlists */ }
     }
 
     /**
