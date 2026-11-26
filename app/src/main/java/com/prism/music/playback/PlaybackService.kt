@@ -558,6 +558,19 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 if (c.queue.source.value === source) refreshVibePreferences()
             }
         }
+        // A changed positive taste should also influence the personal Wave's already generated future,
+        // not just the next refill. Coalesce bulk likes and library sync into one refresh.
+        scope.launch {
+            kotlinx.coroutines.flow.combine(c.library.likedIds, c.library.profileArtists) { likes, artists ->
+                likes to artists.mapTo(hashSetOf()) { it.id }
+            }.distinctUntilChanged().drop(1).collectLatest {
+                val source = c.queue.source.value
+                if (!source.isMyWave || c.queue.followingHost) return@collectLatest
+                delay(350)
+                while (c.queue.filling && c.queue.source.value === source) delay(50)
+                if (c.queue.source.value === source) refreshVibePreferences(rebuild = true)
+            }
+        }
         // Another network (or back online): songs that failed on the old one may play now (plan 4.4), and the one coming up
         // is looked up afresh too (its lookup ahead of time may have failed, and a link can be bound to the old address).
         scope.launch {
@@ -1840,7 +1853,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         maybeAutoplay()
     }
 
-    private fun refreshVibePreferences() {
+    private fun refreshVibePreferences(rebuild: Boolean = false) {
         if (!c.queue.source.value.isVibe || c.queue.followingHost || c.queue.filling) return
         val current = player.currentMediaItemIndex
         if (current !in 0 until player.mediaItemCount) return
@@ -1852,7 +1865,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                 val item = player.getMediaItemAt(index)
                 val song = item.toSong() ?: continue
                 if (item.mediaId in manual) continue
-                if (!c.library.isDisliked(song.id) && !c.exclusions.blocks(song) && !c.exclusions.isSongExcluded(song.id)) continue
+                if (!rebuild && !c.library.isDisliked(song.id) && !c.exclusions.blocks(song) && !c.exclusions.isSongExcluded(song.id)) continue
                 player.removeMediaItem(index)
                 if (c.queue.autoplayStart.value > index) c.queue.autoplayStart.value--
                 if (c.queue.waveQuotaStart > index) c.queue.waveQuotaStart--
