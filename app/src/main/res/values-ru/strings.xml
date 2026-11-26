@@ -5909,4 +5909,17 @@
     <string name="prism_bc_check">Проверить запись</string>
     <string name="prism_bc_link_failed">Не удалось подтвердить совпадение и доступность полной записи.</string>
     <string name="prism_zaycev_unavailable">Поиск на сайте недоступен. Откройте сайт или вставьте ссылку на трек.</string>
+    <string name="prism_recordings">Альтернативные записи</string>
+    <string name="prism_recording_sources">Источники</string>
+    <string name="prism_recording_progress">Записей: %1$d · проверено источников: %2$d из %3$d</string>
+    <string name="prism_recording_disabled">Отключён</string>
+    <string name="prism_recording_restricted">Недоступен при текущем фильтре контента</string>
+    <string name="prism_recording_searching">Поиск</string>
+    <string name="prism_recording_error">Ошибка поиска</string>
+    <string name="prism_recording_count">Найдено: %1$d</string>
+    <string name="prism_recording_order_note">Приоритет меняет порядок выдачи. Выбранная запись остаётся закреплённой.</string>
+    <string name="prism_recording_none_enabled">Нет включённых источников.</string>
+    <string name="prism_recording_partial">Совпадений нет. Некоторые источники не ответили — подробности в списке источников.</string>
+    <string name="prism_recording_retry">Повторить поиск</string>
+    <string name="prism_recording_caution">Совпадение метаданных не подтверждает отсутствие цензуры в звуке.</string>
 </resources>

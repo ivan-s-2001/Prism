@@ -31,16 +31,18 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.prism.music.data.SongVersions
-import com.prism.music.data.innertube.SearchFilter
+import com.prism.music.data.stream.RecordingDiscovery
+import com.prism.music.data.stream.RecordingHit
+import com.prism.music.data.stream.RecordingSearchRank
+import com.prism.music.data.stream.RecordingSearchResult
+import com.prism.music.data.stream.RecordingSource
+import com.prism.music.data.stream.RecordingSourcePlan
 import com.prism.music.data.model.Song
-import com.prism.music.data.model.SongItem
 import com.prism.music.data.model.formatDuration
 import com.prism.music.ui.theme.PrismIcons
 import com.prism.music.ui.theme.LocalContainer
 import com.prism.music.ui.theme.LocalUi
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 
@@ -63,104 +65,33 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
     val report by produceState<com.prism.music.data.censorship.CensorshipReports.Report?>(null, song.id, preferExplicit) {
         value = null
         if (preferExplicit) value = withContext(Dispatchers.IO) {
-            c.censorshipReports.reports(c.db.imports().yandexSourceIds(song.id))
+            try { c.censorshipReports.reports(c.db.imports().yandexSourceIds(song.id)) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { null }
         }
     }
-    data class RegionalResults(val songs: List<Song>, val catalogs: Map<String, Set<String>>)
-    val found by produceState<Result<RegionalResults>?>(null, song.id, country, explicitMode) {
-        value = null
-        value = withContext(Dispatchers.IO) {
-            runCatching {
-                val queries = SongVersions.searchQueries(song, preferExplicit)
-                coroutineScope {
-                    suspend fun search(q: String, filter: SearchFilter): List<Song> =
-                        try { c.ytm.search(q, filter).items.filterIsInstance<SongItem>().map { it.song } }
-                        catch (e: kotlinx.coroutines.CancellationException) { throw e }
-                        catch (_: Exception) { emptyList() }
-                    fun matches(results: List<Song>): List<Song> = SongVersions.candidates(
-                        song, results.filter { com.prism.music.data.ExplicitFilter.plays(explicitMode, it) },
-                        preferExplicit = preferExplicit,
-                    )
-                    val catalogs = mutableMapOf<String, MutableSet<String>>()
-                    val all = mutableListOf<Song>()
-                    if (preferExplicit) {
-                        val regions = SongVersions.alternativeCatalogs(country)
-                        suspend fun foreign(q: String, region: String, filter: SearchFilter): List<Song> =
-                            try { c.ytm.catalogSongs(q, region, filter) }
-                            catch (e: kotlinx.coroutines.CancellationException) { throw e }
-                            catch (_: Exception) { emptyList() }
-                        // Different regions are requested independently, not by rewriting global settings.
-                        for (query in queries.take(2)) {
-                            val results = regions.map { region ->
-                                async { region to foreign(query, region, SearchFilter.SONGS) }
-                            }.map { it.await() }
-                            for ((region, songs) in results) {
-                                all += songs
-                                songs.forEach { catalogs.getOrPut(it.id) { mutableSetOf() }.add(region) }
-                            }
-                        }
-                    }
-                    val initial = listOf(
-                        async { search(queries.first(), SearchFilter.SONGS) },
-                        async { search(queries.first(), SearchFilter.VIDEOS) },
-                    ).map { it.await() }.flatten()
-                    all += initial
-                    // Search for an explicit/original edition even when the Yandex report is absent.
-                    // Additional queries are bounded and strictly filtered; do not lower identity checks.
-                    if (matches(all).size < 4 || preferExplicit && matches(all).none { it.explicit }) {
-                        for (batch in queries.drop(1).chunked(2)) {
-                            all += batch.map { q -> async { search(q, SearchFilter.SONGS) } }.map { it.await() }.flatten()
-                            if (matches(all).size >= 6 && (!preferExplicit || matches(all).any { it.explicit })) break
-                        }
-                    }
-                    if (matches(all).size < 2) {
-                        all += search(queries.first(), SearchFilter.TOP)
-                        queries.getOrNull(1)?.let { all += search(it, SearchFilter.VIDEOS) }
-                    }
-                    if (all.isEmpty()) throw java.io.IOException()
-                    val ranked = matches(all).sortedWith(compareBy<Song>(
-                        { !(preferExplicit && SongVersions.preferredOriginal(song, it)) },
-                        { it.id !in catalogs },
-                        { it.isVideo },
-                        { kotlin.math.abs(song.durationSec - it.durationSec) }
-                    ))
-                    RegionalResults(ranked, catalogs.mapValues { it.value.toSet() })
-                }
+    val prefs = remember(context) { context.getSharedPreferences("recording_sources", android.content.Context.MODE_PRIVATE) }
+    var plan by remember(prefs) { mutableStateOf(RecordingSourcePlan.restore(
+        prefs.getString("order", null), prefs.getStringSet("disabled", emptySet()).orEmpty()
+    )) }
+    fun updatePlan(next: RecordingSourcePlan) {
+        plan = next
+        prefs.edit().putString("order", next.order.joinToString(",") { it.name })
+            .putStringSet("disabled", next.disabled.map { it.name }.toSet()).apply()
+    }
+    val enabled = plan.enabled.filter { it == RecordingSource.YOUTUBE || preferExplicit }.toSet()
+    var retry by remember(song.id) { mutableStateOf(0) }
+    var showSources by remember { mutableStateOf(false) }
+    val discovery = remember(c) { RecordingDiscovery(c.ytm, c.streams) }
+    val results by produceState<Map<RecordingSource, RecordingSearchResult>>(emptyMap(), song.id, country, explicitMode, enabled, retry) {
+        value = emptyMap()
+        if (!song.isLocal && !song.isEpisode && !song.isLive && !song.isUpload) {
+            discovery.search(song, country, explicitMode, enabled).collect { result ->
+                value = value + (result.source to result)
             }
         }
     }
-    val soundCloud by produceState<Result<List<Song>>?>(null, song.id, preferExplicit) {
-        value = null
-        if (preferExplicit) value = withContext(Dispatchers.IO) {
-            try { Result.success(c.streams.soundCloudVersions(song)) }
-            catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (e: Exception) { Result.failure(e) }
-        }
-    }
-    val bandcamp by produceState<Result<List<Song>>?>(null, song.id, preferExplicit) {
-        value = null
-        if (preferExplicit) value = withContext(Dispatchers.IO) {
-            try { Result.success(c.streams.bandcampVersions(song)) }
-            catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (e: Exception) { Result.failure(e) }
-        }
-    }
-    val audius by produceState<Result<List<Song>>?>(null, song.id, preferExplicit) {
-        value = null
-        if (preferExplicit) value = withContext(Dispatchers.IO) {
-            try { Result.success(c.streams.audiusVersions(song)) }
-            catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (e: Exception) { Result.failure(e) }
-        }
-    }
-    val zaycev by produceState<Result<List<Song>>?>(null, song.id, preferExplicit) {
-        value = null
-        if (preferExplicit) value = withContext(Dispatchers.IO) {
-            try { Result.success(c.streams.zaycevVersions(song)) }
-            catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (e: Exception) { Result.failure(e) }
-        }
-    }
+    val hits = remember(song, plan, results, explicitMode) { RecordingSearchRank.rank(song, plan, results.values, explicitMode) }
     var link by remember(song.id) { mutableStateOf("") }
     var checkingLink by remember(song.id) { mutableStateOf(false) }
     var checkedLink by remember(song.id) { mutableStateOf<Song?>(null) }
@@ -220,86 +151,68 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                     Text(tr(R.string.choose_a_file_on_this_phone), style = MaterialTheme.typography.bodyLarge)
                 }
             }
-            if (preferExplicit && !song.isLocal && !song.isEpisode && !song.isLive && !song.isUpload) {
-                Text(tr(R.string.prism_sc_versions), Modifier.padding(horizontal = 22.dp, vertical = 8.dp),
-                    style = MaterialTheme.typography.titleMedium)
-                Quiet(tr(R.string.prism_sc_versions_note))
-                val sc = soundCloud
-                val saved = picks[song.id]?.song?.takeIf { com.prism.music.data.stream.SoundCloudVersion.url(it.id) != null }
-                val candidates = sc?.getOrNull().orEmpty()
-                if (saved != null && candidates.none { it.id == saved.id }) {
-                    VersionRow(saved, "SoundCloud", true, Modifier.testTag("version:${saved.id}")) {}
-                }
-                when {
-                    sc == null -> PrismSpinner(Modifier.padding(22.dp).size(22.dp), stroke = 2.dp)
-                    sc.isFailure -> Quiet(tr(R.string.couldn_t_look_for_other_versions))
-                    candidates.isEmpty() -> Quiet(tr(R.string.prism_sc_no_versions))
-                    else -> candidates.forEach { v ->
-                        val source = if (com.prism.music.data.stream.SoundCloudVersion.isHls(v.id)) "SoundCloud · HLS" else "SoundCloud"
-                        VersionRow(v, source, picked == v.id, Modifier.testTag("version:${v.id}")) {
-                            choose(SongVersions.Pick(v.id, "SoundCloud · " + versionLabel(v), v))
-                        }
+            if (!song.isLocal && !song.isEpisode && !song.isLive && !song.isUpload) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(tr(R.string.prism_recordings), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    androidx.compose.material3.TextButton(onClick = { showSources = !showSources }) {
+                        Text(tr(R.string.prism_recording_sources))
                     }
                 }
+                val done = results.keys.count { it in enabled }
+                Quiet(tr(R.string.prism_recording_progress, hits.size, done, enabled.size))
+                if (showSources) {
+                    plan.order.forEachIndexed { index, source ->
+                        val status = when {
+                            source !in plan.enabled -> tr(R.string.prism_recording_disabled)
+                            source !in enabled -> tr(R.string.prism_recording_restricted)
+                            results[source] == null -> tr(R.string.prism_recording_searching)
+                            results[source]?.failed == true -> tr(R.string.prism_recording_error)
+                            else -> tr(R.string.prism_recording_count, results[source]?.hits?.size ?: 0)
+                        }
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.Checkbox(checked = source in plan.enabled, onCheckedChange = { updatePlan(plan.toggle(source)) })
+                            Column(Modifier.weight(1f)) {
+                                Text(source.label, style = MaterialTheme.typography.bodyMedium)
+                                Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            androidx.compose.material3.TextButton(enabled = index > 0, onClick = { updatePlan(plan.move(source, -1)) }) { Text("↑") }
+                            androidx.compose.material3.TextButton(enabled = index < plan.order.lastIndex, onClick = { updatePlan(plan.move(source, 1)) }) { Text("↓") }
+                        }
+                    }
+                    Quiet(tr(R.string.prism_recording_order_note))
+                }
+                val saved = picks[song.id]?.song?.takeUnless { it.isLocal }
+                if (saved != null && hits.none { it.song.id == saved.id }) {
+                    VersionRow(saved, RecordingSource.of(saved.id).label, true, Modifier.testTag("version:${saved.id}")) {}
+                }
+                hits.forEach { hit ->
+                    val v = hit.song
+                    val catalogLabel = hit.catalogs.takeIf { it.isNotEmpty() }?.let {
+                        tr(R.string.prism_version_catalog, it.joinToString(", "))
+                    }
+                    val kind = when {
+                        preferExplicit && SongVersions.preferredOriginal(song, v) -> tr(R.string.prism_version_explicit_match)
+                        else -> null
+                    }
+                    VersionRow(v, listOfNotNull(hit.source.label, kind, catalogLabel).joinToString(" · "),
+                        picked == v.id, Modifier.testTag("version:${v.id}")) {
+                        choose(SongVersions.Pick(v.id, hit.source.label + " · " + versionLabel(v), v))
+                    }
+                }
+                if (done < enabled.size) PrismSpinner(Modifier.padding(22.dp).size(22.dp), stroke = 2.dp)
+                if (done == enabled.size && hits.isEmpty()) {
+                    Quiet(if (enabled.isEmpty()) tr(R.string.prism_recording_none_enabled)
+                        else if (results.values.any { it.failed }) tr(R.string.prism_recording_partial)
+                        else tr(R.string.prism_sc_no_versions))
+                }
+                if (results.values.any { it.failed } || done == enabled.size) {
+                    androidx.compose.material3.TextButton(onClick = { retry++ }, modifier = Modifier.padding(horizontal = 12.dp)) {
+                        Text(tr(R.string.prism_recording_retry))
+                    }
+                }
+                Quiet(tr(R.string.prism_recording_caution))
             }
             if (preferExplicit && !song.isLocal && !song.isEpisode && !song.isLive && !song.isUpload) {
-                Text("Bandcamp", Modifier.padding(horizontal = 22.dp, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
-                Quiet(tr(R.string.prism_bandcamp_note))
-                val bc = bandcamp
-                val candidates = bc?.getOrNull().orEmpty()
-                val saved = picks[song.id]?.song?.takeIf { com.prism.music.data.stream.BandcampVersion.url(it.id) != null }
-                if (saved != null && candidates.none { it.id == saved.id }) {
-                    VersionRow(saved, "Bandcamp", true, Modifier.testTag("version:${saved.id}")) {}
-                }
-                when {
-                    bc == null -> PrismSpinner(Modifier.padding(22.dp).size(22.dp), stroke = 2.dp)
-                    bc.isFailure -> Quiet(tr(R.string.couldn_t_look_for_other_versions))
-                    candidates.isEmpty() -> Quiet(tr(R.string.prism_sc_no_versions))
-                    else -> candidates.forEach { v ->
-                        VersionRow(v, "Bandcamp", picked == v.id, Modifier.testTag("version:${v.id}")) {
-                            choose(SongVersions.Pick(v.id, "Bandcamp · " + versionLabel(v), v))
-                        }
-                    }
-                }
-            }
-            if (preferExplicit && !song.isLocal && !song.isEpisode && !song.isLive && !song.isUpload) {
-                Text("Audius", Modifier.padding(horizontal = 22.dp, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
-                Quiet(tr(R.string.prism_audius_note))
-                val au = audius
-                val candidates = au?.getOrNull().orEmpty()
-                val saved = picks[song.id]?.song?.takeIf { com.prism.music.data.stream.AudiusVersions.url(it.id) != null }
-                if (saved != null && candidates.none { it.id == saved.id }) {
-                    VersionRow(saved, "Audius", true, Modifier.testTag("version:${saved.id}")) {}
-                }
-                when {
-                    au == null -> PrismSpinner(Modifier.padding(22.dp).size(22.dp), stroke = 2.dp)
-                    au.isFailure -> Quiet(tr(R.string.couldn_t_look_for_other_versions))
-                    candidates.isEmpty() -> Quiet(tr(R.string.prism_sc_no_versions))
-                    else -> candidates.forEach { v ->
-                        VersionRow(v, "Audius", picked == v.id, Modifier.testTag("version:${v.id}")) {
-                            choose(SongVersions.Pick(v.id, "Audius · " + versionLabel(v), v))
-                        }
-                    }
-                }
-            }
-            if (preferExplicit && !song.isLocal && !song.isEpisode && !song.isLive && !song.isUpload) {
-                Text("Zaycev.net", Modifier.padding(horizontal = 22.dp, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
-                val zz = zaycev
-                val zc = zz?.getOrNull().orEmpty()
-                val savedZ = picks[song.id]?.song?.takeIf { com.prism.music.data.stream.ZaycevVersions.url(it.id) != null }
-                if (savedZ != null && zc.none { it.id == savedZ.id }) {
-                    VersionRow(savedZ, "Zaycev.net", true, Modifier.testTag("version:${savedZ.id}")) {}
-                }
-                when {
-                    zz == null -> PrismSpinner(Modifier.padding(22.dp).size(22.dp), stroke = 2.dp)
-                    zz.isFailure -> Quiet(tr(R.string.prism_zaycev_unavailable))
-                    zc.isEmpty() -> Quiet(tr(R.string.prism_sc_no_versions))
-                    else -> zc.forEach { v ->
-                        VersionRow(v, "Zaycev.net", picked == v.id, Modifier.testTag("version:${v.id}")) {
-                            choose(SongVersions.Pick(v.id, "Zaycev.net · " + versionLabel(v), v))
-                        }
-                    }
-                }
                 androidx.compose.material3.TextButton(
                     onClick = {
                         val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
@@ -353,27 +266,7 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
                     }
                 }
             }
-            val r = found
-            when {
-                r == null -> PrismSpinner(Modifier.padding(22.dp).size(22.dp), stroke = 2.dp)
-                r.isFailure -> Quiet(tr(R.string.couldn_t_look_for_other_versions))
-                r.getOrThrow().songs.isEmpty() -> Quiet(tr(R.string.youtube_has_no_other_version_of))
-                else -> r.getOrThrow().songs.forEach { v ->
-                    val catalogLabel = r.getOrThrow().catalogs[v.id]?.takeIf { it.isNotEmpty() }?.let {
-                        tr(R.string.prism_version_catalog, it.joinToString(", "))
-                    }
-                    val kind = when {
-                        preferExplicit && SongVersions.preferredOriginal(song, v) -> tr(R.string.prism_version_explicit_match)
-                        SongVersions.sameRecording(song, v) -> tr(R.string.another_upload)
-                        else -> null
-                    }
-                    VersionRow(v, listOfNotNull(kind, catalogLabel).joinToString(" · ").ifBlank { null },
-                        picked == v.id, Modifier.testTag("version:${v.id}")) {
-                        // The version itself is kept too: the song shows as it from now on (#328).
-                        choose(SongVersions.Pick(v.id, versionLabel(v), v))
-                    }
-                }
-            }
+
         }
     }
 }

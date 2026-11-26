@@ -5810,4 +5810,17 @@
     <string name="prism_bc_check">Check recording</string>
     <string name="prism_bc_link_failed">No matching full public recording could be verified.</string>
     <string name="prism_zaycev_unavailable">Public search unavailable. Open the site or paste a track page URL.</string>
+    <string name="prism_recordings">Alternative recordings</string>
+    <string name="prism_recording_sources">Sources</string>
+    <string name="prism_recording_progress">%1$d recordings · %2$d of %3$d sources checked</string>
+    <string name="prism_recording_disabled">Disabled</string>
+    <string name="prism_recording_restricted">Unavailable with current content filter</string>
+    <string name="prism_recording_searching">Searching</string>
+    <string name="prism_recording_error">Search failed</string>
+    <string name="prism_recording_count">Found: %1$d</string>
+    <string name="prism_recording_order_note">Priority changes the list order. A recording you select remains pinned.</string>
+    <string name="prism_recording_none_enabled">No sources enabled.</string>
+    <string name="prism_recording_partial">No matching recordings yet. Some sources failed; open Sources for details.</string>
+    <string name="prism_recording_retry">Search again</string>
+    <string name="prism_recording_caution">Matching metadata does not establish that the audio is uncensored.</string>
 </resources>
