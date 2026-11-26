@@ -1865,12 +1865,15 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         // No music radio after a podcast episode.
         if (player.currentMediaItem?.toSong()?.let { it.isEpisode || it.isLive } == true) return
         if (src.kind != QueueKind.SINGLE && !radio && !wave && player.repeatMode != Player.REPEAT_MODE_OFF) return
-        if (player.mediaItemCount - player.currentMediaItemIndex > 3 || c.queue.autoplayLoading) return
+        val remaining = player.mediaItemCount - player.currentMediaItemIndex
+        if (remaining > (if (src.isVibe) VibeQueuePolicy.REFILL_AT else 3) || c.queue.autoplayLoading) return
+        if (vibeRetryJob?.isActive == true && vibeRetrySource === src) return
         val offline = !c.network.isOnline()
         val waveStyle = com.prism.music.data.foryou.MyWave.style(src.originId)
         c.queue.autoplayLoading = true
         autoplayFor = src
-        val job = scope.launch {
+        val before = player.mediaItemCount
+        val job = scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
             // Personal Wave has its own strict discovery/likes quota. Ordinary radio fallback can silently
             // reintroduce known songs, so never pass a Wave through that path.
             if (wave) {
@@ -1897,9 +1900,6 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                     if (c.queue.autoplayStart.value < 0) c.queue.autoplayStart.value = player.mediaItemCount
                     player.addMediaItems(accepted.map { it.toMediaItem() })
                     c.recFeedback.served(accepted.map { it.id })
-                } else if (player.mediaItemCount - player.currentMediaItemIndex <= 1) {
-                    c.player.reportError(if (offline) tr(R.string.prism_stream_no_matching_downloaded_tracks)
-                        else tr(R.string.prism_stream_not_enough_matching_tracks))
                 }
                 return@launch
             }
@@ -1951,7 +1951,45 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             if (autoplayJob === job) {
                 autoplayJob = null
                 c.queue.autoplayLoading = false
+                if (src.isVibe && c.queue.source.value === src) {
+                    if (player.mediaItemCount > before) {
+                        vibeRetryAttempt = 0
+                        vibeRetrySource = src
+                        if (player.playbackState == Player.STATE_ENDED && player.playWhenReady &&
+                            player.currentMediaItemIndex < player.mediaItemCount - 1) {
+                            player.seekToNextMediaItem()
+                            player.prepare()
+                        }
+                    } else scheduleVibeRetry(src)
+                }
             }
+        }
+        job.start()
+    }
+
+    private var vibeRetryJob: kotlinx.coroutines.Job? = null
+    private var vibeRetrySource: QueueSource? = null
+    private var vibeRetryAttempt = 0
+
+    private fun scheduleVibeRetry(src: QueueSource) {
+        if (c.queue.source.value !== src || c.queue.followingHost) return
+        if (vibeRetrySource !== src) { vibeRetrySource = src; vibeRetryAttempt = 0 }
+        val wait = VibeQueuePolicy.retryDelay(vibeRetryAttempt)
+        if (wait == null) {
+            if (vibeRetryAttempt == VibeQueuePolicy.MAX_RETRIES) {
+                vibeRetryAttempt++
+                if (player.mediaItemCount - player.currentMediaItemIndex <= 1)
+                    c.player.reportError(if (!c.network.isOnline()) tr(R.string.prism_stream_no_matching_downloaded_tracks)
+                        else tr(R.string.prism_stream_not_enough_matching_tracks))
+            }
+            return
+        }
+        vibeRetryAttempt++
+        vibeRetryJob?.cancel()
+        vibeRetryJob = scope.launch {
+            kotlinx.coroutines.delay(wait)
+            vibeRetryJob = null
+            if (c.queue.source.value === src && !c.queue.followingHost) maybeAutoplay()
         }
     }
 
@@ -1964,6 +2002,10 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         val job = autoplayJob
         autoplayJob = null
         job?.cancel()
+        vibeRetryJob?.cancel()
+        vibeRetryJob = null
+        vibeRetrySource = null
+        vibeRetryAttempt = 0
         c.queue.autoplayLoading = false
     }
 

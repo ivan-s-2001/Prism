@@ -408,6 +408,10 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     val showPlayer = _showPlayer.asSharedFlow()
     private val _showVibe = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val showVibe = _showVibe.asSharedFlow()
+    private var navigateVibeFor: QueueSource? = null
+    private fun showStartedVibe(source: QueueSource) {
+        if (navigateVibeFor === source) { navigateVibeFor = null; _showVibe.tryEmit(Unit) }
+    }
 
     private var playToken = 0
 
@@ -591,7 +595,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     private fun startQueue(songs: List<Song>, startIndex: Int, source: QueueSource, shuffle: Boolean, startVideo: String?, startMs: Long = 0, rest: (suspend () -> List<Song>?)? = null, requestedDj: Boolean = false) {
         stopFill()
         // Before the player starts: autoplay would otherwise see a short first page as a queue nearly over.
-        c.queue.filling = rest != null
+        c.queue.filling = true
         val token = playToken
         // DJ mode is for the queue it was turned on in; "Play as a DJ set" turns it on for the new one.
         val dj = false
@@ -599,13 +603,7 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         // A new queue starts as plain shuffle (or none); Smart Shuffle is turned on per queue. With "Keep shuffle on for
         // the next list" (#416) a list takes over what the queue before it had, Smart Shuffle too ([carryShuffle], below).
         val wasSmart = c.queue.smartShuffle.value
-        c.queue.smartShuffle.value = false
-        c.queue.smartPicks.value = emptySet()
-        c.queue.source.value = source
-        c.queue.autoplayContinuation = null
-        c.queue.autoplayStart.value = -1
-        c.queue.waveQuotaStart = 0
-        c.queue.userQueued.value = emptySet()
+        if (navigateVibeFor !== source) navigateVibeFor = null
         ensureStarted()
         // 1.8.8: with "Blend when I skip" on, the song playing fades out over 200 ms before the new queue takes over.
         // Whatever is asked after this (a seek into the new queue, say) waits for it to start, and then runs in order.
@@ -651,7 +649,16 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     ) {
         run {
             // Whatever Autoplay was still finding was for the queue going now: this one asks for its own, below.
+            if (token != playToken) return
             service?.dropAutoplay()
+            c.queue.filling = true
+            c.queue.smartShuffle.value = false
+            c.queue.smartPicks.value = emptySet()
+            c.queue.source.value = source
+            c.queue.autoplayContinuation = null
+            c.queue.autoplayStart.value = -1
+            c.queue.waveQuotaStart = 0
+            c.queue.userQueued.value = emptySet()
             val start = startIndex.coerceIn(0, songs.lastIndex)
             val was = when { !p.shuffleModeEnabled -> ShuffleMode.OFF; wasSmart -> ShuffleMode.SMART; else -> ShuffleMode.SHUFFLE }
             val prefs = c.settings.current.behavior
@@ -672,8 +679,9 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
                 // Its picks now: the service's Smart Shuffle collector never saw it go off and on again above.
                 c.queue.smartStarted.value++
             }
+            c.queue.filling = rest != null
+            showStartedVibe(source)
             service?.maybeAutoplay()
-            if (dj) c.dj.setOn(true)
             if (rest != null && token == playToken) fillQueue(rest, source, songs)
         }
     }
@@ -717,8 +725,8 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
      * "Vibe started" once the first recommendations are in ([vibeNotice]).
      */
     fun playTrackVibe(song: Song, announce: Boolean = false, contextTitle: String = song.title) {
-        if (song.isLive || song.isEpisode || c.queue.followingHost) return
-        val source = QueueSource(QueueKind.VIBE, contextTitle, seedId = song.id,
+        if (song.isLive || song.isEpisode || song.isVideo || c.queue.followingHost) return
+        val source = QueueSource(QueueKind.VIBE, contextTitle, seedId = song.id, vibeAnchors = listOf(song),
             vibeOrigin = VibeOrigin(VibeOriginKind.TRACK, contextTitle, com.prism.music.data.PlaylistCovers.artOf(song), song.artists.joinToString(", ") { it.name }.ifBlank { null }))
         val p = player
         if (p?.currentMediaItem?.mediaId == song.id && c.queue.source.value.matchesTrackStream(song.id, source.title)) {
@@ -730,8 +738,8 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         }
         if (announce) vibeNotice.asked(source)
         if (p == null || p.mediaItemCount == 0 || p.currentMediaItem?.mediaId != song.id) {
+            if (announce) navigateVibeFor = source
             playQueue(listOf(song), 0, source)
-            if (announce && c.queue.source.value == source) _showVibe.tryEmit(Unit)
             return
         }
         ++playToken
@@ -783,14 +791,14 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
             context = com.prism.music.data.foryou.VibeContext.anchors(supplied.filter(::eligible))
         }
         if (context.isEmpty() || !stillStarting(token) || c.queue.followingHost || c.queue.source.value !== old) return@withContext false
-        val first = context.firstOrNull { !c.sessionHeard.has(it) } ?: context.first()
+        val initial = VibeQueuePolicy.initial(context, c.sessionHeard::has)
+        val first = initial.first()
         val identity = origin ?: VibeOrigin(VibeOriginKind.COLLECTION, title)
         val source = QueueSource(QueueKind.VIBE, title, seedId = first.id,
             vibeAnchors = context, vibeOrigin = identity)
-        playQueue(listOf(first), 0, source)
-        val started = c.queue.source.value == source
-        if (started) _showVibe.tryEmit(Unit)
-        started
+        navigateVibeFor = source
+        playQueue(initial, 0, source)
+        true
     }
 
     /** Queue items a retune must not replace or duplicate. Offline may reuse previously played downloads. */
