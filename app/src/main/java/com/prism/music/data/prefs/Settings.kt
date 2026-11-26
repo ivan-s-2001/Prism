@@ -721,43 +721,11 @@ enum class ExplicitContent(val label: String) { SHOW(tr(R.string.explicit_show))
 
 /** Where the tabs sit on a tablet or a wide window (#264); phones always have them at the bottom. Side = as before 1.8.0. */
 enum class TabBarPosition(val label: String) { SIDE(tr(R.string.down_the_side)), BOTTOM(tr(R.string.at_the_bottom)) }
-/**
- * Prism TV's settings and the phone's desk mode (1.8.0): how Prism behaves on a TV, and the ambient screen both share
- * (not part of a Look). Nested (see [ShapeLook]).
- */
-data class TvPrefs(
-    /** On a TV, minutes with no remote while music plays before the ambient screen (0: never). */
+/** Phone desk mode preferences (not part of a Look). */
+data class AmbientPrefs(
     val ambientMinutes: Int = 3,
-    /** Phones: while music plays and the phone is charging, the ambient screen instead of the phone sleeping (#265). */
     val deskMode: Boolean = false,
-    /** How large lyrics are on the TV (1 = as designed). */
-    val lyricsScale: Float = 1f,
-    /** This TV has shown Prism TV's welcome (sign in with the phone) once: also for a TV that had the phone app before. */
-    val welcomed: Boolean = false,
-    /**
-     * The TV Home's rows, in order, shown or hidden (the owner, 1.8.0: "You should be able to customize the
-     * homescreen"). Keyed as the phone's Home sections where the rows are the same kind ([HomeSections]), plus the TV's
-     * own now-playing hero. Empty: Home as it comes (see `TvHomeLayout`).
-     */
-    val homeLayout: List<HomeSectionConfig> = emptyList(),
-    /**
-     * How dark the background behind the TV's player and lyrics is (1.8.1, Reddit: "options on TV to change background
-     * opacity, especially in lyrics mode"): [DIM_LIGHTER] (a music video shows through more) to [DIM_DARKEST]; 0 is
-     * Prism as it comes.
-     */
-    val backdropDim: Int = 0,
-) {
-    companion object {
-        const val DIM_LIGHTER = -1
-        const val DIM_DARKEST = 3
-
-        /** Black laid over the cover's backdrop at [dim]: none as it comes (and lighter: the cover's own can't be). */
-        fun coverShade(dim: Int): Float = when (dim.coerceIn(DIM_LIGHTER, DIM_DARKEST)) { 1 -> 0.25f; 2 -> 0.5f; 3 -> 0.75f; else -> 0f }
-
-        /** How much of the shade over a music video (its lyrics' scrim) stays, at [dim]: 1 as it comes. */
-        fun videoShade(dim: Int): Float = when (dim.coerceIn(DIM_LIGHTER, DIM_DARKEST)) { -1 -> 0.6f; 1 -> 1.2f; 2 -> 1.4f; 3 -> 1.6f; else -> 1f }
-    }
-}
+)
 
 /** Picture-in-picture for a playing video (1.7.8, #167). */
 enum class PipMode(val label: String) { AUTO(tr(R.string.when_you_leave_prism)), MENU(tr(R.string.only_with_its_button)) }
@@ -1855,8 +1823,7 @@ data class AppSettings(
     val lyrics: LyricsPrefs = LyricsPrefs(),
     /** The player. */
     val player: PlayerPrefs = PlayerPrefs(),
-    /** Prism TV and the phone's desk mode (1.8.0). */
-    val tv: TvPrefs = TvPrefs(),
+    val ambient: AmbientPrefs = AmbientPrefs(),
     val uiDensity: UiDensity = UiDensity.COMFORTABLE,
     val titleSize: TitleSize = TitleSize.LARGE,
     val cardSize: CardSize = CardSize.MEDIUM,
@@ -2398,13 +2365,9 @@ class SettingsRepository(
         val gesturesEverywhere = booleanPreferencesKey("player_gestures_everywhere")
         val pageSlide = booleanPreferencesKey("page_slide")
         val tabBarPosition = stringPreferencesKey("tab_bar_position")
-        // 1.8.0 ([TvPrefs]).
-        val tvAmbientMinutes = intPreferencesKey("tv_ambient_minutes")
+        // Keep the historic storage key so existing phone desk-mode settings and backups remain readable.
+        val ambientMinutes = intPreferencesKey("tv_ambient_minutes")
         val deskMode = booleanPreferencesKey("desk_mode")
-        val tvLyricsScale = floatPreferencesKey("tv_lyrics_scale")
-    val tvWelcomed = booleanPreferencesKey("tv_welcomed")
-        val tvHomeLayout = stringPreferencesKey("tv_home_layout")
-        val tvBackdropDim = intPreferencesKey("tv_backdrop_dim")
         val pauseOnMute = booleanPreferencesKey("pause_on_mute")
         val pipMode = stringPreferencesKey("pip_mode")
         val panelSwipes = booleanPreferencesKey("panel_swipes")
@@ -2618,8 +2581,8 @@ class SettingsRepository(
                 "lock_screen_player", "lock_screen_layout", "lock_screen_volume", "lock_screen_like", "lock_screen_output", "lock_screen_paused", "lock_screen_hide_song",
                 "lock_screen_repeat", "lock_screen_up_next",
                 "lock_portrait", "pause_on_mute", "pip_mode", "panel_swipes", "recent_shows", "queue_locked", "scroll_shows_controls", "playlist_genres", "artist_bio", "artist_you", "artist_essentials", "screen_fades", "player_gestures_everywhere", "page_slide", "tab_bar_position",
-                // 1.8.0 ([TvPrefs]): how Prism behaves on a TV and in desk mode.
-                "tv_ambient_minutes", "desk_mode", "tv_lyrics_scale", "tv_welcomed", "tv_home_layout", "tv_backdrop_dim",
+                // Phone desk mode; keep the legacy duration key for backup compatibility.
+                "tv_ambient_minutes", "desk_mode",
                 // 1.7.8 ([SoundPrefs]).
                 "crossfade_curve", "normalize_target", "normalize_albums", "music_speed", "music_pitch",
                 "skip_silence_episodes", "sleep_fade", "pause_fade",
@@ -3080,13 +3043,9 @@ class SettingsRepository(
                 handle = p[K.playerHandle] ?: d.player.handle,
                 navBand = p[K.playerNavBand] ?: d.player.navBand,
             ),
-            tv = TvPrefs(
-                ambientMinutes = (p[K.tvAmbientMinutes] ?: d.tv.ambientMinutes).coerceIn(0, 60),
-                deskMode = p[K.deskMode] ?: d.tv.deskMode,
-                lyricsScale = (p[K.tvLyricsScale] ?: d.tv.lyricsScale).coerceIn(0.75f, 1.5f),
-            welcomed = p[K.tvWelcomed] ?: d.tv.welcomed,
-                homeLayout = p[K.tvHomeLayout]?.let { runCatching { json.decodeFromString<List<HomeSectionConfig>>(it) }.getOrNull() } ?: d.tv.homeLayout,
-                backdropDim = (p[K.tvBackdropDim] ?: d.tv.backdropDim).coerceIn(TvPrefs.DIM_LIGHTER, TvPrefs.DIM_DARKEST),
+            ambient = AmbientPrefs(
+                ambientMinutes = (p[K.ambientMinutes] ?: d.ambient.ambientMinutes).coerceIn(0, 60),
+                deskMode = p[K.deskMode] ?: d.ambient.deskMode,
             ),
             uiDensity = p.enum(K.uiDensity, d.uiDensity),
             titleSize = p.enum(K.titleSize, d.titleSize),
@@ -3815,16 +3774,8 @@ class SettingsRepository(
     fun setGesturesEverywhere(v: Boolean) = edit { it[K.gesturesEverywhere] = v }
     fun setPageSlide(v: Boolean) = edit { it[K.pageSlide] = v }
     fun setTabBarPosition(v: TabBarPosition) = edit { it[K.tabBarPosition] = v.name }
-    fun setTvAmbientMinutes(v: Int) = edit { it[K.tvAmbientMinutes] = v.coerceIn(0, 60) }
+    fun setAmbientMinutes(v: Int) = edit { it[K.ambientMinutes] = v.coerceIn(0, 60) }
     fun setDeskMode(v: Boolean) = edit { it[K.deskMode] = v }
-    fun setTvLyricsScale(v: Float) = edit { it[K.tvLyricsScale] = v.coerceIn(0.75f, 1.5f) }
-    fun setTvBackdropDim(v: Int) = edit { it[K.tvBackdropDim] = v.coerceIn(TvPrefs.DIM_LIGHTER, TvPrefs.DIM_DARKEST) }
-    fun setTvWelcomed() = edit { it[K.tvWelcomed] = true }
-    /** The TV Home's rows ([TvPrefs.homeLayout]); an empty list is Home as it comes (Back to default). */
-    fun setTvHomeLayout(v: List<HomeSectionConfig>) = edit {
-        if (v.isEmpty()) it.remove(K.tvHomeLayout)
-        else it[K.tvHomeLayout] = json.encodeToString(kotlinx.serialization.builtins.ListSerializer(HomeSectionConfig.serializer()), v)
-    }
     fun setPauseOnMute(v: Boolean) = edit { it[K.pauseOnMute] = v }
     fun setPipMode(v: PipMode) = edit { it[K.pipMode] = v.name }
     fun setPanelSwipes(v: Boolean) = edit { it[K.panelSwipes] = v }

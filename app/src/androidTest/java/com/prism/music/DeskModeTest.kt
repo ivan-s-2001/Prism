@@ -18,7 +18,7 @@ import org.junit.runner.RunWith
 
 /**
  * #265 (1.8.0): desk mode on a phone. Switched on, charging and playing: after a quiet minute the ambient screen; a tap
- * brings Prism back. (Off by default: TvAmbientLogicTest.)
+ * brings Prism back. (Off by default: AmbientLogicTest.)
  */
 @RunWith(AndroidJUnit4::class)
 class DeskModeTest {
@@ -33,7 +33,7 @@ class DeskModeTest {
         runCatching { instrumentation.runOnMainSync { Fixture.container.player.stop() } }
         tone?.let { runCatching { Fixture.context.contentResolver.delete(it, null, null) } }
         Fixture.container.settings.setDeskMode(false)
-        Fixture.container.settings.setTvAmbientMinutes(3)
+        Fixture.container.settings.setAmbientMinutes(3)
         shell("dumpsys battery reset")
     }
 
@@ -42,7 +42,7 @@ class DeskModeTest {
     @Test fun deskModeShowsTheAmbientScreenWhileChargingAndPlaying() {
         Fixture.ready()
         Fixture.container.settings.setDeskMode(true)
-        Fixture.container.settings.setTvAmbientMinutes(1)
+        Fixture.container.settings.setAmbientMinutes(1)
         // The emulator says it's charging.
         shell("dumpsys battery set ac 1")
         shell("dumpsys battery set status 2")

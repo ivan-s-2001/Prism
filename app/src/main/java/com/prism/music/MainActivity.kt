@@ -615,7 +615,7 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
         }
         com.prism.music.ui.components.HandoffDialogs()
         // Desk mode (#265, 1.8.0, off unless switched on): the ambient screen while charging and playing.
-        com.prism.music.ui.ambient.AmbientHost(onTv = false)
+        com.prism.music.ui.ambient.AmbientHost()
         LaunchedEffect(Unit) {
             deepLink.collect { uri -> if (uri != null) { handleDeepLink(uri, navigator, c); deepLink.value = null } }
         }

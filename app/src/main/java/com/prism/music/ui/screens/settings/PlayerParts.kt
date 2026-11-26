@@ -421,7 +421,7 @@ internal val playerSettings: List<PlayerSetting<*>> by lazy {
         ) { p, v -> p.setLockScreenVolume(v[0]); p.setLockScreenLike(v[1]); p.setLockScreenOutput(v[2]); p.setLockScreenRepeat(v[3]); p.setLockScreenUpNext(v[4]) },
         ps(listOf("lock_screen_paused"), g.modes, R.string.lock_screen_paused_label, { it.behavior.lockScreenPaused }, { it.label }, lock) { p, v -> p.setLockScreenPaused(v) },
         flag(listOf("lock_screen_hide_song"), g.modes, R.string.lock_screen_hide, { it.behavior.lockScreenHideSong }, lock) { p, v -> p.setLockScreenHideSong(v) },
-        flag(listOf("desk_mode"), g.modes, R.string.desk_mode, { it.tv.deskMode }) { p, v -> p.setDeskMode(v) },
+        flag(listOf("desk_mode"), g.modes, R.string.desk_mode, { it.ambient.deskMode }) { p, v -> p.setDeskMode(v) },
     )
 }
 

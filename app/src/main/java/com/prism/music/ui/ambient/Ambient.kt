@@ -80,21 +80,12 @@ private const val CHECK_MS = 5_000L
 fun ambientDue(playing: Boolean, allowed: Boolean, minutes: Int, idleMs: Long): Boolean =
     playing && allowed && minutes > 0 && idleMs >= minutes * 60_000L
 
-/**
- * Whether the ambient screen may come at all (and, while music plays, the screen is kept on for it): a TV unless it's
- * set to Never ([minutes] 0: the TV's own screensaver then, never a screen kept on for good); a phone in desk mode
- * while charging. Never over a music video or Sing, which are what the listener is watching.
- */
-fun ambientAllowed(onTv: Boolean, minutes: Int, deskMode: Boolean, charging: Boolean, video: Boolean, singing: Boolean): Boolean =
-    minutes > 0 && (onTv || (deskMode && charging)) && !video && !singing
+/** Desk mode may show only on a charging phone, never over a video or Sing. */
+fun ambientAllowed(minutes: Int, deskMode: Boolean, charging: Boolean, video: Boolean, singing: Boolean): Boolean =
+    minutes > 0 && deskMode && charging && !video && !singing
 
-/**
- * Whether the screen is kept on: while something plays and the ambient screen may come (it's that, not the TV's
- * screensaver, that shows), and on a TV while a music video or Sing plays, which the ambient screen never covers and the
- * TV's own screensaver or sleep timer mustn't either (the owner's TV covered the video).
- */
-fun keepScreenOn(playing: Boolean, allowed: Boolean, onTv: Boolean, video: Boolean, singing: Boolean): Boolean =
-    playing && (allowed || (onTv && (video || singing)))
+/** A desk-mode screen stays awake only while music is playing. */
+fun keepScreenOn(playing: Boolean, allowed: Boolean): Boolean = playing && allowed
 
 /** The slow drift that keeps the ambient screen burn-in safe: a few dp, one loop every several minutes. */
 fun ambientDrift(nowMs: Long): DpOffset {
@@ -102,16 +93,9 @@ fun ambientDrift(nowMs: Long): DpOffset {
     return DpOffset((14 * sin(t / 420.0 * 2 * Math.PI)).dp, (10 * sin(t / 300.0 * 2 * Math.PI)).dp)
 }
 
-/**
- * The ambient screen over everything, when it's due: on a TV after [TvPrefs.ambientMinutes] with no remote while music
- * plays; on a phone in desk mode (#265: switched on, charging, playing). While it's allowed and music plays the screen
- * stays on (it's the ambient screen that shows, not the TV's screensaver over the lyrics), and on a TV while a video or
- * Sing plays ([keepScreenOn]); paused, the screen may sleep.
- * The first key or touch only brings back what was there. On a TV the screens are [content], not drawn while the
- * ambient screen shows (nothing moves unseen under it); they come back as they were.
- */
+/** Phone desk mode uses its own dialog over the current screen, dismissed by Back or a tap. */
 @Composable
-fun AmbientHost(onTv: Boolean, content: (@Composable () -> Unit)? = null) {
+fun AmbientHost() {
     val c = LocalContainer.current
     val context = LocalContext.current
     val view = LocalView.current
@@ -120,14 +104,14 @@ fun AmbientHost(onTv: Boolean, content: (@Composable () -> Unit)? = null) {
     val video by c.player.videoMode.collectAsState()
     val singing by c.sing.on.collectAsState()
     // A phone asks about charging only while desk mode is on (off, this costs nothing).
-    val desk = !onTv && settings.tv.deskMode
+    val desk = settings.ambient.deskMode
     val charging by produceState(false, desk) {
         while (desk) { value = isCharging(context); delay(CHECK_MS * 6) }
     }
-    val allowed = ambientAllowed(onTv, settings.tv.ambientMinutes, settings.tv.deskMode, charging, video, singing)
+    val allowed = ambientAllowed(settings.ambient.ambientMinutes, desk, charging, video, singing)
     // The window's own flag (the player sets the view's for videos, #169): neither turns the other off.
     val window = (view.context as? android.app.Activity)?.window
-    val keepOn = keepScreenOn(playing, allowed, onTv, video, singing)
+    val keepOn = keepScreenOn(playing, allowed)
     androidx.compose.runtime.DisposableEffect(keepOn, window) {
         val on = keepOn
         if (on) window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -148,33 +132,24 @@ fun AmbientHost(onTv: Boolean, content: (@Composable () -> Unit)? = null) {
         lifecycle.addObserver(o)
         onDispose { lifecycle.removeObserver(o) }
     }
-    LaunchedEffect(allowed, playing, settings.tv.ambientMinutes, input) {
+    LaunchedEffect(allowed, playing, settings.ambient.ambientMinutes, input) {
         if (!allowed || !playing) { shown = false; return@LaunchedEffect }
         while (true) {
             val here = lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
-            if (here && Idle.holds == 0 && ambientDue(true, true, settings.tv.ambientMinutes, System.currentTimeMillis() - Idle.lastInput)) { shown = true; break }
+            if (here && Idle.holds == 0 && ambientDue(true, true, settings.ambient.ambientMinutes, System.currentTimeMillis() - Idle.lastInput)) { shown = true; break }
             if (!here || Idle.holds > 0) Idle.reset()
             delay(CHECK_MS)
         }
     }
     androidx.compose.runtime.SideEffect { Idle.ambient = shown }
     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { Idle.ambient = false } }
-    if (!shown || !onTv) content?.invoke()
-    // Back never reaches the activity's keys (Android's own back handling, 13 and later): while the ambient screen
-    // shows it only wakes it, ahead of the pages' Back (registered after theirs, so it's asked first).
-    if (shown && onTv) androidx.activity.compose.BackHandler { Idle.touched() }
     if (shown) {
-        val ambient: @Composable () -> Unit = {
-            AmbientNow(c, Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { Idle.touched() } })
-        }
-        // A phone: a window of its own over all of Prism (Back or a tap brings Prism back). A TV: drawn over the
-        // screens, so the remote's keys keep going through the activity.
-        if (onTv) ambient()
-        else androidx.compose.ui.window.Dialog(
+        androidx.compose.ui.window.Dialog(
             onDismissRequest = { Idle.touched() },
             properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-            content = ambient,
-        )
+        ) {
+            AmbientNow(c, Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { Idle.touched() } })
+        }
     }
 }
 
