@@ -102,6 +102,15 @@ class LibraryRepository(private val c: AppContainer) {
     val playlists = MutableStateFlow<List<BrowseItem>>(emptyList())
     val albums = MutableStateFlow<List<BrowseItem>>(emptyList())
     val artists = MutableStateFlow<List<BrowseItem>>(emptyList())
+    val artistLibraryReady = MutableStateFlow(false)
+    /** One view of local stars and the account's subscriptions, shared by both profile editors and Wave. */
+    val profileArtists: StateFlow<List<FavoriteArtist>> by lazy {
+        combine(c.artistPrefs.favorites, artists, c.exclusions.artists) { local, remote, blocked ->
+            (local + remote.filterIsInstance<ArtistItem>().map { FavoriteArtist(it.id, it.title, it.thumbnail) })
+                .distinctBy { it.id }
+                .filterNot { favorite -> blocked.any { it.id == favorite.id || it.name.equals(favorite.name, true) } }
+        }.stateIn(c.scope, SharingStarted.Eagerly, emptyList())
+    }
     val syncState = MutableStateFlow(SyncState.IDLE)
     val lastError = MutableStateFlow<String?>(null)
 
@@ -126,7 +135,7 @@ class LibraryRepository(private val c: AppContainer) {
                 if (!isActive) return@launch
                 if (playlists.value.isEmpty()) playlists.value = saved.playlists
                 if (albums.value.isEmpty()) albums.value = saved.albums
-                if (artists.value.isEmpty()) artists.value = saved.artists
+                if (artists.value.isEmpty()) artists.value = saved.artists.filterNot { pendingArtists(remoteReactionKey() + ":artists")[it.id]?.on == false }
             }
         }
     }
@@ -135,7 +144,7 @@ class LibraryRepository(private val c: AppContainer) {
     fun forgetAccount() {
         synchronized(this) { keptLoad.cancel() }
         synchronized(pending) { pending.clear(); followUps?.cancel() }
-        playlists.value = emptyList(); albums.value = emptyList(); artists.value = emptyList()
+        playlists.value = emptyList(); albums.value = emptyList(); artists.value = emptyList(); artistLibraryReady.value = false
         c.scope.launch(Dispatchers.IO) { c.offline.clear(); c.homeCache.clear() }
     }
 
@@ -375,10 +384,22 @@ class LibraryRepository(private val c: AppContainer) {
                 remote.filter { it.id !in before }.forEach { c.downloads.download(it) }
             }
             }
+            val artistKey = remoteReactionKey() + ":artists"
+            val artistEdits = synchronized(artistEditLock) { pendingArtists(artistKey) }
             flushArtistEdits()
             reloadPlaylists()
             runCatching { albums.value = c.ytm.libraryAlbums() }
-            runCatching { artists.value = c.ytm.libraryArtists() }
+            runCatching {
+                val remote = c.ytm.libraryArtists()
+                synchronized(artistEditLock) {
+                    if (c.settings.current.isLoggedIn && artistKey == remoteReactionKey() + ":artists") {
+                        val edits = artistEdits + pendingArtists(artistKey)
+                        val kept = artists.value.filter { edits[it.id]?.on == true }
+                        artists.value = (remote.filter { edits[it.id]?.on != false } + kept).distinctBy { it.id }
+                        artistLibraryReady.value = true
+                    }
+                }
+            }
             runCatching {
                 c.ytm.accountInfo()?.let { c.settings.saveAccountInfo(it.name, it.email, it.avatar) }
             }
@@ -651,7 +672,7 @@ class LibraryRepository(private val c: AppContainer) {
 
     fun setArtistExcluded(artist: com.prism.music.data.foryou.Excluded, excluded: Boolean, channelId: String? = null) {
         if (excluded) {
-            val favorite = c.artistPrefs.favorites.value.firstOrNull { it.id == artist.id || it.name.equals(artist.name, true) }
+            val favorite = (c.artistPrefs.favorites.value + artists.value.filterIsInstance<ArtistItem>().map { FavoriteArtist(it.id, it.title, it.thumbnail) }).firstOrNull { it.id == artist.id || it.name.equals(artist.name, true) }
             if (favorite != null || channelId != null) {
                 setFavoriteArtist(favorite ?: FavoriteArtist(artist.id, artist.name, artist.thumbnail), channelId ?: favorite?.channelId, false)
             }
