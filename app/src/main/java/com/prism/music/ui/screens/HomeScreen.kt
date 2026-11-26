@@ -323,7 +323,7 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
         val placed = ytShelves.values
         val extra = if (settings.autoAddSections) extraShelves(shelves, known, placed, picks, shelves.quickPicks(settings.accountName), dial, settings.home.hideKinds)
             .map { HomeSectionConfig(shelfKey(it.title), it.title) } else emptyList()
-        HomeSections.inSeason(settings.home.layout, today).filter { it.visible } + extra
+        (HomeSections.inSeason(settings.home.layout, today).filter { it.visible } + extra).distinctBy { it.key }
     }
     // Last month's recap (1.8.5), part of the Replay section: looked for once while Home is open.
     val recap = rememberRecapCard(wanted = layout.any { it.key == HomeSections.REPLAY })
@@ -502,7 +502,7 @@ fun HomeScreen(bottomPadding: androidx.compose.ui.unit.Dp) {
                             if (!online) { if (offlinePicks.isNotEmpty()) SongSection(cfg, cfg.titled(tr(R.string.quick_picks)), tr(R.string.ready_offline), offlinePicks, snap = true, firstAnchor = firstPick) }
                             else if (pickSongs.isNotEmpty()) SongSection(
                                 cfg, cfg.titled(tr(R.string.quick_picks)), picks?.strapline, pickSongs, snap = true, firstAnchor = firstPick,
-                                play = if (settings.quickPicksRadio) { list, i -> c.player.playTrackVibe(list[i]) } else null,
+                                play = if (settings.quickPicksRadio) { list, i -> c.player.playTrackVibe(list[i], announce = true) } else null,
                             )
                         }
                         HomeSections.RECENT -> {
@@ -771,13 +771,12 @@ private fun HomeTopRow(greeting: String, today: String, showGreeting: Boolean) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (showGreeting) Column(Modifier.weight(1f)) {
-            com.prism.music.ui.components.Eyebrow(today)
-            Text(greeting, style = com.prism.music.ui.components.pageTitleStyle(), maxLines = 2)
+            Text(tr(R.string.prism_for_you_page), style = com.prism.music.ui.components.pageTitleStyle(), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             val profile by LocalContainer.current.account.profile.collectAsState()
             val name = profile?.name ?: settings.accountName
-            if (settings.greetingShowName && name.isNotBlank()) Text(
-                name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            val subtitle = if (settings.greetingShowName && name.isNotBlank()) "$greeting, $name" else greeting
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             // Settings, Home screen, Continue line hides it.
             if (settings.home.continueLine) ContextLine()
         } else Spacer(Modifier.weight(1f))

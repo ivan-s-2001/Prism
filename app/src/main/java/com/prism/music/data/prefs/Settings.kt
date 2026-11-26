@@ -1538,14 +1538,15 @@ object HomeSections {
 
     /** What a fresh install's Home shows (and what Reset goes back to). */
     val initial = listOf(
-        HomeSectionConfig(REPLAY, "Replay teaser", style = SectionStyle.HERO),
         HomeSectionConfig(GREETING, TILES_TITLE, style = SectionStyle.HERO),
-        HomeSectionConfig(QUICK_PICKS, "Quick picks", style = SectionStyle.LIST),
-        HomeSectionConfig(SEASONAL, "Holiday music"),
+        HomeSectionConfig(RECENT, "Recently played"),
         HomeSectionConfig(MADE_FOR_YOU, "Made for you"),
+        HomeSectionConfig(QUICK_PICKS, "Quick picks", style = SectionStyle.LIST),
         HomeSectionConfig(NEW_RELEASES, NEW_RELEASES_TITLE),
         HomeSectionConfig(ON_REPEAT, "On repeat"),
         HomeSectionConfig("${YT_PREFIX}mixed for you", "Mixed for you"),
+        HomeSectionConfig(SEASONAL, "Holiday music"),
+        HomeSectionConfig(REPLAY, "Replay teaser", style = SectionStyle.HERO),
     )
 
     /**
