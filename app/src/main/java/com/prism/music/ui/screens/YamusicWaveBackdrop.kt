@@ -53,17 +53,18 @@ internal class WaveColorTransition(initial: WaveColors) {
     private var from = initial
     private var target = initial
     private var startMs = 0L
+    private var durationMs = 1200
 
     fun at(nowMs: Long): WaveColors {
         if (from == target) return target
-        val t = ((nowMs - startMs).toFloat() / 1200f).coerceIn(0f, 1f)
+        val t = ((nowMs - startMs).toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
         if (t >= 1f) return target
         val k = t * t * (3f - 2f * t)
         return WaveColors(from.palette.zip(target.palette) { a, b -> lerp(a, b, k) },
             from.opacity + (target.opacity - from.opacity) * k)
     }
 
-    fun update(next: WaveColors, nowMs: Long, animate: Boolean): WaveColors {
+    fun update(next: WaveColors, nowMs: Long, animate: Boolean, duration: Int = 1200): WaveColors {
         if (!animate) {
             from = next
             target = next
@@ -74,6 +75,7 @@ internal class WaveColorTransition(initial: WaveColors) {
             from = at(nowMs)
             target = next
             startMs = nowMs
+            durationMs = duration.coerceAtLeast(1)
         }
         return at(nowMs)
     }
@@ -100,6 +102,7 @@ internal fun flowingWavePalette(colors: List<Color>, phase: Float): List<Color> 
 internal fun YamusicWaveBackdrop(
     modifier: Modifier, a: Color, b: Color, c: Color, signal: State<VibeWaveSignal>,
     opacity: Float, scale: Float, style: StreamVisualStyle, energy: Float, moving: Boolean,
+    colorDurationMs: Int = 1200,
 ) {
     var viewport by remember { mutableStateOf(WaveViewport()) }
     val scene = LocalVibeScene.current
@@ -108,6 +111,7 @@ internal fun YamusicWaveBackdrop(
     }
     val targetColors = rememberUpdatedState(WaveColors(palette, opacity))
     val transition = remember { WaveColorTransition(targetColors.value) }
+    val duration = rememberUpdatedState(colorDurationMs)
     val frame by produceState<WaveFrame?>(null, viewport, scale, style, energy, moving, scene) {
         val view = viewport.size
         if (view.width <= 0 || view.height <= 0) {
@@ -122,7 +126,7 @@ internal fun YamusicWaveBackdrop(
             WaveInput(if (moving) signal.value else VibeWaveSignal(7f, 0f, EMPTY_BANDS),
                 scene?.anchor, targetColors.value)
         }.conflate().collect { (sample, anchor, colors) ->
-                val blended = transition.update(colors, SystemClock.elapsedRealtime(), moving)
+                val blended = transition.update(colors, SystemClock.elapsedRealtime(), moving, duration.value)
                 val framePalette = if (moving) flowingWavePalette(blended.palette, sample.phase) else blended.palette
                 val drift = waveDrift(sample.phase, minOf(view.width, view.height).toFloat(), moving)
                 val at = if (anchor == null) Offset(view.width * 0.5f, view.height * 0.38f) else anchor - viewport.origin

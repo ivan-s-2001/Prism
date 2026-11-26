@@ -213,6 +213,9 @@ object SpectrumPresets {
      */
     var coverStops by mutableStateOf<List<Int>>(emptyList())
 
+    /** Unanimated cover palette for consumers that own their own frame-synchronized transition. */
+    var coverTargetStops by mutableStateOf<List<Int>>(emptyList())
+
     /** A preset's name, ours included ("From the cover", "Your own"). */
     fun label(key: String): String = when (key) {
         COVER -> COVER_LABEL
