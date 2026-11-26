@@ -948,6 +948,38 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         try { player.replaceKeepingOrder(idx, item) } finally { swappingInPlace = null }
     }
 
+    private var waitingForVibeTrack: Pair<QueueSource, String>? = null
+
+    private fun isGeneratedTransition(song: Song, index: Int, source: QueueSource): Boolean =
+        song.id !in c.queue.userQueued.value &&
+            (source.isMyWave || (source.isContextVibe && song.id != source.seedId) ||
+                index >= c.queue.autoplayStart.value.let { if (it < 0) Int.MAX_VALUE else it })
+
+    private fun transitionAllowed(song: Song, index: Int, source: QueueSource, automatic: Boolean): Boolean {
+        val manual = song.id in c.queue.userQueued.value
+        val generated = isGeneratedTransition(song, index, source)
+        return VibeQueuePolicy.transitionAllowed(
+            explicitAllowed = com.prism.music.data.ExplicitFilter.plays(c.settings.current.behavior.explicitContent, song),
+            available = song.isLive || c.network.online.value || c.availableOffline(song.id),
+            automatic = automatic,
+            manual = manual,
+            disliked = c.library.isDisliked(song.id),
+            generated = generated,
+            excluded = c.exclusions.blocks(song) || c.exclusions.isSongExcluded(song.id),
+        )
+    }
+
+    private fun nextAllowedIndex(source: QueueSource, automatic: Boolean): Int {
+        val timeline = player.currentTimeline
+        var index = timeline.getNextWindowIndex(player.currentMediaItemIndex, Player.REPEAT_MODE_OFF, player.shuffleModeEnabled)
+        while (index != C.INDEX_UNSET) {
+            val candidate = player.getMediaItemAt(index).toSong()
+            if (candidate != null && transitionAllowed(candidate, index, source, automatic)) return index
+            index = timeline.getNextWindowIndex(index, Player.REPEAT_MODE_OFF, player.shuffleModeEnabled)
+        }
+        return C.INDEX_UNSET
+    }
+
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         // Song ↔ video and the like swap the item but it's still the same listen: the play time
         // keeps adding up, and nothing that starts a new song (history, lyrics, prefetch) runs again.
@@ -963,65 +995,25 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         flushPlayTime(skipped = reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK)
         applyLiveVideo()
         val song = mediaItem?.toSong() ?: return
-        // Disliked songs are passed over when the queue reaches them on its own (tapping one still plays it), and so are
-        // artists the listener doesn't want played when a radio or autoplay brought them (a playlist they picked plays as it is).
         val queueSource = c.queue.source.value
-        fun pickedAt(candidate: Song, index: Int): Boolean =
-            candidate.id !in c.queue.userQueued.value &&
-                (queueSource.isMyWave || (queueSource.isContextVibe && candidate.id != queueSource.seedId) ||
-                    index >= c.queue.autoplayStart.value.let { if (it < 0) Int.MAX_VALUE else it })
-        fun unwantedAt(candidate: Song, index: Int): Boolean =
-            candidate.id !in c.queue.userQueued.value &&
-                (c.library.isDisliked(candidate.id) || (pickedAt(candidate, index) &&
-                    (c.exclusions.blocks(candidate) || c.exclusions.isSongExcluded(candidate.id))))
-        val picked = pickedAt(song, player.currentMediaItemIndex)
-        if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && !c.queue.followingHost && unwantedAt(song, player.currentMediaItemIndex)) {
-            // A seek reports SEEK rather than AUTO, so jumping just one item can let a second blocked song play.
-            // Walk the actual shuffle order and preserve explicitly queued songs.
+        val picked = isGeneratedTransition(song, player.currentMediaItemIndex, queueSource)
+        val automatic = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO
+        waitingForVibeTrack = null
+        if (!c.queue.followingHost && !transitionAllowed(song, player.currentMediaItemIndex, queueSource, automatic)) {
             untrack()
-            val timeline = player.currentTimeline
-            var index = timeline.getNextWindowIndex(player.currentMediaItemIndex, Player.REPEAT_MODE_OFF, player.shuffleModeEnabled)
-            while (index != C.INDEX_UNSET) {
-                val candidate = player.getMediaItemAt(index).toSong()
-                if (candidate == null || !unwantedAt(candidate, index)) {
-                    player.seekTo(index, 0)
-                    return
-                }
-                index = timeline.getNextWindowIndex(index, Player.REPEAT_MODE_OFF, player.shuffleModeEnabled)
+            val next = nextAllowedIndex(queueSource, automatic)
+            if (next != C.INDEX_UNSET) {
+                player.seekTo(next, 0)
+                return
             }
+            // Never play a rejected track just because the queue ran out. Fill the Vibe in the
+            // background and position it at the first allowed track, without overriding Pause.
+            if (automatic && queueSource.isVibe) waitingForVibeTrack = queueSource to song.id
             player.pause()
-            maybeAutoplay()
+            if (!com.prism.music.data.ExplicitFilter.plays(c.settings.current.behavior.explicitContent, song))
+                c.player.reportError(tr(R.string.explicit_none_left))
+            if (automatic) maybeAutoplay()
             return
-        }
-        // #216: with the explicit filter on, an explicit song that got into the queue anyway (a mix, the DJ, a Look's
-        // shuffle) is passed over for the next one that may play; with none left, the music stops there.
-        val explicitMode = c.settings.current.behavior.explicitContent
-        if (!c.queue.followingHost && !com.prism.music.data.ExplicitFilter.plays(explicitMode, song)) {
-            // Passed over unheard: the seek's own transition mustn't count the song that just finished a second time,
-            // and with none left nothing is credited while the explicit song sits there ([onPlayWhenReadyChanged] keeps it paused).
-            untrack()
-            val tl = player.currentTimeline
-            var i = tl.getNextWindowIndex(player.currentMediaItemIndex, Player.REPEAT_MODE_OFF, player.shuffleModeEnabled)
-            while (i != C.INDEX_UNSET) {
-                val next = player.getMediaItemAt(i).toSong()
-                if (next == null || com.prism.music.data.ExplicitFilter.plays(explicitMode, next)) { player.seekTo(i, 0); return }
-                i = tl.getNextWindowIndex(i, Player.REPEAT_MODE_OFF, player.shuffleModeEnabled)
-            }
-            player.pause()
-            c.player.reportError(tr(R.string.explicit_none_left))
-            return
-        }
-        // Offline, songs that aren't on the phone are passed over too (#55): they'd play as far as any cached start
-        // goes and then cut to the next song.
-        if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && !song.isLive && !c.network.online.value && !c.availableOffline(song.id)) {
-            // Straight to the next one that is (in play order), not just the next: that one may not be here either.
-            val tl = player.currentTimeline
-            var i = tl.getNextWindowIndex(player.currentMediaItemIndex, Player.REPEAT_MODE_OFF, player.shuffleModeEnabled)
-            while (i != C.INDEX_UNSET) {
-                val next = player.getMediaItemAt(i)
-                if (next.toSong()?.isLive == true || c.availableOffline(next.mediaId)) { untrack(); player.seekTo(i, 0); return }
-                i = tl.getNextWindowIndex(i, Player.REPEAT_MODE_OFF, player.shuffleModeEnabled)
-            }
         }
         trackedSong = song
         trackedFeedbackMs = 0L
@@ -1308,6 +1300,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             stalledAt = 0
         }
         if (playbackState == Player.STATE_READY) checkLength()
+        if (playbackState == Player.STATE_ENDED && player.playWhenReady && c.queue.source.value.isVibe) maybeAutoplay()
     }
 
     /** The song whose length was last checked against what's playing ([checkLength]). */
@@ -1904,7 +1897,8 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
         if (player.currentMediaItem?.toSong()?.let { it.isEpisode || it.isLive } == true) return
         if (src.kind != QueueKind.SINGLE && !radio && !wave && player.repeatMode != Player.REPEAT_MODE_OFF) return
         val remaining = player.mediaItemCount - player.currentMediaItemIndex
-        if (remaining > (if (src.isVibe) VibeQueuePolicy.REFILL_AT else 3) || c.queue.autoplayLoading) return
+        val waiting = waitingForVibeTrack?.let { it.first === src && it.second == player.currentMediaItem?.mediaId } == true
+        if ((!waiting && remaining > (if (src.isVibe) VibeQueuePolicy.REFILL_AT else 3)) || c.queue.autoplayLoading) return
         if (vibeRetryJob?.isActive == true && vibeRetrySource === src) return
         val offline = !c.network.isOnline()
         val waveStyle = com.prism.music.data.foryou.MyWave.style(src.originId)
@@ -1993,10 +1987,14 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                     if (player.mediaItemCount > before) {
                         vibeRetryAttempt = 0
                         vibeRetrySource = src
-                        if (player.playbackState == Player.STATE_ENDED && player.playWhenReady &&
-                            player.currentMediaItemIndex < player.mediaItemCount - 1) {
-                            player.seekToNextMediaItem()
-                            player.prepare()
+                        val waiting = waitingForVibeTrack?.let { it.first === src && it.second == player.currentMediaItem?.mediaId } == true
+                        if (waiting || (player.playbackState == Player.STATE_ENDED && player.playWhenReady)) {
+                            val next = nextAllowedIndex(src, automatic = true)
+                            if (next != C.INDEX_UNSET) {
+                                waitingForVibeTrack = null
+                                player.seekTo(next, 0)
+                                player.prepare()
+                            }
                         }
                     } else scheduleVibeRetry(src)
                 }
