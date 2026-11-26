@@ -12,6 +12,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VibeSceneTest {
+    @Test fun sharedBlurSpreadsHighlightsAndPreservesConstantLight() {
+        val w = 7
+        val h = 7
+        val source = FloatArray(w * h * 3)
+        val result = FloatArray(source.size)
+        val scratch = FloatArray(source.size)
+        source[(3 * w + 3) * 3] = 1f
+        com.prism.music.ui.screens.blurWaveLight(source, result, scratch, w, h, 1)
+        assertEquals(1f / 9f, result[(3 * w + 3) * 3], 0.0001f)
+        assertTrue(result[(3 * w + 2) * 3] > 0f)
+        assertEquals(0f, result[(3 * w + 3) * 3 + 1], 0.0001f)
+        source.fill(0.5f)
+        com.prism.music.ui.screens.blurWaveLight(source, result, scratch, w, h, 2)
+        assertTrue(result.all { kotlin.math.abs(it - 0.5f) < 0.0001f })
+    }
+
     @Test fun ringHasOpenCenterInsteadOfFilledBlob() {
         val empty = FloatArray(28)
         val center = com.prism.music.ui.screens.liquidRing(0f, 0f, 0f, 0f, empty)
