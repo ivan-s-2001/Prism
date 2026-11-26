@@ -96,7 +96,38 @@ class LibraryRepository(private val c: AppContainer) {
 
     private val dislikePrefs = c.app.getSharedPreferences("dislikes", android.content.Context.MODE_PRIVATE)
     /** Songs to keep out of autoplay, radio and smart downloads. */
-    val dislikedIds = MutableStateFlow(dislikePrefs.getStringSet("ids", emptySet())!!.toSet())
+    private fun dislikeScope(): String? = remoteReactionKey().takeIf { c.settings.current.isLoggedIn }
+    private fun scopedDislikeKey(owner: String?): String = "dislikes_scope:" + (owner ?: "device")
+    private val localDislikesKey = "dislikes_local_files"
+
+    private fun loadScopedDislikes(owner: String?): Set<String> {
+        if (!dislikePrefs.getBoolean("dislikes_scoped_v1", false)) {
+            val legacy = dislikePrefs.getStringSet("ids", emptySet()).orEmpty()
+            check(dislikePrefs.edit()
+                .putStringSet(scopedDislikeKey(owner), legacy.filterNot { it.startsWith(Song.LOCAL_PREFIX) }.toSet())
+                .putStringSet(localDislikesKey, legacy.filter { it.startsWith(Song.LOCAL_PREFIX) }.toSet())
+                .putBoolean("dislikes_scoped_v1", true).commit()) { "Could not migrate dislikes" }
+        }
+        return dislikePrefs.getStringSet(scopedDislikeKey(owner), emptySet()).orEmpty().toSet() +
+            dislikePrefs.getStringSet(localDislikesKey, emptySet()).orEmpty()
+    }
+
+    private fun saveScopedDislikes(owner: String?, ids: Set<String>) {
+        check(dislikePrefs.edit()
+            .putStringSet(scopedDislikeKey(owner), ids.filterNot { it.startsWith(Song.LOCAL_PREFIX) }.toSet())
+            .putStringSet(localDislikesKey, ids.filter { it.startsWith(Song.LOCAL_PREFIX) }.toSet())
+            .putStringSet("ids", ids).commit()) { "Could not save dislikes" }
+    }
+
+    private var activeDislikeScope = dislikeScope()
+    val dislikedIds = MutableStateFlow(loadScopedDislikes(activeDislikeScope))
+    // Called with reactionLock held, so an account switch cannot mix two sets of dislikes.
+    private fun refreshDislikeScope() {
+        val scope = dislikeScope()
+        if (scope == activeDislikeScope) return
+        dislikedIds.value = loadScopedDislikes(scope)
+        activeDislikeScope = scope
+    }
     /** Keep the metadata for excluded tracks, including exclusions saved by older versions. */
     val dislikedSongs: StateFlow<List<Song>> = dislikedIds.map { ids ->
         val rows = ids.toList().chunked(400).flatMap { songs.getAll(it) }.associateBy { it.id }
@@ -195,6 +226,7 @@ class LibraryRepository(private val c: AppContainer) {
         c.likedPlaylist.forget()
         val kept = c.imports.keptLikes() // imported likes kept in Prism are this phone's, not the channel's
         songs.liked().map { it.id }.filterNot { it.startsWith(Song.LOCAL_PREFIX) || it in kept }.forEach { songs.setLiked(it, false, 0) }
+        refreshDislikeScope()
         forgetAccount()
         val artistKey = remoteReactionKey() + ":artists"
         cachedSubscriptions(artistKey)?.let { subscribedArtists.value = it; artistLibraryReady.value = true }
@@ -280,6 +312,7 @@ class LibraryRepository(private val c: AppContainer) {
                         val latest = synchronized(pendingReactions) { pendingReactions[request.journalKey] === request }
                         if (!latest || request.remoteKey != reactionOwner(request.song.id)) false
                         else {
+                            refreshDislikeScope()
                             applyReaction(request.song, request.target, request.remoteKey)
                             synchronized(pendingReactions) {
                                 if (pendingReactions[request.journalKey] === request)
@@ -425,12 +458,12 @@ class LibraryRepository(private val c: AppContainer) {
         }
         if (disliked) {
             val next = dislikedIds.value + song.id
-            check(dislikePrefs.edit().putStringSet("ids", next).commit()) { "Could not save dislikes" }
+            saveScopedDislikes(activeDislikeScope, next)
             dislikedIds.value = next
         }
         if (!disliked && oldDisliked) {
             val next = dislikedIds.value - song.id
-            check(dislikePrefs.edit().putStringSet("ids", next).commit()) { "Could not save dislikes" }
+            saveScopedDislikes(activeDislikeScope, next)
             dislikedIds.value = next
         }
         if (remoteKey != null && !song.isLocal) {
@@ -469,9 +502,20 @@ class LibraryRepository(private val c: AppContainer) {
             val nowElapsed = android.os.SystemClock.elapsedRealtime()
             val acknowledged = acknowledgedReactions[key]
             acknowledged?.entries?.removeAll { nowElapsed - it.value.at >= 60_000L }
-            val localEdits = mergeReactionEdits(beforeFetch, acknowledged.orEmpty().mapValues { it.value.target }, pendingRemote(key))
-            val remote = fetched.filterNot { it.id in dislikedIds.value || localEdits[it.id]?.let { reaction -> reaction != SongReaction.LIKE } == true }
             if (remoteReactionKey() != key || !c.settings.current.isLoggedIn) { syncState.value = SyncState.IDLE; return@withContext }
+            refreshDislikeScope()
+            val queued = synchronized(pendingReactions) {
+                pendingReactions.values.filter { it.remoteKey == key }.associate { it.song.id to it.target }
+            }
+            val localEdits = mergeReactionEdits(beforeFetch, acknowledged.orEmpty().mapValues { it.value.target }, pendingRemote(key) + queued)
+            // A confirmed remote LIKE is explicit positive evidence; absence from Liked is not evidence of a dislike.
+            val remote = fetched.filterNot { localEdits[it.id]?.let { reaction -> reaction != SongReaction.LIKE } == true }
+            val remoteLikes = remote.mapTo(hashSetOf()) { it.id }
+            val remainingDislikes = dislikedIds.value - remoteLikes
+            if (remainingDislikes != dislikedIds.value) {
+                saveScopedDislikes(activeDislikeScope, remainingDislikes)
+                dislikedIds.value = remainingDislikes
+            }
             val fetchedIds = fetched.mapTo(hashSetOf()) { it.id }
             acknowledged?.entries?.removeAll { (id, ack) -> (id in fetchedIds) == (ack.target == SongReaction.LIKE) }
             val before = songs.liked().mapTo(hashSetOf()) { it.id } - dislikedIds.value
@@ -737,6 +781,13 @@ class LibraryRepository(private val c: AppContainer) {
     }
 
     init {
+        c.scope.launch(Dispatchers.IO) {
+            c.settings.flow.map { it.isLoggedIn to (it.dataSyncId ?: "${it.authUser}:${it.accountName}") }.distinctUntilChanged().collect {
+                kotlinx.coroutines.delay(1_000L)
+                reactionLock.withLock { refreshDislikeScope() }
+                restoreReactionJournal()
+            }
+        }
         c.scope.launch(Dispatchers.IO) {
             kotlinx.coroutines.delay(1_000L)
             restoreReactionJournal()
