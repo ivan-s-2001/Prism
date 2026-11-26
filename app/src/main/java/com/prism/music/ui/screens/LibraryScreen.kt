@@ -395,7 +395,10 @@ fun LibraryScreen(bottomPadding: Dp) {
             if (!c.spotify.isSpotifyPlaylist(l.id)) it
             else it.copy(subtitle = spotifyFilling[l.id]?.let { f -> tr(R.string.spot_playlist_syncing, f.done, f.total) }
                 ?: tr(R.string.spot_playlist_subtitle, com.prism.music.data.model.songCount(l.songs.size)))
-        } } + (if (settings.isLoggedIn) emptyList() else savedPlaylists.map { it.item() }) + playlists.filter { it.id != "LM" }
+        } }.let { local ->
+            (local + (if (settings.isLoggedIn) emptyList() else savedPlaylists.map { it.item() }) +
+                playlists.filter { it.id.removePrefix("VL") != "LM" }).distinctBy { it.id.removePrefix("VL") }
+        }
     }
     if (choosingFrom) SongsFromSheet(songsFrom, myPlaylists, { choosingFrom = false }) { chosen ->
         // Opened again: a YouTube playlist picked anew is read afresh.
@@ -439,8 +442,16 @@ fun LibraryScreen(bottomPadding: Dp) {
     }
     val localTracks by c.localMusic.tracks.collectAsState()
 
-    LaunchedEffect(pager.currentPage == LibTab.ARTISTS.ordinal, artists.size) {
-        if (pager.currentPage == LibTab.ARTISTS.ordinal) c.library.loadArtistThumbs(artists.filter { it.thumbnail == null }.take(60).map { it.id })
+    val currentTab = tabs.getOrNull(pager.currentPage)
+    val missingArtistThumbs = remember(currentTab, artists, favorites, thumbs) {
+        when (currentTab) {
+            LibTab.ARTISTS -> artists.filter { it.thumbnail == null }.take(60).map { it.id }
+            LibTab.OVERVIEW -> favorites.take(12).filter { it.thumbnail == null && thumbs[it.id] == null }.map { it.id }
+            else -> emptyList()
+        }
+    }
+    LaunchedEffect(missingArtistThumbs) {
+        if (missingArtistThumbs.isNotEmpty()) c.library.loadArtistThumbs(missingArtistThumbs)
     }
 
     LaunchedEffect(settings.isLoggedIn) {

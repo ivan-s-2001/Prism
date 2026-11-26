@@ -94,9 +94,9 @@ class TvBrowseTests {
         TvFixture.launch()
         goTo(TvSection.LIBRARY)
         compose.awaitFocusOn(hasTestTag("$TAG_LIBRARY/tab/0"), 10_000)
-        // Artists: only an account has them.
-        TvFixture.right(); Thread.sleep(250); TvFixture.right()
-        compose.awaitFocusOn(hasTestTag("$TAG_LIBRARY/tab/2"))
+        // Overview is first, then playlists, albums and artists.
+        repeat(3) { TvFixture.right(); Thread.sleep(250) }
+        compose.awaitFocusOn(hasTestTag("$TAG_LIBRARY/tab/3"))
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("$TAG_LIBRARY/empty"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         TvFixture.down()
         compose.awaitFocusOn(hasTestTag("$TAG_LIBRARY/signin"))
@@ -117,6 +117,8 @@ class TvBrowseTests {
         TvFixture.launch()
         goTo(TvSection.LIBRARY)
         compose.awaitFocusOn(hasTestTag("$TAG_LIBRARY/tab/0"), 10_000)
+        TvFixture.right()
+        compose.awaitFocusOn(hasTestTag("$TAG_LIBRARY/tab/1"), 10_000)
         TvFixture.down()
         compose.awaitFocusOn(hasTestTag("$TAG_LIBRARY/grid/0"), 10_000)
         compose.waitUntil(10_000) { compose.onAllNodes(hasText("TV evening"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }

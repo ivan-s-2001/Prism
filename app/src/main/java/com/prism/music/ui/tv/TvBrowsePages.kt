@@ -119,7 +119,7 @@ fun TvSearchPlace(nav: TvNav) {
 }
 
 /** Library's tabs, in order. */
-enum class TvLibraryTab { PLAYLISTS, ALBUMS, ARTISTS, LIKED, HISTORY }
+enum class TvLibraryTab { OVERVIEW, PLAYLISTS, ALBUMS, ARTISTS, LIKED, HISTORY }
 
 /**
  * Library (TV): your playlists (YouTube's and Prism's own), albums, artists, liked songs and history, as on the phone
@@ -129,7 +129,7 @@ enum class TvLibraryTab { PLAYLISTS, ALBUMS, ARTISTS, LIKED, HISTORY }
 fun TvLibraryPlace(nav: TvNav) {
     val c = LocalContainer.current
     val scope = rememberCoroutineScope()
-    var tab by rememberSaveable { mutableStateOf(TvLibraryTab.PLAYLISTS) }
+    var tab by rememberSaveable { mutableStateOf(TvLibraryTab.OVERVIEW) }
     val ytPlaylists by c.library.playlists.collectAsState()
     val ytAlbums by c.library.albums.collectAsState()
     val artists by c.library.artists.collectAsState()
@@ -139,25 +139,73 @@ fun TvLibraryPlace(nav: TvNav) {
     val savedAlbums by c.prismLibrary.albums.collectAsState()
     val liked by c.library.likedShown.collectAsState()
     val recent by c.library.recent.collectAsState()
-    val items: List<BrowseItem> = remember(tab, ytPlaylists, ytAlbums, artists, favoriteArtists, prismLists, savedPlaylists, savedAlbums, liked, recent) {
-        when (tab) {
-            TvLibraryTab.PLAYLISTS -> (prismLists.map { it.item() } + savedPlaylists.map { it.item() } + ytPlaylists).distinctBy { it.id.removePrefix("VL") }
-            TvLibraryTab.ALBUMS -> (savedAlbums.map { it.item() } + ytAlbums).distinctBy { it.id }
-            TvLibraryTab.ARTISTS -> (favoriteArtists.map { com.prism.music.data.model.ArtistItem(it.id, it.name, tr(R.string.favorite), it.thumbnail) } + artists).distinctBy { it.id }
-            TvLibraryTab.LIKED -> liked.map(::SongItem)
-            TvLibraryTab.HISTORY -> recent.distinctBy { it.id }.map(::SongItem)
-        }
-    }
-    val labels = listOf(tr(R.string.playlists), tr(R.string.albums), tr(R.string.artists), tr(R.string.liked_songs), tr(R.string.history))
     val settings by c.settings.flow.collectAsState()
+    val downloads by c.downloadState.collectAsState()
+    val artistThumbs by c.library.artistThumbs.collectAsState()
+    val pinned by c.library.pinned.collectAsState()
+    val completed = remember(downloads) {
+        downloads.values.filter { it.state == androidx.media3.exoplayer.offline.Download.STATE_COMPLETED }
+            .mapNotNull { it.song }.distinctBy { it.id }
+    }
+    val mine = remember(liked, completed) { (liked + completed).distinctBy { it.id } }
+    val collections = remember(ytPlaylists, ytAlbums, artists, favoriteArtists, prismLists, savedPlaylists,
+        savedAlbums, mine, artistThumbs, pinned, settings.isLoggedIn) {
+        val ranks = pinned.withIndex().associate { (i, id) -> id.removePrefix("VL") to i }
+        val lists = (prismLists.map { it.item() } +
+            (if (settings.isLoggedIn) emptyList() else savedPlaylists.map { it.item() }) +
+            ytPlaylists.filter { it.id.removePrefix("VL") != "LM" })
+            .distinctBy { it.id.removePrefix("VL") }.sortedBy { ranks[it.id.removePrefix("VL")] ?: Int.MAX_VALUE }
+        val albums = (savedAlbums.map { it.item() } + ytAlbums +
+            (if (settings.isLoggedIn) emptyList() else com.prism.music.data.LibraryRepository.albumsFrom(mine)))
+            .distinctBy { it.id }
+        val starred = favoriteArtists.map { f ->
+            com.prism.music.data.model.ArtistItem(f.id, f.name, tr(R.string.favorite), f.thumbnail ?: artistThumbs[f.id])
+        }
+        val artistList = (starred + artists + com.prism.music.data.LibraryRepository.artistsFrom(mine)).distinctBy { it.id }
+        mapOf(TvLibraryTab.PLAYLISTS to lists, TvLibraryTab.ALBUMS to albums, TvLibraryTab.ARTISTS to artistList)
+    }
+    val labels = listOf(tr(R.string.prism_collection_overview), tr(R.string.playlists), tr(R.string.albums),
+        tr(R.string.artists), tr(R.string.liked_songs), tr(R.string.history))
+    val explicit = settings.behavior.explicitContent
+    val allLiked = remember(liked, explicit) { com.prism.music.data.ExplicitFilter.shown(explicit, liked).distinctBy { it.id }.map(::SongItem) }
+    val history = remember(recent, explicit) { com.prism.music.data.ExplicitFilter.shown(explicit, recent).distinctBy { it.id }.map(::SongItem) }
+    val offlineSongs = remember(completed, explicit) { com.prism.music.data.ExplicitFilter.shown(explicit, completed).map(::SongItem) }
+    val items: List<BrowseItem> = when (tab) {
+        TvLibraryTab.OVERVIEW -> emptyList()
+        TvLibraryTab.LIKED -> allLiked
+        TvLibraryTab.HISTORY -> history
+        else -> collections[tab].orEmpty()
+    }
+    val overview = remember(collections, allLiked, history, offlineSongs, favoriteArtists, artistThumbs) {
+        val favoriteCards = favoriteArtists.distinctBy { it.id }.map { f ->
+            com.prism.music.data.model.ArtistItem(f.id, f.name, "", f.thumbnail ?: artistThumbs[f.id])
+        }
+        listOf(
+            TvHomeRow("playlists", labels[TvLibraryTab.PLAYLISTS.ordinal], collections[TvLibraryTab.PLAYLISTS].orEmpty()),
+            TvHomeRow("liked", labels[TvLibraryTab.LIKED.ordinal], allLiked),
+            TvHomeRow("artists", tr(R.string.your_artists), favoriteCards.ifEmpty { collections[TvLibraryTab.ARTISTS].orEmpty() }),
+            TvHomeRow("albums", labels[TvLibraryTab.ALBUMS.ordinal], collections[TvLibraryTab.ALBUMS].orEmpty()),
+            TvHomeRow("downloads", tr(R.string.downloads), offlineSongs),
+            TvHomeRow("history", labels[TvLibraryTab.HISTORY.ordinal], history),
+        ).filter { it.items.isNotEmpty() }
+    }
+    val previews = remember(overview) { overview.map { row -> row.copy(items = row.items.take(12)) } }
     TvLibraryScreen(
-        labels, tab.ordinal, { tab = TvLibraryTab.entries[it] },
+        labels, tab.ordinal, { i -> TvLibraryTab.entries.getOrNull(i)?.let { tab = it } },
         items.map { it.toTvItem() },
         onItem = { item ->
             val i = items.indexOfFirst { it.id == item.id }
             if (i >= 0) open(c, nav, items[i], items, i, labels[tab.ordinal], radio = false) { scope.launch { it() } }
         },
-        // Prism's own lists and history show signed out too; an empty tab says why, and how to fill it.
         empty = { TvLibraryEmpty(settings.isLoggedIn) { nav.go(TvRoute.Pair(signIn = true)) } },
+        overview = previews.takeIf { tab == TvLibraryTab.OVERVIEW },
+        onOverviewItem = { row, index ->
+            val full = overview.firstOrNull { it.key == row.key }
+            val selected = row.items.getOrNull(index)
+            if (full != null && selected != null) {
+                val i = full.items.indexOfFirst { it.id == selected.id }
+                if (i >= 0) open(c, nav, full.items[i], full.items, i, full.title, radio = false) { scope.launch { it() } }
+            }
+        },
     )
 }

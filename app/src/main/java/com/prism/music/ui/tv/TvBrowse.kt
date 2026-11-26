@@ -61,12 +61,14 @@ import com.prism.music.ui.theme.PrismIcons
 
 /** One row of cards under a title, remembering its column (search results, artist pages). */
 @Composable
-fun TvShelfRow(shelf: TvShelf, onItem: (Int) -> Unit, tag: String, modifier: Modifier = Modifier) {
+fun TvShelfRow(shelf: TvShelf, onItem: (Int) -> Unit, tag: String, modifier: Modifier = Modifier,
+    inset: androidx.compose.ui.unit.Dp = 48.dp,
+) {
     Column(modifier) {
-        TvRowTitle(shelf.title, Modifier.padding(start = 48.dp))
+        TvRowTitle(shelf.title, Modifier.padding(start = inset))
         LazyRow(
             Modifier.rememberedFocus().testTag(tag),
-            contentPadding = TvRowPadding,
+            contentPadding = PaddingValues(start = inset, end = 48.dp, top = 12.dp, bottom = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             itemsIndexed(shelf.items) { i, item ->
@@ -233,6 +235,8 @@ fun TvLibraryScreen(
     modifier: Modifier = Modifier,
     /** What an empty tab says instead (why, and what to do: signed out, sign in with the phone). */
     empty: (@Composable () -> Unit)? = null,
+    overview: List<TvHomeRow>? = null,
+    onOverviewItem: (TvHomeRow, Int) -> Unit = { _, _ -> },
 ) {
     Column(modifier.fillMaxSize().padding(start = 48.dp, top = 27.dp).testTag(TAG_LIBRARY)) {
         val light = tvLight()
@@ -262,6 +266,19 @@ fun TvLibraryScreen(
             }
         }
         Spacer(Modifier.height(24.dp))
+        if (!overview.isNullOrEmpty()) {
+            LazyColumn(
+                Modifier.fillMaxSize().testTag("$TAG_LIBRARY/overview"),
+                contentPadding = PaddingValues(bottom = 40.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                itemsIndexed(overview, key = { _, row -> row.key }) { _, row ->
+                    TvShelfRow(TvShelf(row.title, row.items.map { it.toTvItem() }),
+                        { index -> onOverviewItem(row, index) }, "$TAG_LIBRARY/overview/${row.key}", inset = 8.dp)
+                }
+            }
+            return@Column
+        }
         if (items.isEmpty() && empty != null) {
             Box(Modifier.fillMaxSize().padding(end = 48.dp, bottom = 48.dp).testTag("$TAG_LIBRARY/empty")) { empty() }
             return@Column
@@ -273,7 +290,7 @@ fun TvLibraryScreen(
             horizontalArrangement = Arrangement.spacedBy(24.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            itemsIndexed(items) { i, item ->
+            itemsIndexed(items, key = { _, item -> item.id }) { i, item ->
                 TvCard(item.art, item.title, item.subtitle, { onItem(item) }, Modifier.tvItem("$TAG_LIBRARY/grid/$i"), round = item.kind == TvItem.Kind.ARTIST, width = 132.dp, songId = item.id.takeIf { item.kind == TvItem.Kind.SONG || item.kind == TvItem.Kind.VIDEO })
             }
         }
