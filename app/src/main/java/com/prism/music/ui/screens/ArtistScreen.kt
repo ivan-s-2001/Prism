@@ -325,7 +325,7 @@ private fun ArtistContent(opened: ArtistOpened, bottomPadding: Dp) {
     val density = androidx.compose.ui.platform.LocalDensity.current
     // The page's own width (beside the navigation rail on wide windows), not the screen's.
     var pageWidth by remember { mutableStateOf(config.screenWidthDp.dp) }
-    val heroHeight = minOf(pageWidth * 1.1f, config.screenHeightDp.dp * 0.6f)
+    val heroHeight = minOf(pageWidth * 0.84f, config.screenHeightDp.dp * 0.48f).coerceAtLeast(150.dp)
     val heroPx = with(density) { heroHeight.toPx() }
     val heroScroll = { if (list.firstVisibleItemIndex == 0) list.firstVisibleItemScrollOffset.toFloat() else heroPx }
     // How far the bar has taken over from the hero (0 at the top of the page, 1 once the photo has gone).
@@ -368,15 +368,11 @@ private fun ArtistContent(opened: ArtistOpened, bottomPadding: Dp) {
                 if (opened.fromPhone && page.shelves.isEmpty()) item("nothing") {
                     com.prism.music.ui.components.EmptyState(PrismIcons.CloudOff, page.name, tr(R.string.artist_nothing_on_phone, page.name))
                 }
-                latestRelease(sections)?.takeIf { !offline || it.id in reachable }?.let { latest ->
-                    item("latest") { Spotlight(latest, offline, onOpen = { open(latest) }) }
-                }
                 // A kept page's top songs may not be the ones that are here: those come first, under their own heading.
                 if (offline && !opened.fromPhone && phoneReady.isNotEmpty()) item("phone") {
                     AppleHeader(tr(R.string.on_this_phone), null)
                     TopSongsGrid(phoneReady, page.name)
                 }
-                you?.let { y -> item("you") { ArtistYouPanel(y) } }
                 sections.topSongs?.let { shelf ->
                     item("top") {
                         AppleHeader(
@@ -385,6 +381,9 @@ private fun ArtistContent(opened: ArtistOpened, bottomPadding: Dp) {
                         )
                         TopSongsGrid(topSongs, tr(R.string.top_songs, page.name), ready)
                     }
+                }
+                latestRelease(sections)?.takeIf { !offline || it.id in reachable }?.let { latest ->
+                    item("latest") { Spotlight(latest, offline, onOpen = { open(latest) }) }
                 }
                 if (essentials.isNotEmpty()) item("essentials") {
                     AppleHeader(tr(R.string.artist_essentials_title), null)
@@ -406,6 +405,7 @@ private fun ArtistContent(opened: ArtistOpened, bottomPadding: Dp) {
                     if (shown.items.isNotEmpty()) shelfItems(shown, place = place, open = open)
                 }
                 sections.similar?.let { s -> item("similar") { AppleHeader(tr(R.string.similar_artists), more(s)); CardRow(s.items, 128.dp, round = true, open = open, dim = dimmed) } }
+                you?.let { y -> item("you") { ArtistYouPanel(y) } }
                 bio?.let { b -> item("bio") { ArtistBioPanel(b) } }
                 item("about") { AboutCard(page, genre) { showInfo = true } }
             }
@@ -504,44 +504,21 @@ private fun Hero(
                 }
             }
         }
-        Spacer(Modifier.height(16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            HeroButton(PrismIcons.Info, tr(R.string.about, page.name), onClick = onInfo)
-            PlayCapsule(onPlay)
-            HeroButton(PrismIcons.Shuffle, tr(R.string.shuffle_2, page.name), onClick = onShuffle)
-            HeroButton(
-                if (favorite) PrismIcons.StarFilled else PrismIcons.Star, if (favorite) tr(R.string.remove_from_favorites) else tr(R.string.add_to_favorites),
-                tint = if (favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, onClick = onFavorite,
-            )
-        }
-        Spacer(Modifier.height(6.dp))
-    }
-}
-
-/** Round frosted button for the hero row. */
-@Composable
-private fun HeroButton(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, tint: Color = MaterialTheme.colorScheme.onSurface, onClick: () -> Unit) {
-    Box(
-        Modifier.size(50.dp).clip(CircleShape).background(frostFill(1.5f))
-            .border(0.7.dp, Color.White.copy(alpha = if (LocalIsDark.current) 0.14f else 0.6f), CircleShape)
-            .clickable(onClickLabel = description, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) { Icon(icon, description, Modifier.size(24.dp), tint = tint) }
-}
-
-/** The big Play: white on dark pages, ink on light ones, like Apple's. */
-@Composable
-private fun PlayCapsule(onClick: () -> Unit) {
-    val dark = LocalIsDark.current
-    val bg = if (dark) Color.White else MaterialTheme.colorScheme.onSurface
-    val fg = if (dark) Color.Black else MaterialTheme.colorScheme.surface
-    Row(
-        Modifier.height(50.dp).width(146.dp).clip(RoundedCornerShape(25.dp)).background(bg).clickable(onClick = onClick),
-        horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(PrismIcons.Play, null, Modifier.size(26.dp), tint = fg)
-        Spacer(Modifier.width(4.dp))
-        Text(tr(R.string.widget_play), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = fg)
+        MusicPageActions(
+            enabled = true,
+            playTag = "artist:play",
+            onPlay = onPlay,
+            onShuffle = onShuffle,
+            extra = {
+                MusicPageIconAction(
+                    if (favorite) PrismIcons.StarFilled else PrismIcons.Star,
+                    tr(if (favorite) R.string.remove_from_favorites else R.string.add_to_favorites),
+                    selected = favorite,
+                    onClick = onFavorite,
+                )
+                MusicPageIconAction(PrismIcons.Info, tr(R.string.about, page.name), onClick = onInfo)
+            },
+        )
     }
 }
 

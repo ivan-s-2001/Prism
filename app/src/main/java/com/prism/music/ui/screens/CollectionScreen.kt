@@ -546,13 +546,13 @@ internal fun CollectionContent(type: CollectionType, live: LiveCollection, initi
             Toast.makeText(context, tr(R.string.saved_to_your_library), Toast.LENGTH_SHORT).show()
         }
     }
-    val radioId = when (type) {
+    val recommendationEndpoint = when (type) {
         CollectionType.ALBUM -> live.page.playlistId
         CollectionType.PLAYLIST -> live.page.id
         else -> null
     }?.let { "RDAMPL$it" }
     val canVibe = playable.any { !it.isEpisode && !it.isLive && !it.isVideo }
-    val startRadio: () -> Unit = {
+    val startVibe: () -> Unit = {
         scope.launch {
             val ok = c.player.playContextVibe(page.title, playable, origin = com.prism.music.playback.VibeOrigin(when (type) {
                 CollectionType.ALBUM -> com.prism.music.playback.VibeOriginKind.ALBUM
@@ -560,7 +560,7 @@ internal fun CollectionContent(type: CollectionType, live: LiveCollection, initi
                 CollectionType.MIX -> com.prism.music.playback.VibeOriginKind.MIX
                 else -> com.prism.music.playback.VibeOriginKind.COLLECTION
             }, page.title, art, artist = if (type == CollectionType.ALBUM) page.artists.joinToString(", ") { it.name }.ifBlank { null } else null)) {
-                if (!c.network.isOnline()) emptyList() else radioId?.let { c.radio(null, it).songs }.orEmpty()
+                if (!c.network.isOnline()) emptyList() else recommendationEndpoint?.let { c.radio(null, it).songs }.orEmpty()
             }
             if (!ok) Toast.makeText(context, tr(R.string.prism_vibe_start_failed), Toast.LENGTH_SHORT).show()
         }
@@ -818,10 +818,23 @@ internal fun CollectionContent(type: CollectionType, live: LiveCollection, initi
                 )
             }
             val playRow: @Composable () -> Unit = {
-                PlayShufflePills(
+                MusicPageActions(
                     enabled = playable.isNotEmpty(),
+                    playTag = "collectionPlay",
                     onPlay = { c.player.playQueue(playable, 0, source) },
                     onShuffle = { c.player.playQueue(playable, 0, source, shuffle = true) },
+                    extra = {
+                        if (type != CollectionType.DOWNLOADS) {
+                            MusicPageIconAction(
+                                icon = if (allDownloaded) PrismIcons.DownloadDone else PrismIcons.Download,
+                                label = tr(if (allDownloaded) R.string.remove_downloads else R.string.download_all),
+                                selected = allDownloaded,
+                                loading = downloadingCount > 0,
+                                onClick = toggleDownloads,
+                            )
+                        }
+                        MusicPageIconAction(PrismIcons.Share, tr(R.string.share), onClick = { sharing = true })
+                    },
                 )
             }
             // Under Play and Shuffle: above them, a long description pushed Play behind the mini player. The same with an
@@ -1012,21 +1025,13 @@ internal fun CollectionContent(type: CollectionType, live: LiveCollection, initi
             }
             CollectionTopBar(
                 title, { solid },
-                downloadIcon = when {
-                    type == CollectionType.DOWNLOADS -> null
-                    allDownloaded -> PrismIcons.DownloadDone
-                    else -> PrismIcons.Download
-                },
-                downloading = downloadingCount > 0,
-                onVibe = startRadio.takeIf { canVibe },
+                onVibe = startVibe.takeIf { canVibe },
                 vibeKind = when (type) {
                     CollectionType.ALBUM -> com.prism.music.playback.VibeOriginKind.ALBUM
                     CollectionType.PLAYLIST, CollectionType.PRISM -> com.prism.music.playback.VibeOriginKind.PLAYLIST
                     CollectionType.MIX -> com.prism.music.playback.VibeOriginKind.MIX
                     else -> com.prism.music.playback.VibeOriginKind.COLLECTION
                 },
-                onDownload = toggleDownloads,
-                onShare = { sharing = true },
                 onMore = { pageMenu = true },
             )
         }
@@ -1043,7 +1048,7 @@ internal fun CollectionContent(type: CollectionType, live: LiveCollection, initi
                     CollectionType.ALBUM -> R.string.vibe_from_album
                     CollectionType.PLAYLIST, CollectionType.PRISM -> R.string.vibe_from_playlist
                     else -> R.string.vibe_from_collection
-                })) { startRadio() })
+                })) { startVibe() })
                 if (savableId != null && saved != null) add(
                     SheetItem(if (saved == true) PrismIcons.LibraryAdded else PrismIcons.LibraryAdd, if (saved == true) tr(R.string.remove_from_library) else tr(R.string.add_to_library)) { toggleSaved() },
                 )
@@ -1220,57 +1225,13 @@ private fun rememberTellApart(items: List<com.prism.music.data.model.BrowseItem>
     }
 }
 
-/** Play and Shuffle side by side, as wide pills. */
-@Composable
-private fun PlayShufflePills(enabled: Boolean, onPlay: () -> Unit, onShuffle: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Pill(PrismIcons.Play, tr(R.string.widget_play), primary = true, enabled = enabled, modifier = Modifier.weight(1f).testTag("collectionPlay"), onClick = onPlay)
-        Pill(PrismIcons.Shuffle, tr(R.string.shuffle), primary = false, enabled = enabled, modifier = Modifier.weight(1f), onClick = onShuffle)
-    }
-}
-
-@Composable
-private fun Pill(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, primary: Boolean, enabled: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val scheme = MaterialTheme.colorScheme
-    // Play: a solid pill in the text color, glowing in the spectrum's colors (or, picked in Icons & shapes, just its
-    // outline); Shuffle: a pill of glass. Both in the buttons' shape.
-    val outlined = primary && LocalAppSettings.current.shapes.playOutlined
-    val filled = primary && !outlined
-    val bg = if (filled) scheme.onSurface else if (outlined) Color.Transparent else frostFill(1.6f)
-    val fg = if (filled) scheme.surface else scheme.onSurface
-    val pill = com.prism.music.ui.theme.LocalUi.current.button
-    Row(
-        modifier.height(48.dp)
-            .then(if (filled && enabled) Modifier.shadow(14.dp, pill, ambientColor = Color(0xFFFF4D5E).lit(), spotColor = Color(0xFF7C5CFF).lit()) else Modifier)
-            .clip(pill).background(bg)
-            .then(
-                when {
-                    outlined -> Modifier.border(1.5.dp, scheme.onSurface, pill)
-                    !primary -> Modifier.border(1.dp, com.prism.music.ui.components.glassEdge(), pill)
-                    else -> Modifier
-                },
-            )
-            .graphicsLayer { alpha = if (enabled) 1f else 0.5f }
-            .clickable(enabled = enabled, onClick = onClick),
-        horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(icon, null, Modifier.size(22.dp), tint = fg)
-        Spacer(Modifier.width(6.dp))
-        Text(label, style = MaterialTheme.typography.titleSmall, color = fg)
-    }
-}
-
 /** The bar over the page: back, then the title once scrolled ([solid] goes 0 → 1); download, share and ⋯ on the right. */
 @Composable
 private fun CollectionTopBar(
     title: String,
     solid: () -> Float,
-    downloadIcon: androidx.compose.ui.graphics.vector.ImageVector?,
-    downloading: Boolean,
     onVibe: (() -> Unit)?,
     vibeKind: com.prism.music.playback.VibeOriginKind = com.prism.music.playback.VibeOriginKind.COLLECTION,
-    onDownload: () -> Unit,
-    onShare: () -> Unit,
     onMore: () -> Unit,
 ) {
     val nav = LocalNavigator.current
@@ -1283,15 +1244,6 @@ private fun CollectionTopBar(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (onVibe != null) ContextVibePill(onClick = onVibe, modifier = Modifier.testTag("collection:vibe"), kind = vibeKind)
-                if (downloadIcon != null) {
-                    if (downloading) com.prism.music.ui.components.FloatingDisc { ink ->
-                        Box(Modifier.fillMaxSize().clickable(onClickLabel = tr(R.string.downloading_2), onClick = onDownload), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(Modifier.size(20.dp), color = ink, strokeWidth = 2.dp)
-                        }
-                    // Named for what a tap does (it removes once everything's downloaded, #212), not for the state it shows.
-                    } else com.prism.music.ui.components.RoundAction(downloadIcon, if (downloadIcon == PrismIcons.DownloadDone) tr(R.string.remove_downloads) else tr(R.string.download_all), glass = true, onClick = onDownload)
-                }
-                com.prism.music.ui.components.RoundAction(PrismIcons.Share, tr(R.string.share), glass = true, onClick = onShare)
                 com.prism.music.ui.components.RoundAction(PrismIcons.More, tr(R.string.more), glass = true, onClick = onMore)
             }
         }
@@ -1303,16 +1255,18 @@ private fun CollectionTopBar(
 private fun Header(type: CollectionType, page: CollectionPage, art: String?, coverKey: String?, onEditCover: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val cover = LocalUi.current.shape(16.dp)
+    val config = LocalConfiguration.current
+    val coverSize = minOf(220.dp, config.screenWidthDp.dp * 0.54f, config.screenHeightDp.dp * 0.32f).coerceAtLeast(100.dp)
     Column(
         Modifier.fillMaxWidth().statusBarsPadding().padding(top = 64.dp, start = 24.dp, end = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(Modifier.clip(cover).clickable(enabled = coverKey != null, onClickLabel = tr(R.string.change_picture), onClick = onEditCover)) {
             if (art != null) {
-                Artwork(art, Modifier.size(248.dp).shadow(30.dp, cover), cover, size = 900)
+                Artwork(art, Modifier.size(coverSize).shadow(20.dp, cover), cover, size = 900)
             } else {
                 Box(
-                    Modifier.size(248.dp).shadow(30.dp, cover)
+                    Modifier.size(coverSize).shadow(20.dp, cover)
                         .background(com.prism.music.ui.theme.PrismTokens.spectrumRing(), cover),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -1323,7 +1277,7 @@ private fun Header(type: CollectionType, page: CollectionPage, art: String?, cov
                 Box(contentAlignment = Alignment.Center) { Icon(PrismIcons.Edit, tr(R.string.change_picture), Modifier.size(20.dp)) }
             }
         }
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(14.dp))
         Text(
             page.title, style = MaterialTheme.typography.headlineMedium,
             textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis,
