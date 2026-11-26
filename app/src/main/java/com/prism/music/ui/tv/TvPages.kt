@@ -397,7 +397,9 @@ fun TvCollectionPage(item: BrowseItem, nav: TvNav) {
         playing = songs.indexOfFirst { it.id == current?.id }, accent = accent,
         onVibe = if (songs.any { !it.isEpisode && !it.isLive && !it.isVideo }) ({
             scope.launch {
-                val ok = c.player.playContextVibe(p?.title ?: item.title, songs) {
+                val ok = c.player.playContextVibe(p?.title ?: item.title, songs, origin = com.prism.music.playback.VibeOrigin(
+                    if (item is AlbumItem) com.prism.music.playback.VibeOriginKind.ALBUM else com.prism.music.playback.VibeOriginKind.PLAYLIST,
+                    p?.title ?: item.title, p?.thumbnail ?: item.thumbnail)) {
                     if (!c.network.isOnline()) emptyList() else when (item) {
                         is AlbumItem -> p?.playlistId?.let { c.radio(null, "RDAMPL$it").songs }.orEmpty()
                         is PlaylistItem -> if (com.prism.music.data.PrismLibrary.isPrismList(item.id)) emptyList()
