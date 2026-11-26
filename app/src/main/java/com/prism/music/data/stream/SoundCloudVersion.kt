@@ -1,7 +1,6 @@
 package com.prism.music.data.stream
 
 import com.prism.music.data.SongVersions
-import com.prism.music.data.imports.ImportKeys
 import com.prism.music.data.model.Song
 import java.net.URI
 import kotlin.math.abs
@@ -27,16 +26,16 @@ internal object SoundCloudVersion {
         ?.let { "https://soundcloud.com/$it" }
 
     fun matches(song: Song, title: String, uploader: String, seconds: Long): Boolean {
-        if (song.durationSec <= 0 || seconds <= 0 || abs(seconds - song.durationSec) > 5) return false
-        val want = SongVersions.bare(song.title)
-        if (want.isEmpty()) return false
+        if (song.artists.size != 1 || song.durationSec <= 0 || seconds <= 0 ||
+            abs(seconds - song.durationSec) > 3 || seconds > Int.MAX_VALUE) return false
+        val artist = song.primaryArtist.trim()
+        if (artist.isBlank() || !artist.equals(uploader.trim(), ignoreCase = true)) return false
         val split = title.split(Regex(" +[-–—] +"), limit = 2)
-        val candidateTitle = if (split.size == 2 && ImportKeys.norm(split[0]) == ImportKeys.norm(song.primaryArtist)) split[1] else title
-        val marks = ImportKeys.versionMarks(candidateTitle)
-        if (marks != ImportKeys.versionMarks(song.title) || ImportKeys.cleanRelease(candidateTitle)) return false
-        if (SongVersions.bare(candidateTitle) != want) return false
-        val artist = ImportKeys.norm(song.primaryArtist)
-        return artist.isNotBlank() && (ImportKeys.norm(uploader) == artist ||
-            (split.size == 2 && ImportKeys.norm(split[0]) == artist))
+        val candidateTitle = if (split.size == 2 && artist.equals(split[0].trim(), ignoreCase = true)) split[1] else title
+        // The uploader must be the artist; text in the upload title cannot establish artist identity.
+        return SongVersions.compatibleRecording(song, Song(
+            "soundcloud-candidate", candidateTitle,
+            listOf(com.prism.music.data.model.ArtistRef(uploader)), durationSec = seconds.toInt(),
+        ))
     }
 }

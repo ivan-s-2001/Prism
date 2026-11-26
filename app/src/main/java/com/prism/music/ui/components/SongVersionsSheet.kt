@@ -112,8 +112,7 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
     val canSeeFiles = remember { c.localMusic.hasPermission() }
     androidx.compose.runtime.LaunchedEffect(Unit) { if (canSeeFiles && !c.localMusic.scanned.value) c.localMusic.scan() }
     val fileMatches = remember(files, song.id) {
-        val want = SongVersions.bare(song.title)
-        if (want.isEmpty() || song.isLocal) emptyList() else files.filter { SongVersions.bare(it.song.title) == want }.take(6)
+        if (song.isLocal) emptyList() else files.filter { SongVersions.compatibleRecording(song, it.song) }.take(6)
     }
     var choosingFile by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     if (choosingFile) { PhoneFilePicker(files.map { it.song }) { f -> choosingFile = false; f?.let { choose(SongVersions.Pick(it.id, fileLabel(it), it)) } }; return }

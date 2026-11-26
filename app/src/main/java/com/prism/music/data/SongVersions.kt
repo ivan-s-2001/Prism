@@ -108,29 +108,65 @@ class SongVersions(private val prefs: SharedPreferences) {
         fun bare(title: String): String =
             title.replace(BRACKETS, " ").replace(DASH, "").lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
 
-        /**
-         * The other recordings of [song] among search [results]: the same title (brackets and tails aside), not the song
-         * itself, one of each; the song's own artist first, slowed / sped-up / karaoke edits last, songs before videos.
-         * At most [max].
-         */
-        fun candidates(song: Song, results: List<Song>, max: Int = 12, preferExplicit: Boolean = false): List<Song> {
-            val want = bare(song.title)
-            if (want.isEmpty()) return emptyList()
-            val mine = song.artists.map { it.name.lowercase() }.filter { it.isNotBlank() }.toSet()
-            fun byArtist(s: Song) = s.artists.any { a -> a.name.lowercase().let { n -> mine.any { it in n || n in it } } }
-            val asked = com.prism.music.data.innertube.SearchRank.norm(song.title)
-            // "sped up//nightcore": slashes would join the words, so they part them first.
-            fun knockoff(s: Song) = com.prism.music.data.innertube.SearchRank.knockoffMarks(s.title.replace(Regex("[/|]+"), " "), asked).isNotEmpty()
-            return results.asSequence()
-                .filter { it.id != song.id && !it.isLive && !it.isEpisode && bare(it.title) == want }
+        /** Artist identity must match one-to-one. No partial-name, shared featured artist or blank-name matches. */
+        fun sameArtists(song: Song, v: Song): Boolean {
+            val a = song.artists
+            val b = v.artists
+            if (a.isEmpty() || a.size != b.size) return false
+            fun same(x: com.prism.music.data.model.ArtistRef, y: com.prism.music.data.model.ArtistRef): Boolean {
+                if (!x.id.isNullOrBlank() && !y.id.isNullOrBlank()) return x.id == y.id
+                fun name(s: String) = java.text.Normalizer.normalize(s.trim(), java.text.Normalizer.Form.NFC)
+                    .replace(Regex("\\s+"), " ").lowercase(java.util.Locale.ROOT)
+                return name(x.name).isNotBlank() && name(x.name) == name(y.name)
+            }
+            // Exact primary artist is required even if the order of the remaining credits differs.
+            return same(a.first(), b.first()) &&
+                a.all { x -> b.count { y -> same(x, y) } == 1 } &&
+                b.all { y -> a.count { x -> same(x, y) } == 1 }
+        }
+
+        private val VERSION_SUFFIX = Regex("""(?iu)\s*(?:[(\[]\s*(?:official (?:music )?video|official audio|audio|explicit(?: version)?|uncensored(?: version)?|clean(?: version| edit)?|без цензуры|без мата|с цензурой|цензурированная версия|remaster(?:ed)?(?:\s+\d{4})?)\s*[)\]]|\s+[-–—]\s+(?:official (?:music )?video|official audio|explicit(?: version)?|uncensored(?: version)?|clean(?: version| edit)?|без цензуры|без мата|с цензурой|цензурированная версия|remaster(?:ed)?(?:\s+\d{4})?))\s*$""")
+
+        /** Keep meaningful subtitles: Song (Part 2) must not match Song (Part 1). */
+        internal fun recordingTitle(title: String): String {
+            var core = title.trim()
+            while (true) {
+                val next = core.replace(VERSION_SUFFIX, "").trim()
+                if (next == core) break
+                core = next
+            }
+            return com.prism.music.data.imports.ImportKeys.norm(core)
+        }
+
+        /** A different upload of the same recording, not a merely similar song. */
+        fun compatibleRecording(song: Song, v: Song): Boolean {
+            if (v.id == song.id || v.isLive || v.isEpisode || v.isUpload ||
+                song.durationSec <= 0 || v.durationSec <= 0 ||
+                kotlin.math.abs(song.durationSec - v.durationSec) > 3 ||
+                !sameArtists(song, v)) return false
+            val title = recordingTitle(song.title)
+            if (title.isBlank() || title != recordingTitle(v.title)) return false
+            val keys = com.prism.music.data.imports.ImportKeys
+            val sourceMarks = keys.versionMarks(song.title) - setOf("clean", "remaster")
+            val targetMarks = keys.versionMarks(v.title) - setOf("remaster")
+            if (sourceMarks != targetMarks || keys.cleanRelease(v.title, v.album?.title)) return false
+            if (com.prism.music.data.foryou.RecommendationQuality.alternateRecording(v)) return false
+            return true
+        }
+
+        /** Only strong matches are offered; absence of a match is preferable to an unrelated recording. */
+        fun candidates(song: Song, results: List<Song>, max: Int = 12, preferExplicit: Boolean = false): List<Song> =
+            results.asSequence()
+                .filter { compatibleRecording(song, it) }
                 .distinctBy { it.id }
                 .sortedWith(compareBy<Song>(
                     { !(preferExplicit && preferredOriginal(song, it)) },
-                    { knockoff(it) }, { !byArtist(it) }, { it.isVideo },
+                    { it.isVideo },
+                    { !sameRecording(song, it) },
+                    { kotlin.math.abs(song.durationSec - it.durationSec) },
                 ))
-                .take(max)
+                .take(max.coerceAtLeast(0))
                 .toList()
-        }
 
         private val CLEAN_LABEL = Regex("""(?iu)(?:^|[^\p{L}\p{N}])(?:clean version|clean edit|radio edit|censored|цензурированная версия|без мата)(?=$|[^\p{L}\p{N}])|[(\[]\s*clean\s*[)\]]""")
         private val EDIT_LABEL = Regex("""(?iu)(?:^|[^\p{L}\p{N}])(?:acoustic|instrumental|demo|live|remix|cover|karaoke|nightcore|sped[ -]?up|slowed|reverb|акустика|концертная версия|ремикс|кавер)(?=$|[^\p{L}\p{N}])""")
@@ -149,19 +185,13 @@ class SongVersions(private val prefs: SharedPreferences) {
                 } ||
                 EDIT_LABEL.containsMatchIn(v.title) || EDIT_LABEL.containsMatchIn(v.album?.title.orEmpty()) ||
                 com.prism.music.data.foryou.RecommendationQuality.alternateRecording(v)) return false
-            val originalArtists = song.artists
-            val candidateArtists = v.artists
-            if (originalArtists.isEmpty() || originalArtists.size != candidateArtists.size) return false
-            fun sameArtist(a: com.prism.music.data.model.ArtistRef, b: com.prism.music.data.model.ArtistRef): Boolean =
-                if (!a.id.isNullOrBlank() && !b.id.isNullOrBlank()) a.id == b.id
-                else a.name.isNotBlank() && a.name.trim().equals(b.name.trim(), ignoreCase = true)
-            return originalArtists.all { a -> candidateArtists.count { b -> sameArtist(a, b) } == 1 } &&
-                candidateArtists.all { b -> originalArtists.count { a -> sameArtist(a, b) } == 1 }
+            return compatibleRecording(song, v)
         }
 
         /** [v] is [song]'s own recording put up again (same album and length): "Another upload" in the list. */
         fun sameRecording(song: Song, v: Song): Boolean =
-            !v.isVideo && song.album?.title != null && v.album?.title.equals(song.album?.title, ignoreCase = true) &&
-                (song.durationSec <= 0 || v.durationSec <= 0 || kotlin.math.abs(song.durationSec - v.durationSec) <= 2)
+            !v.isVideo && compatibleRecording(song, v) && song.album?.title != null &&
+                v.album?.title.equals(song.album?.title, ignoreCase = true) &&
+                kotlin.math.abs(song.durationSec - v.durationSec) <= 2
     }
 }

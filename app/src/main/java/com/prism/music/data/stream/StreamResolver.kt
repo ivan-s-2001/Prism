@@ -1095,7 +1095,7 @@ class StreamResolver(
         val service = ServiceList.SoundCloud
         val results = org.schabi.newpipe.extractor.search.SearchInfo.getInfo(service.getSearchExtractor(query))
         return results.relatedItems.filterIsInstance<org.schabi.newpipe.extractor.stream.StreamInfoItem>()
-            .filter { it.contentAvailability == org.schabi.newpipe.extractor.stream.ContentAvailability.AVAILABLE }
+            .filter { it.contentAvailability == org.schabi.newpipe.extractor.stream.ContentAvailability.AVAILABLE && it.isUploaderVerified }
             .mapNotNull { item ->
                 val id = SoundCloudVersion.id(item.url) ?: return@mapNotNull null
                 if (!SoundCloudVersion.matches(song, item.name, item.uploaderName.orEmpty(), item.duration)) return@mapNotNull null
@@ -1108,7 +1108,7 @@ class StreamResolver(
                 // Select the transport before ExoPlayer creates a media source.
                 runCatching {
                     val f = formats(candidate.id)
-                    if (kotlin.math.abs(f.durationSec - song.durationSec) > 5) null
+                    if (kotlin.math.abs(f.durationSec - song.durationSec) > 3) null
                     else if (f.audio.isNotEmpty()) candidate
                     else if (f.hlsUrl != null) SoundCloudVersion.hlsId(candidate.id)?.let { id ->
                         cache[id] = f

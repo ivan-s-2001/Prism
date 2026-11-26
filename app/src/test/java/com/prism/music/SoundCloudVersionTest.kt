@@ -30,7 +30,8 @@ class SoundCloudVersionTest {
 
     @Test fun candidatesRequireTitleArtistAndDuration() {
         assertTrue(SoundCloudVersion.matches(song, "Ночной город", "Группа", 201))
-        assertTrue(SoundCloudVersion.matches(song, "Группа - Ночной город", "Label", 200))
+        assertFalse(SoundCloudVersion.matches(song, "Группа - Ночной город", "Label", 200))
+        assertTrue(SoundCloudVersion.matches(song, "Группа - Ночной город", "Группа", 200))
         assertFalse(SoundCloudVersion.matches(song, "Ночной город (ремикс)", "Группа", 200))
         assertFalse(SoundCloudVersion.matches(song, "Ночной город (без мата)", "Группа", 200))
         assertFalse(SoundCloudVersion.matches(song, "Ночной город", "Группа", 30))
