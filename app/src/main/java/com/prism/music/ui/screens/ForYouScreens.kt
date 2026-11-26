@@ -135,7 +135,7 @@ fun MadeForYouSection(cfg: HomeSectionConfig, offline: Boolean = false, yours: L
     val c = LocalContainer.current
     val nav = LocalNavigator.current
     val mixes by c.forYou.mixes.collectAsState()
-    val favorites by c.artistPrefs.favorites.collectAsState()
+    val favorites by c.library.profileArtists.collectAsState()
     val recent by c.library.recent.collectAsState()
     // Made when due (once a day; the time-of-day one as the day moves on), in the app's scope so leaving Home
     // doesn't cut it short; Release Radar looks round when it's been a few days.
@@ -229,7 +229,7 @@ fun NewReleasesSection(cfg: HomeSectionConfig) {
     val recent by remember { c.db.releases().freshFlow(today.year - 1).map { list -> list.filter { ReleaseRadar.isRecent(it, today, 30) } } }
         .collectAsState(initial = emptyList())
     // #311: with the page's "Favorite artists only" on, Home's section keeps to them too.
-    val favorites by c.artistPrefs.favorites.collectAsState()
+    val favorites by c.library.profileArtists.collectAsState()
     val starredOnly = remember { c.library.sortOf(ReleaseRadar.STARRED_ONLY) != null }
     val releases = if (starredOnly) ReleaseRadar.fromFavorites(recent, favorites.map { it.id }.toSet()) else recent
     if (releases.isEmpty()) return
@@ -261,7 +261,7 @@ fun NewReleasesScreen(bottomPadding: Dp) {
     // time, picked from the artists you play most (for this visit only).
     var starredOnly by remember { mutableStateOf(c.library.sortOf(ReleaseRadar.STARRED_ONLY) != null) }
     var oneArtist by remember { mutableStateOf<String?>(null) }
-    val favorites by c.artistPrefs.favorites.collectAsState()
+    val favorites by c.library.profileArtists.collectAsState()
     val starredIds = remember(favorites) { favorites.map { it.id }.toSet() }
     val mostPlayed by androidx.compose.runtime.produceState(emptyList<String>()) {
         val now = System.currentTimeMillis()
@@ -451,7 +451,7 @@ private object ArtistPhotos {
 fun PickArtistsScreen(onboarding: Boolean, bottomPadding: Dp, onDone: () -> Unit) {
     val c = LocalContainer.current
     val nav = LocalNavigator.current
-    val favorites by c.artistPrefs.favorites.collectAsState()
+    val favorites by c.library.profileArtists.collectAsState()
     val startedWith = remember { favorites.map { it.id }.toSet() }
     val genres by produceState<List<MoodItem>?>(null) {
         value = runCatching { withContext(Dispatchers.IO) { c.ytm.moodsAndGenres() } }.getOrNull()

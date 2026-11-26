@@ -14,13 +14,39 @@ data class FavoriteArtist(val id: String, val name: String, val thumbnail: Strin
  * What the listener chose about artists, kept on this phone: the ones they starred, and the
  * signature style picked for an artist's name (instead of the one Prism would choose).
  */
-class ArtistPrefs(context: Context, private val onFavorite: (FavoriteArtist) -> Unit = {}) {
+internal object MusicPreferenceLock
+
+class ArtistPrefs(context: Context, private val account: () -> String? = { null }, private val onFavorite: (FavoriteArtist) -> Unit = {}) {
     private val prefs = context.getSharedPreferences("artist_prefs", Context.MODE_PRIVATE)
     private val listSerializer = ListSerializer(FavoriteArtist.serializer())
 
-    val favorites = MutableStateFlow(
-        prefs.getString("favorites", null)?.let { runCatching { InnerTube.json.decodeFromString(listSerializer, it) }.getOrNull() } ?: emptyList()
-    )
+    private var owner = account()
+    private fun scopedKey() = "favorites_scope:" + (owner ?: "device")
+    private fun decode(raw: String?) = raw?.let { runCatching { InnerTube.json.decodeFromString(listSerializer, it) }.getOrNull() } ?: emptyList()
+    private fun loadScoped(): List<FavoriteArtist> {
+        if (!prefs.getBoolean("favorites_scoped_v1", false)) {
+            val legacy = prefs.getString("favorites", null) ?: "[]"
+            check(prefs.edit().putString(scopedKey(), legacy).putBoolean("favorites_scoped_v1", true).commit())
+        }
+        return decode(prefs.getString(scopedKey(), null))
+    }
+
+    val favorites = MutableStateFlow(loadScoped())
+
+    private fun saveFavorites(list: List<FavoriteArtist>) {
+        val raw = InnerTube.json.encodeToString(listSerializer, list)
+        check(prefs.edit().putString(scopedKey(), raw).putString("favorites", raw).commit())
+        favorites.value = list
+    }
+
+    /** Keep the original key as a mirror for Bring your Prism and existing backup formats. */
+    fun refreshAccount() = synchronized(MusicPreferenceLock) {
+        val next = account()
+        if (next != owner) {
+            owner = next
+            saveFavorites(loadScoped())
+        }
+    }
 
     /** Artist id -> signature style key. */
     val signatures = MutableStateFlow(
@@ -28,28 +54,30 @@ class ArtistPrefs(context: Context, private val onFavorite: (FavoriteArtist) -> 
     )
 
     /** Reads the saved choices again (after "Bring your Prism" merged a phone's into them, 1.8.0). */
-    fun reload() {
-        favorites.value = prefs.getString("favorites", null)?.let { runCatching { InnerTube.json.decodeFromString(listSerializer, it) }.getOrNull() } ?: emptyList()
+    fun reload() = synchronized(MusicPreferenceLock) {
+        val imported = decode(prefs.getString("favorites", null))
+        refreshAccount()
+        saveFavorites(imported)
         signatures.value = prefs.all.filterKeys { it.startsWith(SIG) }.mapNotNull { (k, v) -> (v as? String)?.let { k.removePrefix(SIG) to it } }.toMap()
         colors.value = prefs.all.filterKeys { it.startsWith(COL) }.mapNotNull { (k, v) -> (v as? Int)?.let { k.removePrefix(COL) to it } }.toMap()
     }
 
     fun isFavorite(id: String) = favorites.value.any { it.id == id }
 
-    fun setFavorite(artist: FavoriteArtist, on: Boolean) {
+    fun setFavorite(artist: FavoriteArtist, on: Boolean) = synchronized(MusicPreferenceLock) {
+        refreshAccount()
         if (on) onFavorite(artist)
         val rest = favorites.value.filterNot { it.id == artist.id }
         val next = if (on) listOf(artist.copy(at = System.currentTimeMillis(), channelId = artist.channelId ?: favorites.value.firstOrNull { it.id == artist.id }?.channelId)) + rest else rest
-        favorites.value = next
-        prefs.edit().putString("favorites", InnerTube.json.encodeToString(listSerializer, next)).apply()
+        saveFavorites(next)
     }
 
     /** Takes [ids] off the starred list in one go. */
-    fun unstar(ids: Set<String>) {
-        if (ids.isEmpty()) return
+    fun unstar(ids: Set<String>) = synchronized(MusicPreferenceLock) {
+        refreshAccount()
+        if (ids.isEmpty()) return@synchronized
         val next = favorites.value.filterNot { it.id in ids }
-        favorites.value = next
-        prefs.edit().putString("favorites", InnerTube.json.encodeToString(listSerializer, next)).apply()
+        saveFavorites(next)
     }
 
     /**

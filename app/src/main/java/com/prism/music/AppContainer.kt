@@ -518,7 +518,11 @@ class AppContainer(val app: Application) {
         SimpleCache(File(app.filesDir, "downloads"), NoOpCacheEvictor(), databaseProvider)
     }
 
-    val artistPrefs = com.prism.music.data.ArtistPrefs(app) { artist ->
+    internal fun musicPreferenceAccount(): String? = settings.current.let { s ->
+        if (!s.isLoggedIn) null else s.dataSyncId?.takeIf { it.isNotBlank() } ?: "${s.authUser}:${s.accountName}"
+    }
+
+    val artistPrefs = com.prism.music.data.ArtistPrefs(app, ::musicPreferenceAccount) { artist ->
         exclusions.setArtist(com.prism.music.data.foryou.Excluded(artist.id, artist.name, artist.thumbnail), false)
     }
     /** The color picker's recent and starred colors. */
@@ -725,7 +729,7 @@ class AppContainer(val app: Application) {
     val sing by lazy { com.prism.music.playback.sing.Sing(this) }
     val dj = com.prism.music.playback.DjMode()
     val exclusions: com.prism.music.data.foryou.Exclusions by lazy {
-        com.prism.music.data.foryou.Exclusions(app) { blocked ->
+        com.prism.music.data.foryou.Exclusions(app, ::musicPreferenceAccount) { blocked ->
             artistPrefs.unstar(artistPrefs.favorites.value.filter { it.id == blocked.id || it.name.equals(blocked.name, true) }.map { it.id }.toSet())
         }
     }

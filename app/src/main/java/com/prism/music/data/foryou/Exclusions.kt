@@ -1,6 +1,7 @@
 package com.prism.music.data.foryou
 
 import android.content.Context
+import com.prism.music.data.MusicPreferenceLock
 import com.prism.music.data.model.Song
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,12 +20,24 @@ data class Excluded(val id: String, val name: String, val thumbnail: String? = n
  *   (a sleep or kids' playlist, a song played for someone else). Replay still counts them.
  * Kept on the phone (`exclusions` prefs).
  */
-class Exclusions(context: Context, private val onArtistExcluded: (Excluded) -> Unit = {}) {
+class Exclusions(context: Context, private val account: () -> String? = { null }, private val onArtistExcluded: (Excluded) -> Unit = {}) {
     private val prefs = context.getSharedPreferences("exclusions", Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true }
 
-    private fun load(key: String): List<Excluded> =
-        prefs.getString(key, null)?.let { runCatching { json.decodeFromString<List<Excluded>>(it) }.getOrNull() } ?: emptyList()
+    private var owner = account()
+    private fun scopedKey(key: String) = "$key:scope:" + (owner ?: "device")
+    private fun decode(raw: String?): List<Excluded> =
+        raw?.let { runCatching { json.decodeFromString<List<Excluded>>(it) }.getOrNull() } ?: emptyList()
+
+    init {
+        if (!prefs.getBoolean("exclusions_scoped_v1", false)) {
+            val edit = prefs.edit()
+            for (key in listOf(ARTISTS, PLAYLISTS, SONGS)) edit.putString(scopedKey(key), prefs.getString(key, null) ?: "[]")
+            check(edit.putBoolean("exclusions_scoped_v1", true).commit())
+        }
+    }
+
+    private fun load(key: String) = decode(prefs.getString(scopedKey(key), null))
 
     private val _artists = MutableStateFlow(load(ARTISTS))
     val artists: StateFlow<List<Excluded>> = _artists
@@ -34,23 +47,43 @@ class Exclusions(context: Context, private val onArtistExcluded: (Excluded) -> U
     val songs: StateFlow<List<Excluded>> = _songs
 
     /** Reads them again (after "Bring your Prism" merged a phone's in, 1.8.0). */
-    fun reload() {
-        _artists.value = load(ARTISTS)
-        _playlists.value = load(PLAYLISTS)
-        _songs.value = load(SONGS)
+    fun reload() = synchronized(MusicPreferenceLock) {
+        val imported = listOf(ARTISTS, PLAYLISTS, SONGS).associateWith { decode(prefs.getString(it, null)) }
+        refreshAccount()
+        save(ARTISTS, _artists, imported.getValue(ARTISTS))
+        save(PLAYLISTS, _playlists, imported.getValue(PLAYLISTS))
+        save(SONGS, _songs, imported.getValue(SONGS))
+    }
+
+    fun refreshAccount() = synchronized(MusicPreferenceLock) {
+        val next = account()
+        if (next != owner) {
+            owner = next
+            save(ARTISTS, _artists, load(ARTISTS))
+            save(PLAYLISTS, _playlists, load(PLAYLISTS))
+            save(SONGS, _songs, load(SONGS))
+        }
     }
 
     private fun save(key: String, flow: MutableStateFlow<List<Excluded>>, list: List<Excluded>) {
+        val raw = json.encodeToString(list)
+        check(prefs.edit().putString(scopedKey(key), raw).putString(key, raw).commit())
         flow.value = list
-        prefs.edit().putString(key, json.encodeToString(list)).apply()
     }
 
-    fun setArtist(e: Excluded, excluded: Boolean) {
+    fun setArtist(e: Excluded, excluded: Boolean) = synchronized(MusicPreferenceLock) {
+        refreshAccount()
         if (excluded) onArtistExcluded(e)
         save(ARTISTS, _artists, _artists.value.filter { !same(it, e) } + listOfNotNull(e.takeIf { excluded }))
     }
-    fun setPlaylist(e: Excluded, excluded: Boolean) = save(PLAYLISTS, _playlists, _playlists.value.filter { it.id != e.id } + listOfNotNull(e.takeIf { excluded }))
-    fun setSong(e: Excluded, excluded: Boolean) = save(SONGS, _songs, _songs.value.filter { it.id != e.id } + listOfNotNull(e.takeIf { excluded }))
+    fun setPlaylist(e: Excluded, excluded: Boolean) = synchronized(MusicPreferenceLock) {
+        refreshAccount()
+        save(PLAYLISTS, _playlists, _playlists.value.filter { it.id != e.id } + listOfNotNull(e.takeIf { excluded }))
+    }
+    fun setSong(e: Excluded, excluded: Boolean) = synchronized(MusicPreferenceLock) {
+        refreshAccount()
+        save(SONGS, _songs, _songs.value.filter { it.id != e.id } + listOfNotNull(e.takeIf { excluded }))
+    }
 
     fun isArtistExcluded(id: String?, name: String?): Boolean = _artists.value.any { a ->
         (id != null && a.id == id) || (name != null && a.name.equals(name.trim(), ignoreCase = true))
