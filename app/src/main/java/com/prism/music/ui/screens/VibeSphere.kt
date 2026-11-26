@@ -174,6 +174,7 @@ internal fun VibeSphere(
             level.floatValue = 0f
             bands.fill(0f)
             group.fill(0f)
+            frame.longValue++
             return@LaunchedEffect
         }
         var last = 0L

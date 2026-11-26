@@ -109,6 +109,7 @@ object VisualizerTap : TeeAudioProcessor.AudioBufferSink {
  */
 class Spectrum {
     val bands = FloatArray(BANDS)
+    private val rawBands = FloatArray(BANDS)
     var level = 0f
         private set
     private val samples = FloatArray(N)
@@ -121,7 +122,10 @@ class Spectrum {
     fun update(dtMs: Float) {
         val fall = (dtMs / 1000f) * 1.6f
         if (!VisualizerTap.window(samples)) {
-            for (i in bands.indices) bands[i] = max(0f, bands[i] - fall)
+            for (i in bands.indices) {
+                bands[i] = max(0f, bands[i] - fall)
+                rawBands[i] = max(0f, rawBands[i] - fall)
+            }
             level = max(0f, level - fall)
             return
         }
@@ -141,12 +145,13 @@ class Spectrum {
             // dB-ish, with the treble lifted (music's spectrum falls ~3 dB an octave).
             val v = (ln(1f + mag * (1f + b * 0.35f)) / 3.2f).coerceIn(0f, 1.5f)
             if (b < 4) bass += v
-            bands[b] = if (v > bands[b]) bands[b] + (v - bands[b]) * 0.65f else max(v, bands[b] - fall)
+            rawBands[b] = if (v > rawBands[b]) rawBands[b] + (v - rawBands[b]) * 0.65f else max(v, rawBands[b] - fall)
         }
         // Each song is evened out against its own recent peak, so quiet and loud masters both fill the room.
-        val peak = bands.max()
-        loud = max(peak, loud * 0.995f).coerceAtLeast(0.05f)
-        for (b in 0 until BANDS) bands[b] = min(1f, bands[b] / loud)
+        // Keep the envelope in raw units; normalizing in place fed amplified values back into the next FFT frame.
+        val peak = rawBands.max()
+        loud = max(peak, loud * kotlin.math.exp(-dtMs.coerceIn(1f, 100f) / 3300f)).coerceAtLeast(0.05f)
+        for (b in 0 until BANDS) bands[b] = min(1f, rawBands[b] / loud)
         val beat = min(1f, bass / 4f / loud)
         level = if (beat > level) level + (beat - level) * 0.6f else max(beat, level - fall)
     }

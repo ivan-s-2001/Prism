@@ -169,10 +169,17 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
     val activeSaved = savedPresets.firstOrNull { it.id == chosenPresetId && it.origin == style.origin }
         ?: savedPresets.firstOrNull { chosenPresetId == null && it.origin == style.origin }
     val activeScenario = if (activeSaved == null) WaveScenarios.active(style, chosenPresetId, settings.streamScenarioStyles) else null
+    val shortcuts = remember(style, savedPresets, scenarioOrder, settings.streamScenarioStyles, activeSaved?.id, activeScenario?.id) {
+        vibeShortcuts(style, savedPresets, scenarioOrder, settings.streamScenarioStyles, activeSaved?.id, activeScenario?.id)
+    }
+    LaunchedEffect(Unit) {
+        val selected = shortcuts.indexOfFirst { it.selected }
+        if (selected > 3) scenarioScroll.scrollToItem(selected)
+    }
     LaunchedEffect(savedPresets, revealPresetId) {
         val index = savedPresets.indexOfFirst { it.id == revealPresetId }
         if (index >= 0) {
-            scenarioScroll.scrollToItem(index + 1)
+            scenarioScroll.scrollToItem(index + 2)
             revealPresetId = null
         }
     }
@@ -338,8 +345,7 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             energy = style.diversity / 100f) { visual ->
             CompositionLocalProvider(com.prism.music.ui.player.LocalEmbeddedPlayerInk provides scheme.onSurface,
                 LocalContentColor provides scheme.onSurface) {
-                VibeStationOverlay(settings, (chosenPresetId?.let { id -> savedPresets.firstOrNull { it.id == id }?.name
-                        ?: WaveScenarios.all.firstOrNull { it.id == id }?.label } ?: tr(R.string.prism_stream_station_default)),
+                VibeStationOverlay(settings, vibeStationTitle(activeSaved, activeScenario),
                     hasTrack = current != null, visual = visual,
                     play = {
                         VibeStationAction(playing = wave && playing, starting = starting && !wave, active = wave,
@@ -384,24 +390,16 @@ internal fun MyWaveCard(recommendations: List<Song>, favorites: List<Song>, rece
             flingBehavior = rememberSnapFlingBehavior(lazyListState = scenarioScroll, snapPosition = SnapPosition.Start),
             horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp)),
             contentPadding = PaddingValues(horizontal = ui.gap(12.dp), vertical = ui.gap(2.dp))) {
-            item(key = "wave:tune") {
-                ScenarioTile(tr(R.string.prism_stream_tune), PrismIcons.Customize, selected = false,
-                    onClick = { openSettings() }, modifier = Modifier.testTag("home:my_wave:settings"))
+            items(shortcuts, key = { it.key }) { shortcut ->
+                ScenarioTile(shortcut.label, shortcut.icon, shortcut.selected, onClick = {
+                    val target = shortcut.style
+                    if (target == null) openSettings()
+                    else if (!wave || !shortcut.selected) start(target, shortcut.scenarioId)
+                }, modifier = Modifier.testTag(when (shortcut.key) {
+                    "tune" -> "home:my_wave:settings"
+                    else -> "wave:${shortcut.key}"
+                }))
             }
-                items(savedPresets, key = { it.id }) { preset ->
-                    ScenarioTile(label = preset.name, icon = PrismIcons.Bookmark,
-                        selected = activeSaved?.id == preset.id,
-                        onClick = { start(MyWave.style(preset.origin), preset.id) },
-                        modifier = Modifier.testTag("wave:custom:${preset.id}"))
-                }
-                items(scenarioOrder, key = { it.id }) { scenario ->
-                    ScenarioTile(
-                        label = scenario.label,
-                        icon = PrismIcons.waveScenario(scenario.glyph),
-                        selected = activeScenario?.id == scenario.id,
-                        onClick = { start(WaveScenarios.resolve(scenario, settings.streamScenarioStyles, style.russianPercent), scenario.id) },
-                        modifier = Modifier.testTag("wave:scenario:${scenario.id}"))
-                }
         }
     }
 

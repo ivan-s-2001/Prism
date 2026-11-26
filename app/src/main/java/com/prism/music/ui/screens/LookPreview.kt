@@ -177,9 +177,10 @@ private fun MiniVibe(c: ThemeColors, song: Song?) {
             val scenarios = com.prism.music.data.foryou.WaveScenarios.visibleOrder(com.prism.music.data.foryou.WaveScenarios.all, s.streamScenarioOrder)
             Row(Modifier.fillMaxWidth().padding(horizontal = ui.gap(12.dp), vertical = ui.gap(2.dp)),
                 horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp)), verticalAlignment = Alignment.CenterVertically) {
-                val tiles = listOf(tr(R.string.prism_stream_tune) to PrismIcons.Customize) + scenarios.take(2).map { it.label to PrismIcons.waveScenario(it.glyph) }
-                tiles.forEach { (label, icon) ->
-                    VibeScenarioTile(s.streamCompactScenarios, label, icon, false, {}, Modifier.weight(1f))
+                val style = com.prism.music.data.foryou.MyWave.restore(null, s.streamStyleOrigin, s.streamRussianPercent)
+                val tiles = vibeShortcuts(style, s.streamPresets, scenarios, s.streamScenarioStyles, null, null).take(3)
+                tiles.forEach { tile ->
+                    VibeScenarioTile(s.streamCompactScenarios, tile.label, tile.icon, tile.selected, {}, Modifier.weight(1f))
                 }
             }
         })

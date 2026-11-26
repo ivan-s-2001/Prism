@@ -28,6 +28,8 @@ import com.prism.music.data.model.SongItem
 import com.prism.music.playback.QueueKind
 import com.prism.music.playback.QueueSource
 import com.prism.music.ui.components.Artwork
+import com.prism.music.ui.screens.vibeShortcuts
+import com.prism.music.ui.screens.vibeStationTitle
 import com.prism.music.ui.components.scenarioEdgeFade
 import com.prism.music.ui.components.WavePresetNameDialog
 import com.prism.music.ui.components.WaveTuningScale
@@ -169,9 +171,19 @@ internal fun TvWavePlace(nav: TvNav) {
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(ui.gap(12.dp))) {
                             TvWaveChoices(tr(R.string.visualizer), StreamVisualStyle.entries, appSettings.streamVisualStyle, "visual", { it.label }) { c.settings.setStreamVisualStyle(it) }
                             TvWaveChoices(tr(R.string.layout), StreamLayout.entries, appSettings.streamLayout, "layout", { it.label }) { c.settings.setStreamLayout(it) }
+                            if (appSettings.streamVisualStyle != StreamVisualStyle.OFF) {
                             TvWaveChoices(tr(R.string.size), StreamCoverSize.entries, appSettings.streamVisualSize, "size", { it.label }) { c.settings.setStreamVisualSize(it) }
-                            TvWaveChoices(tr(R.string.speed), listOf(0f, 0.5f, 1f, 1.5f, 2f), appSettings.streamMotion, "speed", { "${(it * 100).toInt()}%" }) { c.settings.setStreamMotion(it) }
-                            TvWaveChoices(tr(R.string.intensity), listOf(0f, 0.5f, 1f, 1.5f, 2f), appSettings.streamSensitivity, "intensity", { "${(it * 100).toInt()}%" }) { c.settings.setStreamSensitivity(it) }
+                            TvWaveAdjust(tr(R.string.speed), appSettings.streamMotion, "speed") { c.settings.setStreamMotion(it) }
+                            TvWaveAdjust(tr(R.string.intensity), appSettings.streamSensitivity, "intensity") { c.settings.setStreamSensitivity(it) }
+                            }
+                            TvWaveChoices(tr(R.string.artwork), listOf(true, false), appSettings.streamShowCover, "cover", { tr(if (it) R.string.on_2 else R.string.off) }) { c.settings.setStreamShowCover(it) }
+                            if (appSettings.streamShowCover) TvWaveChoices(tr(R.string.cover_size), StreamCoverSize.entries, appSettings.streamCoverSize, "cover_size", { it.label }) { c.settings.setStreamCoverSize(it) }
+                            TvWaveChoices(tr(R.string.progress_bar), listOf(true, false), appSettings.streamShowProgress, "progress", { tr(if (it) R.string.on_2 else R.string.off) }) { c.settings.setStreamShowProgress(it) }
+                            TvWaveChoices(tr(R.string.prism_stream_appearance_reactions), listOf(true, false), appSettings.streamShowReactions, "reactions", { tr(if (it) R.string.on_2 else R.string.off) }) { c.settings.setStreamShowReactions(it) }
+                            TvWaveChoices(tr(R.string.prism_stream_appearance_panel), listOf(true, false), appSettings.streamGlassPanel, "panel", { tr(if (it) R.string.on_2 else R.string.off) }) { c.settings.setStreamGlassPanel(it) }
+                            TvWaveChoices(tr(R.string.prism_stream_appearance_status), listOf(true, false), appSettings.streamShowStatus, "status", { tr(if (it) R.string.on_2 else R.string.off) }) { c.settings.setStreamShowStatus(it) }
+                            if (appSettings.streamShowProgress) TvWaveChoices(tr(R.string.prism_stream_appearance_reverse), listOf(true, false), appSettings.streamReverseLayout, "progress_order", { tr(if (it) R.string.on_2 else R.string.off) }) { c.settings.setStreamReverseLayout(it) }
+                            TvWaveChoices(tr(R.string.prism_stream_appearance_compact_scenarios), listOf(true, false), appSettings.streamCompactScenarios, "scenario_size", { tr(if (it) R.string.on_2 else R.string.off) }) { c.settings.setStreamCompactScenarios(it) }
                         }
                         Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                             com.prism.music.ui.screens.VibeFlowField(Modifier.fillMaxWidth(), preview = true) { visual ->
@@ -320,8 +332,7 @@ internal fun TvWavePlace(nav: TvNav) {
                 com.prism.music.ui.screens.VibeFlowField(Modifier.weight(1f, fill = false).fillMaxWidth(), animated = now?.playing == true,
                     energy = style.diversity / 100f) { visual ->
                     com.prism.music.ui.screens.VibeStationOverlay(appSettings,
-                        (chosenPresetId?.let { id -> savedPresets.firstOrNull { it.id == id }?.name
-                        ?: WaveScenarios.all.firstOrNull { it.id == id }?.label } ?: tr(R.string.prism_stream_station_default)), hasTrack = current != null,
+                        vibeStationTitle(activeSaved, activeScenario), hasTrack = current != null,
                         visual = visual,
                         play = {
                             TvIconButton(if (now?.playing == true) PrismIcons.Pause else PrismIcons.Play, tr(when {
@@ -360,20 +371,21 @@ internal fun TvWavePlace(nav: TvNav) {
                         .horizontalScroll(scenarioScroll).padding(vertical = 4.dp, horizontal = 14.dp)
                         .rememberedFocus().focusGroup(),
                         horizontalArrangement = Arrangement.spacedBy(ui.gap(16.dp)), verticalAlignment = Alignment.CenterVertically) {
-                        ScenarioTile(tr(R.string.prism_stream_tune), PrismIcons.Customize, selected = false,
-                            onClick = { toggleTuning(true) }, modifier = Modifier.tvItem("tv_wave/tune"))
-                        savedPresets.forEach { preset ->
-                            key(preset.id) {
-                                ScenarioTile(preset.name, PrismIcons.Bookmark, activeSaved?.id == preset.id,
-                                    { start(MyWave.style(preset.origin), preset.id) }, Modifier.tvItem("tv_wave/custom/${preset.id}"))
+                        vibeShortcuts(style, savedPresets, scenarioOrder, appSettings.streamScenarioStyles, activeSaved?.id, activeScenario?.id)
+                            .forEach { shortcut ->
+                                key(shortcut.key) {
+                                    ScenarioTile(shortcut.label, shortcut.icon, shortcut.selected, onClick = {
+                                        val target = shortcut.style
+                                        if (target == null) toggleTuning(true)
+                                        else if (current == null || !shortcut.selected) start(target, shortcut.scenarioId)
+                                    }, modifier = Modifier.tvItem("tv_wave/" + when {
+                                        shortcut.key == "tune" -> "tune"
+                                        shortcut.key.startsWith("scenario:") -> "quick/" + shortcut.scenarioId
+                                        shortcut.key.startsWith("custom:") -> "custom/" + shortcut.scenarioId
+                                        else -> shortcut.key
+                                    }))
+                                }
                             }
-                        }
-                        scenarioOrder.forEach { preset ->
-                            ScenarioTile(label = preset.label,
-                                icon = PrismIcons.waveScenario(preset.glyph), selected = activeScenario?.id == preset.id,
-                                onClick = { start(WaveScenarios.resolve(preset, appSettings.streamScenarioStyles, style.russianPercent), preset.id) },
-                                modifier = Modifier.tvItem("tv_wave/quick/${preset.id}"))
-                        }
                     }
                 }
             }
@@ -433,6 +445,21 @@ private fun <T> TvWaveChoices(title: String, values: List<T>, selected: T, tag: 
                 if (items.size == 1) Spacer(Modifier.weight(1f))
             }
         }
+    }
+}
+
+/** Same 25% increments as phone sliders, with only two remote focus stops per parameter. */
+@Composable
+private fun TvWaveAdjust(title: String, value: Float, tag: String, change: (Float) -> Unit) {
+    val ui = com.prism.music.ui.theme.LocalUi.current
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(ui.gap(8.dp))) {
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+        TvIconButton(PrismIcons.Remove, tr(R.string.prism_stream_decrease_share, title),
+            { change((value - 0.25f).coerceIn(0f, 2f)) }, Modifier.tvItem("tv_wave/$tag/down"))
+        Text("${(value * 100).toInt()}%", style = MaterialTheme.typography.titleMedium)
+        TvIconButton(PrismIcons.Add, tr(R.string.prism_stream_increase_share, title),
+            { change((value + 0.25f).coerceIn(0f, 2f)) }, Modifier.tvItem("tv_wave/$tag/up"))
     }
 }
 
