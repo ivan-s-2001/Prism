@@ -216,7 +216,6 @@ class MediaTree(private val c: AppContainer) {
         // "Shuffle play" and "Play as a DJ set" rows first, as in the phone app (the car has no buttons of its own for them).
         val top = if (list.size > 1) listOf(
             startItem(SHUFFLE, id, tr(R.string.shuffle_play), com.prism.music.data.model.songCount(list.size), "ic_auto_shuffle"),
-            startItem(DJ, id, tr(R.string.play_as_a_dj_set), tr(R.string.in_the_order_that_blends_best), "ic_auto_dj"),
         ) else emptyList()
         return top + list.map(::playable)
     }

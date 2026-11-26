@@ -599,7 +599,6 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         val token = playToken
         // DJ mode is for the queue it was turned on in; "Play as a DJ set" turns it on for the new one.
         val dj = false
-        c.dj.setOn(false)
         // A new queue starts as plain shuffle (or none); Smart Shuffle is turned on per queue. With "Keep shuffle on for
         // the next list" (#416) a list takes over what the queue before it had, Smart Shuffle too ([carryShuffle], below).
         val wasSmart = c.queue.smartShuffle.value
@@ -692,7 +691,8 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     }
 
     /** DJ mode on or off for the queue playing (the queue's switch). */
-    fun setDjMode(on: Boolean) { c.dj.setOn(false) }
+    @Deprecated("DJ mode has been removed")
+    fun setDjMode(on: Boolean) = Unit
 
     /** Plays a lone song; autoplay then continues with similar music. */
     fun playSingle(song: Song) = playQueue(listOf(song), 0, QueueSource(QueueKind.SINGLE, tr(R.string.autoplay), seedId = song.id))
@@ -745,7 +745,6 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         ++playToken
         stopFill()
         // As a new queue would be: just this song (what came before stays in Played), in order, the radio to follow.
-        c.dj.setOn(false)
         c.queue.smartShuffle.value = false
         c.queue.smartPicks.value = emptySet()
         c.queue.source.value = source
@@ -846,7 +845,6 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
             c.queue.waveQuotaStart = p.mediaItemCount - songs.size
         } finally { c.queue.filling = false }
         c.recFeedback.served(songs.map { it.id })
-        if (c.dj.onNow) c.dj.rescan()
         service?.maybeAutoplay()
         return true
     }
@@ -987,7 +985,6 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         if (songs.isEmpty()) return
         ++playToken
         stopFill()
-        c.dj.setOn(false)
         c.queue.smartShuffle.value = false
         c.queue.smartPicks.value = emptySet()
         c.queue.source.value = QueueSource(QueueKind.OTHER, title)
@@ -1233,13 +1230,6 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
      * (where the queue allows it) → off, or off → on → off with "Shuffle only" (D57): [nextShuffle].
      */
     fun toggleShuffle() = withPlayer {
-        // DJ's new set is not ordinary shuffle. Continuous recommendations still disallow Media3 shuffle.
-        // #374: in DJ mode Shuffle deals a new DJ set; DJ mode stays on and its order stays the order (no Media3 shuffle).
-        if (c.dj.onNow) {
-            if (it.shuffleModeEnabled) it.shuffleModeEnabled = false
-            c.dj.newSet()
-            return@withPlayer
-        }
         if (!c.queue.source.value.allowsOrderModes) return@withPlayer
         val now =when { !it.shuffleModeEnabled -> ShuffleMode.OFF; c.queue.smartShuffle.value -> ShuffleMode.SMART; else -> ShuffleMode.SHUFFLE }
         when (nextShuffle(now, c.settings.current.behavior.shuffleButton, c.queue.smartAllowed())) {
