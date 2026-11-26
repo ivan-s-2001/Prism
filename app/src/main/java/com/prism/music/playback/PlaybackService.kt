@@ -86,9 +86,10 @@ internal data class SavedQueue(
     val sourceKind: String? = null, val seedId: String? = null, val originId: String? = null,
     val manualIds: Set<String> = emptySet(), val autoplayStart: Int = -1,
     val vibeAnchors: List<Song> = emptyList(),
+    val vibeOrigin: VibeOrigin? = null,
 ) {
     fun source(): QueueSource = QueueSource(
-        QueueKind.entries.firstOrNull { it.name == sourceKind } ?: QueueKind.OTHER, title, seedId, originId, vibeAnchors = vibeAnchors,
+        QueueKind.entries.firstOrNull { it.name == sourceKind } ?: QueueKind.OTHER, title, seedId, originId, vibeAnchors = vibeAnchors, vibeOrigin = vibeOrigin,
     )
 }
 
@@ -108,7 +109,7 @@ internal fun savedQueueText(
         decoded.take(autoplayStart).count { it != null } else -1
     val q = SavedQueue(songs, index, positionMs, title, shuffle = shuffle, shuffleOrder = if (shuffle && songs.size == songJson.size) order else emptyList(), repeat = repeat,
         sourceKind = source?.kind?.name, seedId = source?.seedId, originId = source?.originId,
-        manualIds = manualIds.intersect(songs.mapTo(hashSetOf()) { it.id }), autoplayStart = adjustedAuto, vibeAnchors = source?.vibeAnchors.orEmpty())
+        manualIds = manualIds.intersect(songs.mapTo(hashSetOf()) { it.id }), autoplayStart = adjustedAuto, vibeAnchors = source?.vibeAnchors.orEmpty(), vibeOrigin = source?.vibeOrigin)
     return InnerTube.json.encodeToString(SavedQueue.serializer(), q)
 }
 
@@ -376,7 +377,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
                             c.queue.autoplayStart.value = -1
                             c.queue.autoplayContinuation = null
                             c.queue.source.value = if (pick.radio) {
-                                QueueSource(QueueKind.RADIO, tr(R.string.radio, pick.songs.first().title), seedId = pick.songs.first().id)
+                                QueueSource(QueueKind.RADIO, tr(R.string.radio, pick.songs.first().title), seedId = pick.songs.first().id, vibeOrigin = VibeOrigin(VibeOriginKind.TRACK, pick.songs.first().title, pick.songs.first().thumbnail))
                             } else QueueSource(QueueKind.PLAYLIST, pick.title)
                             val list = if (pick.radio) pick.songs.take(1) else pick.songs
                             player.shuffleModeEnabled = false
@@ -3332,7 +3333,7 @@ open class PlaybackService : MediaLibraryService(), Player.Listener {
             c.queue.autoplayContinuation = null
             if (pick.radio) {
                 val song = pick.songs.first()
-                c.queue.source.value = QueueSource(QueueKind.RADIO, tr(R.string.radio, song.title), seedId = song.id)
+                c.queue.source.value = QueueSource(QueueKind.RADIO, tr(R.string.radio, song.title), seedId = song.id, vibeOrigin = VibeOrigin(VibeOriginKind.TRACK, song.title, song.thumbnail))
                 player.shuffleModeEnabled = false
                 player.repeatMode = Player.REPEAT_MODE_OFF
                 return MediaSession.MediaItemsWithStartPosition(listOf(song.toMediaItem()), 0, C.TIME_UNSET)
