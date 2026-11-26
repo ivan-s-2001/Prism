@@ -228,11 +228,14 @@ fun LibraryScreen(bottomPadding: Dp) {
     if (newSmart) com.prism.music.ui.components.SmartEditorSheet(null) { newSmart = false }
     val tagList by c.tags.summaries.collectAsState()
     val tabs = if (tagList.isEmpty()) LibTab.entries - LibTab.TAGS else LibTab.entries
-    val startPage = remember { LibTab.entries.indexOfFirst { it.name == settings.library.startTab }.coerceAtLeast(0).coerceAtMost(LibTab.DOWNLOADS.ordinal) }
+    val startPage = remember { tabs.indexOfFirst { it.name == settings.library.startTab }.coerceAtLeast(0) }
     val pager = rememberPagerState(initialPage = startPage) { tabs.size }
+    LaunchedEffect(tabs.size) {
+        if (pager.currentPage >= tabs.size) pager.scrollToPage(tabs.lastIndex)
+    }
     // Each of Playlists, Albums and Artists can be a list or a grid of its own (1.7.6).
     fun listFor(tab: LibTab) = (settings.library.views[tab.name] ?: settings.library.view) == com.prism.music.data.prefs.LibraryView.LIST
-    val viewTab = LibTab.entries[pager.currentPage].takeIf { it == LibTab.PLAYLISTS || it == LibTab.ALBUMS || it == LibTab.ARTISTS }
+    val viewTab = tabs.getOrNull(pager.currentPage)?.takeIf { it == LibTab.PLAYLISTS || it == LibTab.ALBUMS || it == LibTab.ARTISTS }
     val asList = listFor(viewTab ?: LibTab.PLAYLISTS)
     val pinned by c.library.pinned.collectAsState()
     val folders by c.prismLibrary.folders.collectAsState()
@@ -466,7 +469,7 @@ fun LibraryScreen(bottomPadding: Dp) {
         PagerChips(tabs.map { it.label }, pager)
 
         HorizontalPager(pager, Modifier.weight(1f), beyondViewportPageCount = 1) { page ->
-            val tab = LibTab.entries[page]
+            val tab = tabs.getOrNull(page) ?: return@HorizontalPager
             @Suppress("NAME_SHADOWING") val asList = listFor(tab)
             val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
             // Swapping playlists and tiles: back to the top, or the list would stay on the tile it showed and hide what moved above.

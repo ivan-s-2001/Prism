@@ -133,16 +133,17 @@ fun TvLibraryPlace(nav: TvNav) {
     val ytPlaylists by c.library.playlists.collectAsState()
     val ytAlbums by c.library.albums.collectAsState()
     val artists by c.library.artists.collectAsState()
+    val favoriteArtists by c.library.profileArtists.collectAsState()
     val prismLists by c.prismLibrary.lists.collectAsState()
     val savedPlaylists by c.prismLibrary.playlists.collectAsState()
     val savedAlbums by c.prismLibrary.albums.collectAsState()
     val liked by c.library.likedShown.collectAsState()
     val recent by c.library.recent.collectAsState()
-    val items: List<BrowseItem> = remember(tab, ytPlaylists, ytAlbums, artists, prismLists, savedPlaylists, savedAlbums, liked, recent) {
+    val items: List<BrowseItem> = remember(tab, ytPlaylists, ytAlbums, artists, favoriteArtists, prismLists, savedPlaylists, savedAlbums, liked, recent) {
         when (tab) {
             TvLibraryTab.PLAYLISTS -> (prismLists.map { it.item() } + savedPlaylists.map { it.item() } + ytPlaylists).distinctBy { it.id.removePrefix("VL") }
             TvLibraryTab.ALBUMS -> (savedAlbums.map { it.item() } + ytAlbums).distinctBy { it.id }
-            TvLibraryTab.ARTISTS -> artists
+            TvLibraryTab.ARTISTS -> (favoriteArtists.map { com.prism.music.data.model.ArtistItem(it.id, it.name, tr(R.string.favorite), it.thumbnail) } + artists).distinctBy { it.id }
             TvLibraryTab.LIKED -> liked.map(::SongItem)
             TvLibraryTab.HISTORY -> recent.distinctBy { it.id }.map(::SongItem)
         }
