@@ -154,6 +154,25 @@ class SongVersions(private val prefs: SharedPreferences) {
             return true
         }
 
+        /** Expand discovery, not acceptance. Keep raw punctuation and primary artist in every query. */
+        fun searchQueries(song: Song, preferExplicit: Boolean): List<String> {
+            val core = song.title.replace(VERSION_SUFFIX, "").trim().ifBlank { song.title }
+            val artist = song.primaryArtist.trim()
+            val base = "$artist $core".trim()
+            val raw = "${song.title} $artist".trim()
+            return buildList {
+                add(base)
+                if (preferExplicit) {
+                    add("$base explicit")
+                    add("$base original")
+                    add("$base без цензуры")
+                }
+                song.album?.title?.takeIf { it.isNotBlank() }?.let { add("$base $it") }
+                add(raw)
+                add("$core $artist".trim())
+            }.filter { it.isNotBlank() }.distinct().take(7)
+        }
+
         /** Only strong matches are offered; absence of a match is preferable to an unrelated recording. */
         fun candidates(song: Song, results: List<Song>, max: Int = 12, preferExplicit: Boolean = false): List<Song> =
             results.asSequence()

@@ -315,7 +315,7 @@ fun ScreenBackdrop(screen: BackdropScreen, content: @Composable BoxScope.() -> U
     val (style, photo) = Backdrop.parse(s.backdrops.forScreen(screen))
     // #413: a solid color is that color exactly, with nothing over it (no wash, no blur, nothing moving): one fill.
     val solid = if (style == Backdrop.COLOR) Backdrop.solidColor(photo) else null
-    val motion = s.backdropMotion && !s.reduceMotion
+    val motion = s.backdropMotion && !s.reduceMotion && !s.performanceMode
     val frosted = ambientFrostShown(s, LocalIsDark.current)
     val density = LocalDensity.current
     var height by remember { mutableStateOf(0.dp) }
@@ -328,7 +328,8 @@ fun ScreenBackdrop(screen: BackdropScreen, content: @Composable BoxScope.() -> U
         }
     }
     val page = remember(style, photo, frosted, height, s.backdropDim, motion) { PageBackdrop(height, draw) }
-    Box(Modifier.fillMaxSize().onSizeChanged { height = with(density) { it.height.toDp() } }) {
+    Box(Modifier.fillMaxSize().background(solid ?: MaterialTheme.colorScheme.background)
+        .onSizeChanged { height = with(density) { it.height.toDp() } }) {
         // The frost only changes with the song, so it's kept as a picture in a layer: drawn afresh, its gradients and grain
         // over the whole screen cost a Galaxy A16's GPU about 15 ms of every frame, even a blinking cursor's (#355).
         if (style != Backdrop.DEFAULT) draw(Modifier.fillMaxSize())

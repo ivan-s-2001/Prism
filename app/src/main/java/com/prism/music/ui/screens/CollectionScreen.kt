@@ -484,8 +484,8 @@ internal fun CollectionContent(type: CollectionType, live: LiveCollection, initi
         ?: (if (type == CollectionType.ALBUM) c.covers.albumArt(page.id, page.thumbnail) else null) ?: page.thumbnail
     // Prism's own lists without a picture take their colors from their newest song.
     val frostUrl = art ?: songs.firstOrNull()?.thumbnail
-    val palette = rememberArtPalette(frostUrl)
-    val frost = rememberFrost(frostUrl)
+    val palette = rememberArtPalette(frostUrl, retainPrevious = false)
+    val frost = rememberFrost(frostUrl, retainPrevious = false)
     val dark = LocalIsDark.current
 
     // The YouTube Music library bookmark, and an owned playlist's visibility (both change from here).

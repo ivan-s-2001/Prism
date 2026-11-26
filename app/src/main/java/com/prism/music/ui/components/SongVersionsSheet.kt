@@ -69,25 +69,35 @@ fun SongVersionsSheet(song: Song, onDismiss: () -> Unit) {
         value = null
         value = withContext(Dispatchers.IO) {
             runCatching {
-                val query = "${song.title} ${song.primaryArtist}".trim()
+                val queries = SongVersions.searchQueries(song, preferExplicit)
                 coroutineScope {
-                    val songs = async { runCatching { c.ytm.search(query, SearchFilter.SONGS).items }.getOrDefault(emptyList()) }
-                    val videos = async { runCatching { c.ytm.search(query, SearchFilter.VIDEOS).items }.getOrDefault(emptyList()) }
-                    val additional = if (report != null) {
-                        listOf("original", "explicit").flatMap { label ->
-                            try { c.ytm.search("$query $label", SearchFilter.SONGS).items }
-                            catch (e: kotlinx.coroutines.CancellationException) { throw e }
-                            catch (_: Exception) { emptyList() }
-                        }
-                    } else emptyList()
-                    val all = (songs.await() + videos.await() + additional).filterIsInstance<SongItem>().map { it.song }
-                    // Neither search answered (offline, or refused): shown as "couldn't look".
-                    if (all.isEmpty()) throw java.io.IOException()
-                    SongVersions.candidates(
-                        song,
-                        all.filter { com.prism.music.data.ExplicitFilter.plays(explicitMode, it) },
+                    suspend fun search(q: String, filter: SearchFilter): List<Song> =
+                        try { c.ytm.search(q, filter).items.filterIsInstance<SongItem>().map { it.song } }
+                        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                        catch (_: Exception) { emptyList() }
+                    fun matches(results: List<Song>): List<Song> = SongVersions.candidates(
+                        song, results.filter { com.prism.music.data.ExplicitFilter.plays(explicitMode, it) },
                         preferExplicit = preferExplicit,
                     )
+                    val initial = listOf(
+                        async { search(queries.first(), SearchFilter.SONGS) },
+                        async { search(queries.first(), SearchFilter.VIDEOS) },
+                    ).map { it.await() }.flatten()
+                    val all = initial.toMutableList()
+                    // Search for an explicit/original edition even when the Yandex report is absent.
+                    // Additional queries are bounded and strictly filtered; do not lower identity checks.
+                    if (matches(all).size < 4 || preferExplicit && matches(all).none { it.explicit }) {
+                        for (batch in queries.drop(1).chunked(2)) {
+                            all += batch.map { q -> async { search(q, SearchFilter.SONGS) } }.map { it.await() }.flatten()
+                            if (matches(all).size >= 6 && (!preferExplicit || matches(all).any { it.explicit })) break
+                        }
+                    }
+                    if (matches(all).size < 2) {
+                        all += search(queries.first(), SearchFilter.TOP)
+                        queries.getOrNull(1)?.let { all += search(it, SearchFilter.VIDEOS) }
+                    }
+                    if (all.isEmpty()) throw java.io.IOException()
+                    matches(all)
                 }
             }
         }

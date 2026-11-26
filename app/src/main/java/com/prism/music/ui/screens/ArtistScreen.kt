@@ -202,8 +202,8 @@ private fun ArtistContent(opened: ArtistOpened, bottomPadding: Dp) {
     // An uploaded artist's page (#332) has no mixes, shuffles or links of YouTube's: what plays is what it lists.
     val uploads = com.prism.music.data.innertube.Parser.isUploadArtist(page.id)
     val list = rememberLazyListState()
-    val palette = rememberArtPalette(page.thumbnail)
-    val frost = rememberFrost(page.thumbnail)
+    val palette = rememberArtPalette(page.thumbnail, retainPrevious = false)
+    val frost = rememberFrost(page.thumbnail, retainPrevious = false)
     val dark = LocalIsDark.current
 
     // The name's typeface depends on the artist's genre; it's written on once that's known (cached after the first visit).
