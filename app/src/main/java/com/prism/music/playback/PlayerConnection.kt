@@ -402,6 +402,8 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
     private val _showPlayer = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     /** Asks the UI to bring the full player up. */
     val showPlayer = _showPlayer.asSharedFlow()
+    private val _showVibe = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val showVibe = _showVibe.asSharedFlow()
 
     private var playToken = 0
 
@@ -727,10 +729,15 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
             ++playToken
             if (!p.isPlaying) { ensureStarted(); if (p.playbackState == Player.STATE_IDLE) p.prepare(); p.play() }
             service?.maybeAutoplay()
+            if (announce) _showVibe.tryEmit(Unit)
             return
         }
         if (announce) radioNotice.asked(source)
-        if (p == null || p.mediaItemCount == 0 || p.currentMediaItem?.mediaId != song.id) { playQueue(listOf(song), 0, source); return }
+        if (p == null || p.mediaItemCount == 0 || p.currentMediaItem?.mediaId != song.id) {
+            playQueue(listOf(song), 0, source)
+            if (announce && c.queue.source.value == source) _showVibe.tryEmit(Unit)
+            return
+        }
         ++playToken
         stopFill()
         // As a new queue would be: just this song (what came before stays in Played), in order, the radio to follow.
@@ -754,24 +761,35 @@ class PlayerConnection(private val context: Context, private val c: AppContainer
         // An autoplay load still out for the old queue is dropped: the radio asks now rather than wait on it.
         service?.dropAutoplay()
         service?.maybeAutoplay()
+        if (announce) _showVibe.tryEmit(Unit)
     }
 
-    /** Collection/artist recommendations use original context, not the first generated track. */
+    /** Start from the actual context immediately, as track radio does. The service generates subsequent music. */
     internal suspend fun playContextVibe(title: String, anchors: List<Song>,
-         origin: VibeOrigin? = null,
+        origin: VibeOrigin? = null,
         provider: suspend () -> List<Song> = { emptyList() }): Boolean = withContext(Dispatchers.Main) {
         if (c.queue.followingHost) return@withContext false
         val token = queueStarting()
         val old = c.queue.source.value
-        val supplied = try { provider() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { emptyList() }
-        val context = com.prism.music.data.foryou.VibeContext.anchors(anchors.ifEmpty { supplied })
-        if (context.isEmpty() || !stillStarting(token) || c.queue.source.value !== old) return@withContext false
-        val picks = c.yourMusic.contextBatch(context, emptyList(), 0, explicitContext = true, provided = supplied + context)
-        if (picks.isEmpty() || !stillStarting(token) || c.queue.followingHost || c.queue.source.value !== old) return@withContext false
-        val source = QueueSource(QueueKind.RADIO, tr(R.string.radio, title), vibeAnchors = context, vibeOrigin = origin)
-        playQueue(picks, 0, source)
-        c.recFeedback.served(picks.map { it.id })
-        true
+        val offline = !c.network.isOnline()
+        fun eligible(song: Song): Boolean = c.yourMusic.recommendationAllowed(song, offlineOnly = offline)
+        var context = com.prism.music.data.foryou.VibeContext.anchors(anchors.filter(::eligible))
+        if (context.isEmpty() && !offline) {
+            val supplied = try {
+                kotlinx.coroutines.withTimeoutOrNull(5000L) { provider() }.orEmpty()
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { emptyList() }
+            context = com.prism.music.data.foryou.VibeContext.anchors(supplied.filter(::eligible))
+        }
+        if (context.isEmpty() || !stillStarting(token) || c.queue.followingHost || c.queue.source.value !== old) return@withContext false
+        val first = context.firstOrNull { !c.sessionHeard.has(it) } ?: context.first()
+        val identity = origin ?: VibeOrigin(VibeOriginKind.COLLECTION, title)
+        val source = QueueSource(QueueKind.RADIO, tr(R.string.radio, title), seedId = first.id,
+            vibeAnchors = context, vibeOrigin = identity)
+        playQueue(listOf(first), 0, source)
+        val started = c.queue.source.value == source
+        if (started) _showVibe.tryEmit(Unit)
+        started
     }
 
     /** Queue items a retune must not replace or duplicate. Offline may reuse previously played downloads. */

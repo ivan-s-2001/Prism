@@ -285,7 +285,12 @@ fun PlayActionsSheet(target: Playable, extra: List<SheetItem> = emptyList(), ext
                 val token = c.player.queueStarting()
                 val loaded = runCatching { whileLoading(context, title) { songsFor(c, target, shuffle = false, mix = false) } }.getOrNull()
                 if (!c.player.stillStarting(token)) return@launch
-                if (loaded == null || !c.player.playContextVibe(title, loaded.first) {
+                if (loaded == null || !c.player.playContextVibe(title, loaded.first, origin = com.prism.music.playback.VibeOrigin(
+                        when (item) {
+                            is AlbumItem -> com.prism.music.playback.VibeOriginKind.ALBUM
+                            is PlaylistItem -> com.prism.music.playback.VibeOriginKind.PLAYLIST
+                            else -> com.prism.music.playback.VibeOriginKind.COLLECTION
+                        }, title, art, artist = if (item is AlbumItem) loaded.first.firstOrNull()?.primaryArtist?.ifBlank { null } else null)) {
                         if (!c.network.isOnline()) emptyList() else when (item) {
                             is AlbumItem -> item.playlistId?.let { c.radio(null, "RDAMPL$it").songs }.orEmpty()
                             is PlaylistItem -> if (com.prism.music.data.PrismLibrary.isPrismList(item.id)) emptyList()

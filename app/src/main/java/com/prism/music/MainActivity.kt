@@ -627,6 +627,14 @@ private fun PrismRoot(deepLink: MutableStateFlow<Uri?>) {
             }
         }
 
+        LaunchedEffect(Unit) {
+            c.player.showVibe.collect {
+                playerOpen = false
+                selectTab(Routes.MY_WAVE)
+                navController.popBackStack(Routes.MY_WAVE, inclusive = false)
+            }
+        }
+
         // "Customize this" (1.7.3): the element tapped and, for a Home section, which one.
         var customizing by remember { mutableStateOf<Pair<com.prism.music.ui.components.CustomizeTarget, String?>?>(null) }
         // What's under the full player holds its purely visual motion still while the player hides it.

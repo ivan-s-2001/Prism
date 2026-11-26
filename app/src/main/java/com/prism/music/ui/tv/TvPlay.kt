@@ -82,18 +82,20 @@ object TvPlay {
     /** An artist, shuffled (YouTube's shuffle of their songs), or their radio ([radio]). */
     suspend fun artist(c: AppContainer, id: String, radio: Boolean = false): Boolean = tried tried@{
         val a = withContext(Dispatchers.IO) { c.ytm.artist(id) }
-        val list = (if (radio) a.radioPlaylistId ?: a.shufflePlaylistId else a.shufflePlaylistId ?: a.radioPlaylistId) ?: return@tried false
-        val r = withContext(Dispatchers.IO) {
-            if (radio) c.radio(a.radioVideoId ?: a.shuffleVideoId, list, a.radioParams ?: a.shuffleParams)
-            else c.radio(a.shuffleVideoId ?: a.radioVideoId, list, a.shuffleParams ?: a.radioParams)
-        }
-        if (r.songs.isEmpty()) return@tried false
         if (radio) {
-            val original = a.shelves.flatMap { it.items }.filterIsInstance<SongItem>().map { it.song }
-                .filter { it.primaryArtist.equals(a.name, ignoreCase = true) }
-            return@tried c.player.playContextVibe(a.name, original.ifEmpty { r.songs.filter { it.primaryArtist.equals(a.name, true) } },
-                origin = com.prism.music.playback.VibeOrigin(com.prism.music.playback.VibeOriginKind.ARTIST, a.name, a.thumbnail)) { r.songs }
-        } else c.player.playQueue(r.songs, 0, QueueSource(QueueKind.LIBRARY, a.name, originId = id))
+            val songs = a.shelves.flatMap { it.items }.filterIsInstance<SongItem>().map { it.song }
+            val original = songs.filter { it.artists.any { artist -> artist.id == id || artist.name.equals(a.name, true) } }
+            return@tried c.player.playContextVibe(a.name, original.ifEmpty { songs },
+                origin = com.prism.music.playback.VibeOrigin(com.prism.music.playback.VibeOriginKind.ARTIST, a.name, a.thumbnail)) {
+                val list = a.radioPlaylistId ?: a.shufflePlaylistId
+                if (list == null || !c.network.isOnline()) emptyList()
+                else withContext(Dispatchers.IO) { c.radio(a.radioVideoId ?: a.shuffleVideoId, list, a.radioParams ?: a.shuffleParams).songs }
+            }
+        }
+        val list = a.shufflePlaylistId ?: a.radioPlaylistId ?: return@tried false
+        val r = withContext(Dispatchers.IO) { c.radio(a.shuffleVideoId ?: a.radioVideoId, list, a.shuffleParams ?: a.radioParams) }
+        if (r.songs.isEmpty()) return@tried false
+        c.player.playQueue(r.songs, 0, QueueSource(QueueKind.LIBRARY, a.name, originId = id))
         true
     }
 

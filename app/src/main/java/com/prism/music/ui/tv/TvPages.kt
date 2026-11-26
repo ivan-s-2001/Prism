@@ -354,7 +354,7 @@ fun TvLyricsPage(nav: TvNav) = TvSongLyrics({ nav.back() })
  * check. [close] puts the panel away first.
  */
 internal fun songActions(c: AppContainer, nav: TvNav, s: com.prism.music.data.model.Song?, singReady: Boolean, close: () -> Unit): List<TvAction> = buildList {
-    if (s != null && !s.isLive && !s.isEpisode) add(TvAction(tr(R.string.start_radio), com.prism.music.ui.theme.PrismIcons.Stream) { close(); c.player.playRadio(s) })
+    if (s != null && !s.isLive && !s.isEpisode) add(TvAction(tr(R.string.start_radio), com.prism.music.ui.theme.PrismIcons.Stream) { close(); c.player.playRadio(s, announce = true) })
     s?.album?.id?.let { id -> add(TvAction(tr(R.string.go_to_album), com.prism.music.ui.theme.PrismIcons.Album) { close(); nav.go(TvRoute.Collection(AlbumItem(id, s.album.title, s.primaryArtist, s.thumbnail))) }) }
     s?.artists?.filter { it.id != null }?.forEach { a -> add(TvAction(a.name, com.prism.music.ui.theme.PrismIcons.Person) { close(); nav.go(TvRoute.Artist(a.id!!)) }) }
     // Sing, once this TV passed its speed check (Settings → Sing).
@@ -399,7 +399,8 @@ fun TvCollectionPage(item: BrowseItem, nav: TvNav) {
             scope.launch {
                 val ok = c.player.playContextVibe(p?.title ?: item.title, songs, origin = com.prism.music.playback.VibeOrigin(
                     if (item is AlbumItem) com.prism.music.playback.VibeOriginKind.ALBUM else com.prism.music.playback.VibeOriginKind.PLAYLIST,
-                    p?.title ?: item.title, p?.thumbnail ?: item.thumbnail)) {
+                    p?.title ?: item.title, p?.thumbnail ?: item.thumbnail,
+                    artist = if (item is AlbumItem) p?.artists?.joinToString(", ") { it.name }?.ifBlank { null } else null)) {
                     if (!c.network.isOnline()) emptyList() else when (item) {
                         is AlbumItem -> p?.playlistId?.let { c.radio(null, "RDAMPL$it").songs }.orEmpty()
                         is PlaylistItem -> if (com.prism.music.data.PrismLibrary.isPrismList(item.id)) emptyList()
@@ -407,7 +408,7 @@ fun TvCollectionPage(item: BrowseItem, nav: TvNav) {
                         else -> emptyList()
                     }
                 }
-                if (ok) nav.go(TvRoute.Player) else Toast.makeText(context, tr(R.string.couldn_t_start_the_radio), Toast.LENGTH_SHORT).show()
+                if (!ok) Toast.makeText(context, tr(R.string.couldn_t_start_the_radio), Toast.LENGTH_SHORT).show()
             }
         }) else null,
     )
@@ -435,7 +436,7 @@ fun TvArtistPage(id: String, nav: TvNav) {
             else { TvPlay.song(c, top.second, top.second.indexOfFirst { it is SongItem }, top.first.title, radio = false); nav.go(TvRoute.Player) }
         },
         onShuffle = { scope.launch { if (TvPlay.artist(c, id)) nav.go(TvRoute.Player) else fail() } },
-        onRadio = { scope.launch { if (TvPlay.artist(c, id, radio = true)) nav.go(TvRoute.Player) else fail() } },
+        onRadio = { scope.launch { if (!TvPlay.artist(c, id, radio = true)) fail() } },
         onItem = { r, i ->
             val (shelf, items) = shelves.getOrNull(r) ?: return@TvArtistScreen
             open(c, nav, items.getOrNull(i) ?: return@TvArtistScreen, items, i, shelf.title, radio = false) { scope.launch { it() } }

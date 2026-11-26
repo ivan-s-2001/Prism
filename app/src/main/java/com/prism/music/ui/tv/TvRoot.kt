@@ -96,6 +96,7 @@ class TvNav(private val stack: SnapshotStateList<TvRoute>, private val memory: T
 
     /** The first run is over (signed in with the phone, or not): its pages go, Home shows. */
     var firstRunDone: () -> Unit = {}
+    var openVibe: () -> Unit = {}
 }
 
 /**
@@ -114,6 +115,8 @@ fun TvRoot(link: kotlinx.coroutines.flow.MutableStateFlow<android.net.Uri?> = re
         // First run (plan §2): welcome, then sign in with the phone or carry on without an account.
         val c = com.prism.music.ui.theme.LocalContainer.current
         nav.firstRunDone = { c.settings.setOnboarded(true); c.settings.setTvWelcomed(); nav.clear() }
+        nav.openVibe = { section = TvSection.STREAM; nav.clear() }
+        androidx.compose.runtime.LaunchedEffect(Unit) { c.player.showVibe.collect { nav.openVibe() } }
         // Once per TV, signed out: also a TV that had Prism's phone app before (onboarded there, never offered the
         // sign-in with the phone).
         androidx.compose.runtime.LaunchedEffect(Unit) {
