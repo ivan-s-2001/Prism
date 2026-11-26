@@ -23,6 +23,11 @@ internal fun personalVibe(style: MyWave.Style): MyWave.Style = MyWave.Style(russ
 internal fun vibeStationTitle(saved: SavedWavePreset?, scenario: WaveScenarios.Scenario?): String =
     saved?.name ?: scenario?.label ?: tr(R.string.prism_stream_station_default)
 
+/** Context radios retain their original title when the recommended track changes. */
+internal fun activeVibeTitle(source: com.prism.music.playback.QueueSource,
+    saved: SavedWavePreset?, scenario: WaveScenarios.Scenario?): String =
+    if (source.isSongRadio) source.title.ifBlank { tr(R.string.stream) } else vibeStationTitle(saved, scenario)
+
 internal fun vibeShortcuts(
     style: MyWave.Style,
     saved: List<SavedWavePreset>,
