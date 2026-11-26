@@ -278,11 +278,8 @@ fun SearchScreen(bottomPadding: Dp) {
 
     val ui = com.prism.music.ui.theme.LocalUi.current
     Column(Modifier.fillMaxSize()) {
-        // The title steps aside while you type, leaving the results more room.
-        androidx.compose.animation.AnimatedVisibility(!focused && query.isBlank()) {
-            com.prism.music.ui.components.ScreenHeader(tr(R.string.search), Modifier.padding(bottom = 2.dp))
-        }
-        if (focused || query.isNotBlank()) Spacer(Modifier.statusBarsPadding())
+        // One stable search header for landing, suggestions and results; no vertical jump while typing.
+        Spacer(Modifier.statusBarsPadding())
         GlassSurface(Modifier.padding(horizontal = 16.dp, vertical = 10.dp).fillMaxWidth().height(54.dp), shape = ui.shape(27.dp), elevation = 6.dp, inPage = true) {
             Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(PrismIcons.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -1146,7 +1146,7 @@ enum class LocalSection(val label: String) {
 }
 
 enum class NavTab(val label: String) {
-    HOME(tr(R.string.home)), SEARCH(tr(R.string.search)), LIBRARY(tr(R.string.library)), REPLAY(tr(R.string.replay_2)), SETTINGS(tr(R.string.settings)), LOCAL(tr(R.string.local_files)),
+    HOME(tr(R.string.prism_for_you_page)), SEARCH(tr(R.string.search)), LIBRARY(tr(R.string.prism_collection_page)), REPLAY(tr(R.string.replay_2)), SETTINGS(tr(R.string.settings)), LOCAL(tr(R.string.local_files)),
     // 1.7.6: any of these pages as a tab too.
     DOWNLOADS(tr(R.string.downloads)), LIKED(tr(R.string.liked_songs)), PODCASTS(tr(R.string.podcasts)), MY_WAVE(tr(R.string.stream));
 
@@ -1853,7 +1853,7 @@ data class AppSettings(
     val navStyle: NavBarStyle = NavBarStyle.FLOATING,
     val navLabels: NavLabels = NavLabels.ALWAYS,
     val navHideOnScroll: Boolean = true,
-    val navTabs: List<NavTab> = listOf(NavTab.HOME, NavTab.MY_WAVE, NavTab.LIBRARY, NavTab.SEARCH, NavTab.REPLAY),
+    val navTabs: List<NavTab> = listOf(NavTab.MY_WAVE, NavTab.HOME, NavTab.SEARCH, NavTab.LIBRARY),
     /** Tabs given their own names (1.7.6); the rest keep theirs. */
     val tabNames: Map<NavTab, String> = emptyMap(),
     val navBarSize: NavBarSize = NavBarSize.STANDARD,
@@ -1866,7 +1866,7 @@ data class AppSettings(
     val localSections: List<LocalSection> = LocalSection.entries.toList(),
     /** Local files → Songs' order (a name from the page's sort list). */
     val localSort: String = "TITLE",
-    val startTab: NavTab = NavTab.HOME,
+    val startTab: NavTab = NavTab.MY_WAVE,
     val miniPlayerStyle: MiniPlayerStyle = MiniPlayerStyle.CARD,
     val miniSkipButtons: Boolean = true,
     /** The mini player's previous button (off by default: swiping right goes back too). */
@@ -3080,7 +3080,7 @@ class SettingsRepository(
             navStyle = p.enum(K.navStyle, d.navStyle),
             navLabels = p.enum(K.navLabels, d.navLabels),
             navHideOnScroll = p[K.navHideOnScroll] ?: d.navHideOnScroll,
-            navTabs = p[K.navTabs]?.split(",")?.mapNotNull { n -> NavTab.entries.firstOrNull { it.name == n } }?.takeIf { it.isNotEmpty() } ?: d.navTabs,
+            navTabs = p[K.navTabs]?.split(",")?.mapNotNull { n -> NavTab.entries.firstOrNull { it.name == n } }?.distinct()?.takeIf { it.isNotEmpty() } ?: d.navTabs,
             tabNames = p[K.tabNames]?.let(::parseTabNames) ?: d.tabNames,
             navBarSize = p.enum(K.navBarSize, d.navBarSize),
             navBarFill = p.enum(K.navBarFill, d.navBarFill),

@@ -445,16 +445,17 @@ fun LibraryScreen(bottomPadding: Dp) {
     LaunchedEffect(settings.isLoggedIn, settings.dataSyncId) { c.uploads.check() }
 
     Column(Modifier.fillMaxSize()) {
-        com.prism.music.ui.components.ScreenHeader(tr(R.string.library)) {
+        com.prism.music.ui.components.ScreenHeader(tr(R.string.prism_collection_page)) {
             // All of the library at once, with filters (1.8.3).
             com.prism.music.ui.components.RoundAction(PrismIcons.Search, tr(R.string.search_your_library), Modifier.testTag("librarySearch")) { nav.go(Routes.librarySearch()) }
             if (settings.isLoggedIn) {
                 if (sync == SyncState.SYNCING) Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) { com.prism.music.ui.components.PrismSpinner(Modifier.size(22.dp), stroke = 2.dp) }
                 else com.prism.music.ui.components.RoundAction(PrismIcons.Sync, tr(R.string.sync_with_youtube_music)) { scope.launch { c.library.sync() } }
             }
-            com.prism.music.ui.components.RoundAction(PrismIcons.ThumbDown, tr(R.string.prism_vibe_reactions)) { editingReactions = true }
-            // Pick and order the Playlists tab's tiles (it was a tile of its own at the end of them until 1.7.5).
-            com.prism.music.ui.components.RoundAction(PrismIcons.Edit, tr(R.string.edit_tiles)) { editingTiles = true }
+            if (tabs.getOrNull(pager.currentPage) == LibTab.PLAYLISTS)
+                com.prism.music.ui.components.RoundAction(PrismIcons.Edit, tr(R.string.edit_tiles)) { editingTiles = true }
+            if (tabs.getOrNull(pager.currentPage) != LibTab.OVERVIEW)
+                com.prism.music.ui.components.RoundAction(PrismIcons.ThumbDown, tr(R.string.prism_vibe_reactions)) { editingReactions = true }
             // This tab's own view (1.7.6); the others keep theirs.
             if (viewTab != null) com.prism.music.ui.components.RoundAction(
                 if (asList) PrismIcons.Customize else PrismIcons.Queue,
@@ -604,18 +605,24 @@ fun LibraryScreen(bottomPadding: Dp) {
                         if (favorites.isEmpty()) item(key = "overview-pick-artists", span = { GridItemSpan(maxLineSpan) }) {
                             ShortcutTile(tr(R.string.prism_vibe_add_artists), "", PrismIcons.Person, true) { nav.go(Routes.PICK_ARTISTS) }
                         }
-                        items(favorites.take(6), key = { "overview-artist:" + it.id }) { favorite ->
-                            LibraryItem(ArtistItem(favorite.id, favorite.name, "", favorite.thumbnail), asList) { nav.go(Routes.artist(favorite.id)) }
+                        if (favorites.isNotEmpty()) item(key = "overview-artist-row", span = { GridItemSpan(maxLineSpan) }) {
+                            Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                favorites.take(8).forEach { favorite ->
+                                    ItemCard(ArtistItem(favorite.id, favorite.name, "", favorite.thumbnail), width = 112.dp) { nav.go(Routes.artist(favorite.id)) }
+                                }
+                            }
                         }
                         item(key = "overview-playlists", span = { GridItemSpan(maxLineSpan) }) {
                             com.prism.music.ui.components.SectionHeader(tr(R.string.your_playlists),
                                 onMore = { scope.launch { pager.animateScrollToPage(LibTab.PLAYLISTS.ordinal) } })
                         }
-                        item(key = "overview-create-playlist") {
-                            ShortcutTile(tr(R.string.new_playlist), "", PrismIcons.Add, asList) { creating = true }
-                        }
-                        items(sortedPlaylists.take(5), key = { "overview-playlist:" + it.id }) { playlist ->
-                            LibraryItem(shown(playlist), asList, onLongClick = { menuFor = playlist }) { nav.open(playlist, onSong) }
+                        item(key = "overview-playlists-row", span = { GridItemSpan(maxLineSpan) }) {
+                            Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Box(Modifier.width(136.dp)) { ShortcutTile(tr(R.string.new_playlist), "", PrismIcons.Add, false) { creating = true } }
+                                sortedPlaylists.take(8).forEach { playlist ->
+                                    ItemCard(shown(playlist), width = 136.dp, onLongClick = { menuFor = playlist }) { nav.open(playlist, onSong) }
+                                }
+                            }
                         }
                         item(key = "overview-albums", span = { GridItemSpan(maxLineSpan) }) {
                             com.prism.music.ui.components.SectionHeader(tr(R.string.albums),
@@ -624,8 +631,12 @@ fun LibraryScreen(bottomPadding: Dp) {
                         if (albums.isEmpty()) item(key = "overview-empty-albums", span = { GridItemSpan(maxLineSpan) }) {
                             EmptyState(PrismIcons.Album, tr(R.string.no_albums_yet), tr(R.string.tap_the_bookmark_on_an_album))
                         }
-                        items(albums.take(6), key = { "overview-album:" + it.id }) { album ->
-                            LibraryItem(shown(album), asList, onLongClick = { itemMenu = album }) { nav.open(album, onSong) }
+                        if (albums.isNotEmpty()) item(key = "overview-albums-row", span = { GridItemSpan(maxLineSpan) }) {
+                            Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                albums.take(8).forEach { album ->
+                                    ItemCard(shown(album), width = 136.dp, onLongClick = { itemMenu = album }) { nav.open(album, onSong) }
+                                }
+                            }
                         }
                         item(key = "overview-preferences", span = { GridItemSpan(maxLineSpan) }) {
                             com.prism.music.ui.components.SectionHeader(tr(R.string.prism_vibe_reactions), onMore = { editingReactions = true })

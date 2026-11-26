@@ -42,10 +42,10 @@ import kotlinx.coroutines.launch
 
 /** Prism TV's top-level places, in the side navigation's order. */
 enum class TvSection(val label: () -> String, val icon: () -> ImageVector) {
-    HOME({ tr(R.string.home) }, { PrismIcons.Home }),
     STREAM({ tr(R.string.stream) }, { PrismIcons.Stream }),
+    HOME({ tr(R.string.prism_for_you_page) }, { PrismIcons.Home }),
     SEARCH({ tr(R.string.search) }, { PrismIcons.Search }),
-    LIBRARY({ tr(R.string.library) }, { PrismIcons.Library }),
+    LIBRARY({ tr(R.string.prism_collection_page) }, { PrismIcons.Library }),
     SETTINGS({ tr(R.string.settings) }, { PrismIcons.Settings }),
 }
 
@@ -108,7 +108,7 @@ class TvNav(private val stack: SnapshotStateList<TvRoute>, private val memory: T
 @Composable
 fun TvRoot(link: kotlinx.coroutines.flow.MutableStateFlow<android.net.Uri?> = remember { kotlinx.coroutines.flow.MutableStateFlow(null) }) {
     TvTheme {
-        var section by rememberSaveable { mutableStateOf(TvSection.HOME) }
+        var section by rememberSaveable { mutableStateOf(TvSection.STREAM) }
         val stack = remember { mutableStateListOf<TvRoute>() }
         val memory = remember { TvFocusMemory() }
         val sectionKey = "section:${section.name}"
@@ -129,8 +129,8 @@ fun TvRoot(link: kotlinx.coroutines.flow.MutableStateFlow<android.net.Uri?> = re
         androidx.compose.runtime.LaunchedEffect(Unit) {
             c.player.errors.collect { android.widget.Toast.makeText(c.app, it, android.widget.Toast.LENGTH_LONG).show() }
         }
-        BackHandler(enabled = stack.isNotEmpty() || section != TvSection.HOME) {
-            if (!nav.back()) { section = TvSection.HOME; memory.opening("section:${TvSection.HOME.name}") }
+        BackHandler(enabled = stack.isNotEmpty() || section != TvSection.STREAM) {
+            if (!nav.back()) { section = TvSection.STREAM; memory.opening("section:${TvSection.STREAM.name}") }
         }
         val holder = rememberSaveableStateHolder()
         val top = stack.lastOrNull()

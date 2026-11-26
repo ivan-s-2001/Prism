@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="prism_collection_overview">Обзор</string>
+    <string name="prism_for_you_page">Для вас</string>
+    <string name="prism_collection_page">Коллекция</string>
 </resources>
