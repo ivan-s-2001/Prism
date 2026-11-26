@@ -364,7 +364,7 @@ internal fun TvWavePlace(nav: TvNav) {
                                 { if (c.player.hasNext.value) c.player.next() }, Modifier.tvItem("tv_wave/next"))
                         }, dislike = {
                             if (current != null) TvIconButton(if (current.id in disliked) PrismIcons.ThumbDownFilled else PrismIcons.ThumbDown, tr(R.string.prism_stream_not_for_me),
-                                { val on = current.id in disliked; c.library.setDisliked(current, !on); if (!on && c.player.hasNext.value) c.player.next() },
+                                { if (c.library.toggleDislike(current) && c.player.currentSong.value?.id == current.id && c.player.hasNext.value) c.player.next() },
                                 Modifier.tvItem("tv_wave/dislike"), on = current.id in disliked)
                         }, like = {
                             if (current != null) TvIconButton(if (now?.liked == true) PrismIcons.HeartFilled else PrismIcons.Heart, tr(R.string.prism_stream_like),
